@@ -12,7 +12,7 @@ use std::any::Any;
 /// In the `build()` function, the builder can access the cache inorder to
 /// resolve depending builders to their artifact.
 ///
-trait Builder {
+pub trait Builder {
     type Artifact;
     
     fn build(&self, cache: &mut ArtifactCache) -> Rc<Self::Artifact>;
@@ -22,11 +22,17 @@ trait Builder {
 
 /// Central structure to prevent dependency duplication on building.
 ///
-struct ArtifactCache {
+pub struct ArtifactCache {
 	// Maps Builder-ptr to their Output value
 	cache: HashMap<*const usize, Rc<dyn Any>>,
 	// Stores all Builder Rcs reference in above map, to ensure that the above pointer remain valid
 	builder_blockage: Vec<Rc<dyn Any>>,
+}
+
+impl Default for ArtifactCache {
+	fn default() -> Self {
+		ArtifactCache::new()
+	}
 }
 
 impl ArtifactCache {
@@ -42,7 +48,7 @@ impl ArtifactCache {
 	
 	/// Returns the raw address of the inner allocation of the given builder Rc.
 	///
-	fn as_ptr<B: Builder>(builder: &Rc<B>) -> *const usize {
+	fn builder_ptr<B: Builder>(builder: &Rc<B>) -> *const usize {
 		builder as &B as *const B as *const usize
 	}
 	
@@ -51,7 +57,7 @@ impl ArtifactCache {
 	fn lookup<B: Builder>(&self, builder: &Rc<B>) -> Option<Rc<B::Artifact>>
 			where <B as Builder>::Artifact: 'static {
 		
-		let ptr = Self::as_ptr(builder);
+		let ptr = Self::builder_ptr(builder);
 		
 		// Get the artifact from the hash map ensuring integrity
 		self.cache.get(&ptr).map(
@@ -69,7 +75,7 @@ impl ArtifactCache {
 		
 		// Insert artifact
 		self.cache.insert(
-			Self::as_ptr(&builder),
+			Self::builder_ptr(&builder),
 			artifact
 		);
 		
