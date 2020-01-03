@@ -114,8 +114,8 @@ fn main() {
     // Constructing builders
     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
     
-    let node_builder_1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf_builder.clone()));
-    let node_builder_2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf_builder.clone()));
+    let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
+    let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
 
     // Using the cache to access the artifacts from the builders
 
