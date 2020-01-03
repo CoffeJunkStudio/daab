@@ -1,4 +1,101 @@
 
+//!
+//! DAG Aware Artifact Builder
+//! ==========================
+//!
+//! Rust crate for managing the building of artifacts by builders which are connected in a DAG like manner.
+//!
+//! This crate provides essentially a cache which keeps artifacts of builders in
+//! order to prevent the same builder to produces multiple equal artifacts.
+//!
+//! Example:
+//!
+//! ```rust
+//! use std::rc::Rc;
+//! use daab::*;
+//!
+//! // Simple artifact
+//! #[derive(Debug, PartialEq, Eq)]
+//! struct Leaf {
+//!     //...
+//! }
+//! 
+//! // Simple builder
+//! struct BuilderLeaf {
+//!     // ...
+//! }
+//! impl BuilderLeaf {
+//!     pub fn new() -> Self {
+//!         Self {
+//!             // ...
+//!         }
+//!     }
+//! }
+//! impl Builder for BuilderLeaf {
+//!     type Artifact = Leaf;
+//!     
+//!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
+//!         Leaf{
+//!             // ...
+//!         }
+//!     }
+//! }
+//! 
+//! // Composed artifact, linking to a Leaf
+//! #[derive(Debug, PartialEq, Eq)]
+//! struct Node {
+//!     leaf: Rc<Leaf>, // Dependency artifact
+//!     // ...
+//! }
+//! 
+//! // Composed builder, depending on BuilderLeaf
+//! struct BuilderSimpleNode {
+//!     builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
+//!     // ...
+//! }
+//! impl BuilderSimpleNode {
+//!     pub fn new(builder_leaf: ArtifactPromise<BuilderLeaf>) -> Self {
+//!         Self {
+//!             builder_leaf,
+//!             // ...
+//!         }
+//!     }
+//! }
+//! impl Builder for BuilderSimpleNode {
+//!     type Artifact = Node;
+//!     
+//!     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+//!         // Resolve ArtifactPromise to its artifact
+//!         let leaf = cache.resolve(&self.builder_leaf);
+//!         
+//!         Node {
+//!             leaf,
+//!             // ...
+//!         }
+//!     }
+//! }
+//! 
+//! fn main() {
+//!     // The cache to storing already created artifacts
+//!     let mut cache = ArtifactCache::new();
+//!     
+//!     // Constructing builders
+//!     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
+//!     
+//!     let node_builder_1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf_builder.clone()));
+//!     let node_builder_2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf_builder.clone()));
+//!
+//!     // Using the cache to access the artifacts from the builders
+//!
+//!     // The same builder results in same artifact
+//!     assert_eq!(cache.get(&node_builder_1), cache.get(&node_builder_1));
+//!     
+//!     // Different artifacts may link the same dependent artifact
+//!     assert_eq!(cache.get(&node_builder_1).leaf, cache.get(&node_builder_2).leaf);
+//! }
+//! ```
+//!
+
 
 use std::rc::Rc;
 use std::collections::HashMap;
@@ -10,24 +107,28 @@ use std::hash::Hasher;
 
 /// Represents a builder for an artifact.
 ///
-/// Each builder is supposed to contain all direct depenencies possibly other
+/// Each builder is supposed to contain all direct dependencies possibly other
 /// builders.
-/// In the `build()` function, the builder can access the cache inorder to
-/// resolve depending builders to their artifact.
+/// In the `build()` function, the builder can access `cache` in order to
+/// resolve depending builders (as `ArtifactPromise`) in order to create their
+/// artifact.
 ///
 pub trait Builder {
-    type Artifact;
-    
-    fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
+	type Artifact;
+	
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
 }
 
 
-/// Encapsulates a builder are handle for its artifact from the ArtifactCache.
+/// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
 ///
 /// This struct is essentially a wrapper around `Rc<B>`, but it provides a
 /// `Hash` and `Eq` implementation based no the identity of the Rcs inner value.
 ///
 /// All clones of an `ArtifactPromise` are considered identical.
+///
+/// An `ArtifactPromise` is either resolved using the `ArtifactCache::get()`
+/// or `ArtifactResolver::resolve()`.
 ///
 #[derive(Debug)]
 pub struct ArtifactPromise<B: ?Sized> {
@@ -268,9 +369,9 @@ mod tests {
 
 	impl BuilderLeaf {
 		pub fn new() -> Self {
-		    Self {
-		    	// empty
-		    }
+			Self {
+				// empty
+			}
 		}
 	}
 
@@ -278,7 +379,7 @@ mod tests {
 		type Artifact = Leaf;
 		
 		fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
-		    Leaf{
+			Leaf{
 				id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			}
 		}
@@ -298,9 +399,9 @@ mod tests {
 
 	impl BuilderSimpleNode {
 		pub fn new(leaf: ArtifactPromise<BuilderLeaf>) -> Self {
-		    Self {
-		        leaf,
-		    }
+			Self {
+				leaf,
+			}
 		}
 	}
 
@@ -309,11 +410,11 @@ mod tests {
 		
 		fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
 			let leaf = cache.resolve(&self.leaf);
-		    
-		    SimpleNode{
-		    	id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		    	leaf
-		    }
+			
+			SimpleNode{
+				id: COUNTER.fetch_add(1, Ordering::SeqCst),
+				leaf
+			}
 		}
 	}
 
@@ -390,15 +491,15 @@ mod tests {
 
 	impl BuilderComplexNode {
 		pub fn new_leaf(leaf: ArtifactPromise<BuilderLeaf>) -> Self {
-		    Self {
-		        inner: BuilderLeafOrNodes::Leaf(leaf),
-		    }
+			Self {
+				inner: BuilderLeafOrNodes::Leaf(leaf),
+			}
 		}
 		
 		pub fn new_nodes(left: ArtifactPromise<BuilderComplexNode>, right: ArtifactPromise<BuilderComplexNode>) -> Self {
-		    Self {
-		        inner: BuilderLeafOrNodes::Nodes{left, right},
-		    }
+			Self {
+				inner: BuilderLeafOrNodes::Nodes{left, right},
+			}
 		}
 	}
 
@@ -406,14 +507,14 @@ mod tests {
 		type Artifact = ComplexNode;
 		
 		fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
-		    ComplexNode{
-		    	id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		    	inner: self.inner.build(cache),
-		    }
+			ComplexNode{
+				id: COUNTER.fetch_add(1, Ordering::SeqCst),
+				inner: self.inner.build(cache),
+			}
 		}
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_leaf() {
 		let mut cache = ArtifactCache::new();
 		
@@ -425,11 +526,11 @@ mod tests {
 		// Ensure same builder results in same artifact
 		assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
 		
-		// Ensure different builder result in  different artifacts
+		// Ensure different builder result in different artifacts
 		assert_ne!(cache.get(&leaf1), cache.get(&leaf2));
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_node() {
 		let mut cache = ArtifactCache::new();
 		
@@ -443,15 +544,15 @@ mod tests {
 		// Ensure same builder results in same artifact
 		assert_eq!(cache.get(&node1), cache.get(&node1));
 		
-		// Ensure different builder result in  different artifacts
+		// Ensure different builder result in different artifacts
 		assert_ne!(cache.get(&node2), cache.get(&node3));
 		
 		// Enusre that different artifacts may link the same dependent artifact
 		assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
 		
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_complex() {
 		let mut cache = ArtifactCache::new();
 		
@@ -469,7 +570,7 @@ mod tests {
 		// Ensure same builder results in same artifact
 		assert_eq!(cache.get(&noden3), cache.get(&noden3));
 		
-		// Ensure different builder result in  different artifacts
+		// Ensure different builder result in different artifacts
 		assert_ne!(cache.get(&noden1), cache.get(&noden2));
 		
 		let artifact_leaf = cache.get(&leaf1);
@@ -482,8 +583,8 @@ mod tests {
 		assert_eq!(artifact_node.left().unwrap().leaf(), Some(&artifact_leaf));
 		
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_clear() {
 		let mut cache = ArtifactCache::new();
 		
@@ -499,8 +600,8 @@ mod tests {
 		assert_ne!(artifact1, artifact2);
 		
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_complex_clear() {
 		let mut cache = ArtifactCache::new();
 		
@@ -530,8 +631,8 @@ mod tests {
 		assert_ne!(artifact_root, artifact_root_2);
 		
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_invalidate() {
 		let mut cache = ArtifactCache::new();
 		
@@ -547,8 +648,8 @@ mod tests {
 		assert_ne!(artifact1, artifact2);
 		
 	}
-    
-    #[test]
+	
+	#[test]
 	fn test_complex_invalidate() {
 		let mut cache = ArtifactCache::new();
 		
