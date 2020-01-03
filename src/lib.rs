@@ -3,12 +3,48 @@
 //! DAG Aware Artifact Builder
 //! ==========================
 //!
-//! Rust crate for managing the building of artifacts by builders which are connected in a DAG like manner.
+//! Rust crate for managing the building of artifacts by builders which are
+//! connected in a directed acyclic graph (DAG) like manner.
 //!
 //! This crate provides essentially a cache which keeps artifacts of builders in
-//! order to prevent the same builder to produces multiple equal artifacts.
+//! order to prevent the same builder to produce multiple equal artifacts.
+//! This could be useful if the builders use consumable resources to create their
+//! artifacts, the building is a heavyweight procedure, or a given DAG dependency
+//! structure among the builders shall be properly preserved among their
+//! artifacts.
 //!
-//! Example:
+//! The basic principal on which this crate is build, suggests two levels of
+//! abstraction, the builder level and the artifact level. Each builder type has
+//! one specific artifact type. The builders are represented by any struct,
+//! which implements the `Builder` trait, which in turn has an associate type
+//! that specifies the artifact type.
+//!
+//! `Builder`s are supposed to be wrapped in `ArtifactPromise`s, which prevents
+//! to call its `build()` method directly. However, the `ArtifactPromise` acts
+//! like an `Rc` and thus allows to share one instance among several dependants.
+//! This `Rc`-like structure creates naturally a DAG.
+//!
+//! For building a `Builder`, its `build()` method is provided with a
+//! `ArtifactResolver` that allows to resolve depending `ArtifactPromise`s into
+//! their respective artifacts, which is, in order to form a DAG, wrapped
+//! behind a `Rc`.
+//!
+//! As entry point serves the `ArtifactCache`, which allows to resolve any
+//! `ArtifactPromise` to its artifact outside of a `Builder`. The
+//! `ArtifactCache` is essentially a cache. It can be used to translate any
+//! number of `ArtifactPromise`s, sharing their common dependencies.
+//! Consequently, resolving the same `ArtifactPromise` using the same
+//! `ArtifactCache` results in the same `Rc`ed artifact.
+//!
+//! When artifacts shall be explicitly recreated, e.g. to form a second
+//! independent artifact DAG, `ArtifactCache` has a `clear()` method
+//! to reset the cache.
+//! Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
+//! builder artifact including its dependants (i.e. those artifacts which had
+//! used the invalidated one).
+//!
+//!
+//! ## Example
 //!
 //! ```rust
 //! use std::rc::Rc;
@@ -47,11 +83,11 @@
 //! }
 //! 
 //! // Composed builder, depending on BuilderLeaf
-//! struct BuilderSimpleNode {
+//! struct BuilderNode {
 //!     builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
 //!     // ...
 //! }
-//! impl BuilderSimpleNode {
+//! impl BuilderNode {
 //!     pub fn new(builder_leaf: ArtifactPromise<BuilderLeaf>) -> Self {
 //!         Self {
 //!             builder_leaf,
@@ -59,7 +95,7 @@
 //!         }
 //!     }
 //! }
-//! impl Builder for BuilderSimpleNode {
+//! impl Builder for BuilderNode {
 //!     type Artifact = Node;
 //!     
 //!     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
