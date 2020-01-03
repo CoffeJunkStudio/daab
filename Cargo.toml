@@ -1,11 +1,11 @@
 [package]
 name = "daab"
 version = "0.1.0"
-authors = ["cryptjar <cryptjar@junk.studio>", "dezajno <marvinlunz@gmail.com>"]
+authors = ["cryptjar <cryptjar@junk.studio>", "dezajno <dezajno@junk.studio>"]
 edition = "2018"
 description = "DAG aware artifact builder"
 
-repository = "https://github.com/dezajno/daab"
+repository = "https://github.com/CoffeJunkStudio/daab"
 readme = "README.md"
 license = "Apache-2.0"
 license-file = "LICENSE"
