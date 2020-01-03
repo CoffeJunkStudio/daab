@@ -15,7 +15,6 @@
 //! use daab::*;
 //!
 //! // Simple artifact
-//! #[derive(Debug, PartialEq, Eq)]
 //! struct Leaf {
 //!     //...
 //! }
@@ -42,7 +41,6 @@
 //! }
 //! 
 //! // Composed artifact, linking to a Leaf
-//! #[derive(Debug, PartialEq, Eq)]
 //! struct Node {
 //!     leaf: Rc<Leaf>, // Dependency artifact
 //!     // ...
@@ -88,10 +86,13 @@
 //!     // Using the cache to access the artifacts from the builders
 //!
 //!     // The same builder results in same artifact
-//!     assert_eq!(cache.get(&node_builder_1), cache.get(&node_builder_1));
+//!     assert!(Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_1)));
+//!     
+//!     // Different builders result in different artifacts
+//!     assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_2)));
 //!     
 //!     // Different artifacts may link the same dependent artifact
-//!     assert_eq!(cache.get(&node_builder_1).leaf, cache.get(&node_builder_2).leaf);
+//!     assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
 //! }
 //! ```
 //!
@@ -120,6 +121,7 @@ pub trait Builder {
 }
 
 
+
 /// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
 ///
 /// This struct is essentially a wrapper around `Rc<B>`, but it provides a
@@ -144,6 +146,8 @@ impl<B> ArtifactPromise<B> {
 		}
 	}
 	
+	/// Changes the generic type of self to `dyn Any`.
+	///
 	fn into_any(self) -> ArtifactPromise<dyn Any>
 			where B: 'static {
 		ArtifactPromise {
@@ -182,6 +186,7 @@ impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
 
 impl<B: ?Sized> Eq for ArtifactPromise<B> {
 }
+
 
 
 /// Resolves any `ArtifactPromise` used to resolve the dependencies of builders.
@@ -320,6 +325,8 @@ impl ArtifactCache {
 		self.dependants.clear();
 	}
 	
+	/// Auxiliary invalidation function using `Any` `ArtifactPromise`.
+	///
 	fn invalidate_any(&mut self, any_promise: &ArtifactPromise<dyn Any>) {
 		if let Some(set) = self.dependants.remove(any_promise) {
 			for dep in set {
@@ -330,7 +337,11 @@ impl ArtifactCache {
 		self.cache.remove(any_promise);
 	}
 	
-	/// Clears the entire cache including all hold builder Rcs.
+	/// Clears cached artifact of the given builder and all depending artifacts.
+	///
+	/// Depending artifacts are all artifacts which used the former during
+	/// its building. The dependencies are automatically tracked using the
+	/// `ArtifactResolver` struct.
 	///
 	pub fn invalidate<B: Builder + 'static>(&mut self, cap: &ArtifactPromise<B>) {
 		let any_promise = cap.clone().into_any();
@@ -354,8 +365,9 @@ mod tests {
 	use std::sync::atomic::AtomicU32;
 	
 	
-	// Dummy counter to differentiate the leaf instances
+	// Dummy counter to differentiate instances
 	static COUNTER: AtomicU32 = AtomicU32::new(0);
+
 
 	#[derive(Debug, PartialEq, Eq)]
 	struct Leaf {
@@ -668,6 +680,7 @@ mod tests {
 		let artifact_node = cache.get(&noden1);
 		let artifact_root = cache.get(&noden3);
 		
+		// Only invalidate one intermediate node
 		cache.invalidate(&noden1);
 		
 		let artifact_leaf_2 = cache.get(&leaf1);
