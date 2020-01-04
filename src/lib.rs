@@ -117,7 +117,7 @@
 //!     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
 //!     
 //!     let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-//!     let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
+//!     let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
 //!
 //!     // Using the cache to access the artifacts from the builders
 //!
@@ -221,6 +221,12 @@ impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
 }
 
 impl<B: ?Sized> Eq for ArtifactPromise<B> {
+}
+
+impl<B: Builder> From<B> for ArtifactPromise<B> {
+	fn from(b: B) -> Self {
+		Self::new(b)
+	}
 }
 
 
@@ -695,6 +701,18 @@ mod tests {
 		// Ensure artifacts differ after clear
 		assert_ne!(artifact1, artifact2);
 		
+	}
+	
+	#[test]
+	fn test_into() {
+		let mut cache = ArtifactCache::new();
+		
+		let leaf1 = BuilderLeaf::new().into();
+		let lart = cache.get(&leaf1);
+		
+		let node1: ArtifactPromise<_> = BuilderSimpleNode::new(leaf1).into();
+		
+		assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
 	}
 	
 	#[test]
