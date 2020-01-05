@@ -1,6 +1,6 @@
 [package]
 name = "daab"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["cryptjar <cryptjar@junk.studio>", "dezajno <dezajno@junk.studio>"]
 edition = "2018"
 description = "DAG aware artifact builder"
@@ -11,6 +11,9 @@ readme = "README.md"
 license-file = "LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+diagnostics = []
 
 [dependencies]
 

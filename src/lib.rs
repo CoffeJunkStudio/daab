@@ -51,11 +51,13 @@
 //! use daab::*;
 //!
 //! // Simple artifact
+//! #[derive(Debug)]
 //! struct Leaf {
 //!     //...
 //! }
 //! 
 //! // Simple builder
+//! #[derive(Debug)]
 //! struct BuilderLeaf {
 //!     // ...
 //! }
@@ -77,12 +79,14 @@
 //! }
 //! 
 //! // Composed artifact, linking to a Leaf
+//! #[derive(Debug)]
 //! struct Node {
 //!     leaf: Rc<Leaf>, // Dependency artifact
 //!     // ...
 //! }
 //! 
 //! // Composed builder, depending on BuilderLeaf
+//! #[derive(Debug)]
 //! struct BuilderNode {
 //!     builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
 //!     // ...
@@ -140,6 +144,12 @@ use std::collections::HashSet;
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::fmt::Debug;
+use std::borrow::Borrow;
+
+
+#[cfg(feature = "diagnostics")]
+mod diagnostics;
 
 
 /// Represents a builder for an artifact.
@@ -150,8 +160,8 @@ use std::hash::Hasher;
 /// resolve depending builders (as `ArtifactPromise`) in order to create their
 /// artifact.
 ///
-pub trait Builder {
-	type Artifact;
+pub trait Builder: Debug {
+	type Artifact : Debug;
 	
 	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
 }
@@ -161,24 +171,29 @@ pub trait Builder {
 /// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
 ///
 /// This struct is essentially a wrapper around `Rc<B>`, but it provides a
-/// `Hash` and `Eq` implementation based no the identity of the Rcs inner value.
+/// `Hash` and `Eq` implementation based no the identity of the `Rc`s inner value.
 ///
 /// All clones of an `ArtifactPromise` are considered identical.
 ///
-/// An `ArtifactPromise` is either resolved using the `ArtifactCache::get()`
+/// An `ArtifactPromise` can be either resolved using the `ArtifactCache::get()`
 /// or `ArtifactResolver::resolve()`.
 ///
 #[derive(Debug)]
 pub struct ArtifactPromise<B: ?Sized> {
 	builder: Rc<B>,
+	id: BuilderId,
 }
 
-impl<B> ArtifactPromise<B> {
+impl<B: Builder + 'static> ArtifactPromise<B> {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self {
+		let builder = Rc::new(builder);
+		let id = (&builder).into();
+		
 		Self {
-			builder: Rc::new(builder),
+			builder,
+			id,
 		}
 	}
 	
@@ -186,9 +201,17 @@ impl<B> ArtifactPromise<B> {
 	///
 	fn into_any(self) -> ArtifactPromise<dyn Any>
 			where B: 'static {
+		
 		ArtifactPromise {
 			builder: self.builder,
+			id: self.id,
 		}
+	}
+}
+
+impl<B: ?Sized> Borrow<BuilderId> for ArtifactPromise<B> {
+	fn borrow(&self) -> &BuilderId {
+		&self.id
 	}
 }
 
@@ -204,6 +227,7 @@ impl<B: ?Sized> Clone for ArtifactPromise<B> {
 	fn clone(&self) -> Self {
 		ArtifactPromise {
 			builder: self.builder.clone(),
+			id: self.id,
 		}
 	}
 }
@@ -223,7 +247,7 @@ impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
 impl<B: ?Sized> Eq for ArtifactPromise<B> {
 }
 
-impl<B: Builder> From<B> for ArtifactPromise<B> {
+impl<B: Builder + 'static> From<B> for ArtifactPromise<B> {
 	fn from(b: B) -> Self {
 		Self::new(b)
 	}
@@ -237,15 +261,109 @@ impl<B: Builder> From<B> for ArtifactPromise<B> {
 /// This is used for correct cache invalidation.
 ///
 pub struct ArtifactResolver<'a> {
-	user: ArtifactPromise<dyn Any>,
+	user: &'a BuilderEntry,
 	cache: &'a mut ArtifactCache,
 }
 
 impl<'a> ArtifactResolver<'a> {
 	/// Resolves the given `ArtifactPromise` into its `Artifact`.
 	///
-	pub fn resolve<B: Builder + 'static>(&mut self, cap: &ArtifactPromise<B>) -> Rc<B::Artifact> {
-		self.cache.do_resolve(&self.user, cap)
+	pub fn resolve<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+		self.cache.do_resolve(self.user, promise)
+	}
+}
+
+
+/// Id to differentiate builder instances across types.
+///
+/// Notice, this type simply wraps `*const` to the builder `Rc`s.
+/// Consequentially, a `BuilderId`s validity is limited to the life time of
+/// the respective `Builder`.
+///
+#[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct BuilderId(*const dyn Any);
+
+impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
+	fn from(rc: &Rc<B>) -> Self {
+		BuilderId(rc.as_ref() as &dyn Any as *const dyn Any)
+	}
+}
+
+
+#[derive(Clone, Debug)]
+struct ArtifactEntry {
+	value: Rc<dyn Any>,
+	
+	#[cfg(feature = "diagnostics")]
+	type_name: &'static str,
+	#[cfg(feature = "diagnostics")]
+	dbg_text: String,
+}
+
+impl ArtifactEntry {
+	fn new<T: Any + Debug>(value: Rc<T>) -> Self {
+		#[cfg(feature = "diagnostics")]
+		let dbg_text = format!("{:#?}", &value);
+		
+		ArtifactEntry {
+			value,
+			
+			#[cfg(feature = "diagnostics")]
+			type_name: std::any::type_name::<T>(),
+			#[cfg(feature = "diagnostics")]
+			dbg_text,
+		}
+	}
+}
+
+
+#[derive(Clone, Debug)]
+struct BuilderEntry {
+	value: ArtifactPromise<dyn Any>,
+	id: BuilderId,
+	
+	#[cfg(feature = "diagnostics")]
+	type_name: &'static str,
+	#[cfg(feature = "diagnostics")]
+	dbg_text: String,
+}
+
+impl BuilderEntry {
+	fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
+		#[cfg(feature = "diagnostics")]
+		let dbg_text = format!("{:#?}", &value);
+		let id = value.id;
+		
+		BuilderEntry {
+			value: value.into_any(),
+			id,
+			
+			#[cfg(feature = "diagnostics")]
+			type_name: std::any::type_name::<T>(),
+			#[cfg(feature = "diagnostics")]
+			dbg_text,
+		}
+	}
+}
+
+impl Hash for BuilderEntry {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.value.hash(state);
+	}
+}
+
+impl PartialEq for BuilderEntry {
+	fn eq(&self, other: &Self) -> bool {
+		self.value.eq(&other.value)
+	}
+}
+
+impl Eq for BuilderEntry {
+}
+
+impl Borrow<BuilderId> for BuilderEntry {
+	fn borrow(&self) -> &BuilderId {
+		&self.id
 	}
 }
 
@@ -255,10 +373,14 @@ impl<'a> ArtifactResolver<'a> {
 ///
 pub struct ArtifactCache {
 	/// Maps Builder-Capsules to their Artifact value
-	cache: HashMap<ArtifactPromise<dyn Any>, Rc<dyn Any>>,
+	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
 	
 	/// Tracks the direct promise dependants of each promise
-	dependants: HashMap<ArtifactPromise<dyn Any>, HashSet<ArtifactPromise<dyn Any>>>,
+	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
+	
+	/// The doctor for error diagnostics.
+	#[cfg(feature = "diagnostics")]
+	doctor: Rc<dyn diagnostics::Doctor>,
 }
 
 impl Default for ArtifactCache {
@@ -272,32 +394,55 @@ impl ArtifactCache {
 	/// Creates new empty cache
 	///
 	pub fn new() -> Self {
+		#[cfg(feature = "diagnostics")]
+		{
+			Self::new_with_doc(Rc::new(diagnostics::NoopDoctor))
+		}
+		
+		#[cfg(not(feature = "diagnostics"))]
+		{
+			Self {
+				cache: HashMap::new(),
+				dependants: HashMap::new(),
+			}
+		}
+	}
+	
+	/// Creates new empty cache with given doctor for drop-in inspection.
+	///
+	#[cfg(feature = "diagnostics")]
+	pub fn new_with_doc(doctor: Rc<dyn diagnostics::Doctor>) -> Self {
 		Self {
 			cache: HashMap::new(),
 			dependants: HashMap::new(),
+			
+			doctor,
 		}
 	}
 	
-	/// Resolves artifact of cap and records dependency between user and cap.
+	/// Resolves artifact of promise and records dependency between user and promise.
 	///
-	fn do_resolve<B: Builder + 'static>(&mut self, user: &ArtifactPromise<dyn Any>, cap: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+	fn do_resolve<B: Builder + 'static>(&mut self, user: &BuilderEntry, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		
-		let deps = self.get_dependants(&cap.clone().into_any());
-		if !deps.contains(user) {
-			deps.insert(user.clone());
+		let deps = self.get_dependants(&promise.clone().into_any());
+		if !deps.contains(user.borrow()) {
+			deps.insert(user.id);
 		}
 		
-		self.get(cap)
+		#[cfg(feature = "diagnostics")]
+		self.doctor.resolve(user, &BuilderEntry::new(promise.clone()));
+		
+		self.get(promise)
 	}
 	
-	/// Returns the vector of dependants of cap
+	/// Returns the vector of dependants of promise
 	///
-	fn get_dependants(&mut self, cap: &ArtifactPromise<dyn Any>) -> &mut HashSet<ArtifactPromise<dyn Any>> {
-		if !self.dependants.contains_key(cap) {
-			self.dependants.insert(cap.clone(), HashSet::new());
+	fn get_dependants(&mut self, promise: &ArtifactPromise<dyn Any>) -> &mut HashSet<BuilderId> {
+		if !self.dependants.contains_key(promise.borrow()) {
+			self.dependants.insert(*promise.borrow(), HashSet::new());
 		}
 		
-		self.dependants.get_mut(cap).unwrap()
+		self.dependants.get_mut(promise.borrow()).unwrap()
 	}
 	
 	/// Get the stored artifact if it exists.
@@ -306,12 +451,10 @@ impl ArtifactCache {
 			where <B as Builder>::Artifact: 'static {
 		
 		// Get the artifact from the hash map ensuring integrity
-		self.cache.get(&ArtifactPromise {
-			builder: builder.clone().builder,
-		}).map(
-			|rc| {
+		self.cache.get(&builder.id).map(
+			|ent| {
 				// Ensure value type
-				rc.clone().downcast()
+				ent.value.clone().downcast()
 					.expect("Cached Builder Artifact is of invalid type")
 			}
 		)
@@ -319,42 +462,43 @@ impl ArtifactCache {
 	
 	/// Store given artifact for given builder.
 	///
-	fn insert<B: Builder + 'static>(&mut self, builder: ArtifactPromise<B>, artifact: Rc<B::Artifact>) {
+	fn insert(&mut self, builder: BuilderEntry, artifact: ArtifactEntry) {
+		
+		#[cfg(feature = "diagnostics")]
+		self.doctor.build(&builder, &artifact);
 		
 		// Insert artifact
 		self.cache.insert(
-			ArtifactPromise {
-				builder: builder.clone().builder,
-			},
-			artifact
+			builder.value,
+			artifact,
 		);
 		
 	}
 	
 	/// Gets the artifact of the given builder.
 	///
-	/// This method looksup whether the artifact for the given builder is still
+	/// This method looks up whether the artifact for the given builder is still
 	/// present in the cache, or it will use the builder to build and store the
 	/// artifact.
 	///
-	/// Notice the given builder will be stored keept to prevent it from
-	/// deallocating. `clear()` must be called inorder to free those Rcs.
+	/// Notice the given builder will be stored kept to prevent it from
+	/// deallocating. `clear()` must be called in order to free those Rcs.
 	///
-	pub fn get<B: Builder + 'static>(&mut self, builder: &ArtifactPromise<B>) -> Rc<B::Artifact>
+	pub fn get<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
 			where <B as Builder>::Artifact: 'static {
 		
-		if let Some(rc) = self.lookup(builder) {
+		if let Some(rc) = self.lookup(promise) {
 			rc
 			
 		} else {
-			let rc = Rc::new(builder.builder.build(&mut ArtifactResolver {
-				user: ArtifactPromise {
-					builder: builder.clone().builder,
-				},
+			let ent = BuilderEntry::new(promise.clone());
+			
+			let rc = Rc::new(promise.builder.build(&mut ArtifactResolver {
+				user: &ent,
 				cache: self,
 			}));
 			
-			self.insert(builder.clone(), rc.clone());
+			self.insert(ent, ArtifactEntry::new( rc.clone() ));
 			
 			rc
 		}
@@ -369,14 +513,14 @@ impl ArtifactCache {
 	
 	/// Auxiliary invalidation function using `Any` `ArtifactPromise`.
 	///
-	fn invalidate_any(&mut self, any_promise: &ArtifactPromise<dyn Any>) {
-		if let Some(set) = self.dependants.remove(any_promise) {
+	fn invalidate_any(&mut self, builder: BuilderId) {
+		if let Some(set) = self.dependants.remove(&builder) {
 			for dep in set {
-				self.invalidate_any(&dep);
+				self.invalidate_any(dep);
 			}
 		}
 		
-		self.cache.remove(any_promise);
+		self.cache.remove(&builder);
 	}
 	
 	/// Clears cached artifact of the given builder and all depending artifacts.
@@ -385,10 +529,10 @@ impl ArtifactCache {
 	/// its building. The dependencies are automatically tracked using the
 	/// `ArtifactResolver` struct.
 	///
-	pub fn invalidate<B: Builder + 'static>(&mut self, cap: &ArtifactPromise<B>) {
-		let any_promise = cap.clone().into_any();
+	pub fn invalidate<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) {
+		let any_promise = promise.clone().into_any();
 		
-		self.invalidate_any(&any_promise);
+		self.invalidate_any(any_promise.id);
 	}
 }
 
@@ -656,6 +800,30 @@ mod tests {
 	}
 	
 	#[test]
+	#[cfg(feature = "diagnostics")]
+	fn test_vis_doc() {
+		let mut cache = ArtifactCache::new_with_doc(Rc::new(diagnostics::VisgraphDoc::def()));
+		
+		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+		
+		let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
+		let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+		let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+		
+		// Ensure same builder results in same artifact
+		assert_eq!(cache.get(&node1), cache.get(&node1));
+		
+		// Ensure different builder result in different artifacts
+		assert_ne!(cache.get(&node2), cache.get(&node3));
+		
+		// Enusre that different artifacts may link the same dependent artifact
+		assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
+		
+		//TODO check result!
+	}
+	
+	#[test]
 	fn test_complex_clear() {
 		let mut cache = ArtifactCache::new();
 		
@@ -676,9 +844,9 @@ mod tests {
 		
 		cache.clear();
 		
-		let artifact_leaf_2 = cache.get(&leaf1);
-		let artifact_node_2 = cache.get(&noden1);
 		let artifact_root_2 = cache.get(&noden3);
+		let artifact_node_2 = cache.get(&noden1);
+		let artifact_leaf_2 = cache.get(&leaf1);
 		
 		assert_ne!(artifact_leaf, artifact_leaf_2);
 		assert_ne!(artifact_node, artifact_node_2);
