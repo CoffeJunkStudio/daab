@@ -6,22 +6,20 @@
 //!
 
 
-use std::any::Any;
 use std::io::Write;
 use std::cell::RefCell;
 use std::fs::File;
 
-use super::ArtifactPromise;
 use super::BuilderEntry;
 use super::ArtifactEntry;
 
-
-pub trait Doctor {
+/// **Notice: This trait is only available if the `diagnostics` feature has been activated**.
+pub trait ArtifactCacheDoctor {
 	fn resolve(&self, builder: &BuilderEntry, used: &BuilderEntry);
 	fn build(&self, builder: &BuilderEntry, artifact: &ArtifactEntry);
 }
 
-
+/// **Notice: This struc is only available if the `diagnostics` feature has been activated**.
 #[derive(Debug, Copy, Clone)]
 pub struct VisgrapDocOptions {
 	builder_values: bool,
@@ -37,6 +35,7 @@ impl Default for VisgrapDocOptions {
 	}
 }
 
+/// **Notice: This struct is only available if the `diagnostics` feature has been activated**.
 pub struct VisgraphDoc {
 	opts: VisgrapDocOptions,
 	output: File,
@@ -44,13 +43,6 @@ pub struct VisgraphDoc {
 }
 
 impl VisgraphDoc {
-	pub fn def() -> Self {
-		Self::new(VisgrapDocOptions {
-			builder_values: false,
-			artifact_values: true,
-		}, std::fs::OpenOptions::new().write(true).truncate(true).create(true).open("output").unwrap())
-	}
-	
 	pub fn new(opts: VisgrapDocOptions,
 		mut output: File) -> Self {
 		
@@ -72,13 +64,30 @@ impl VisgraphDoc {
 	}
 }
 
+impl Default for VisgraphDoc {
+	fn default() -> Self {
+		Self::new(
+			VisgrapDocOptions {
+				builder_values: false,
+				artifact_values: true,
+			},
+			std::fs::OpenOptions::new()
+				.write(true)
+				.truncate(true)
+				.create(true)
+				.open("output")
+				.unwrap()
+		)
+	}
+}
+
 impl Drop for VisgraphDoc {
 	fn drop(&mut self) {
 		writeln!(self.output, "}}").unwrap();
 	}
 }
 
-impl Doctor for VisgraphDoc {
+impl ArtifactCacheDoctor for VisgraphDoc {
 	fn resolve(&self, builder: &BuilderEntry, used: &BuilderEntry) {
 		let mut out = &self.output;
 	
@@ -94,22 +103,8 @@ impl Doctor for VisgraphDoc {
 			r#"  "{:p}" -> "{:p}""#, builder.value.builder, used.value.builder
 		).unwrap();
 		
-		out.flush();
+		out.flush().unwrap();
 		
-		/*
-		match self.opts {
-			VisgrapDocOptions::Debug =>
-				writeln!(self.output,
-					r#"  "{:?}" -> "{:?}""#, (builder), (used)),
-			VisgrapDocOptions::Type =>
-				writeln!(self.output,
-					r#"  "{}" -> "{}""#, (builder.type_name), (used.type_name)),
-			VisgrapDocOptions::Value =>
-				writeln!(self.output,
-					r#"  {:?} -> {:?}"#, (&builder.dbg_text), (&used.dbg_text)),
-		}.unwrap();
-		self.output.flush().unwrap();
-		*/
 	}
 	
 	
@@ -134,35 +129,24 @@ impl Doctor for VisgraphDoc {
 		writeln!(out,
 			r#"  "{:p}" -> "{}-{:p}" [arrowhead = "none"]"#, (builder.value.builder), count,(artifact.value)
 		).unwrap();
+		
+		out.flush().unwrap();
 			
 		
 		*self.count.borrow_mut() += 1;
 		
-		/*
-		match self.opts {
-			VisgrapDocOptions::Debug =>
-				writeln!(self.output,
-					r#""{:?}" -> "{:?}""#, (builder), (artifact)),
-			VisgrapDocOptions::Type =>
-				writeln!(self.output,
-					r#""{}" -> "{}""#, (builder.type_name), (artifact.type_name)),
-			VisgrapDocOptions::Value =>
-				writeln!(self.output,
-					r#""{}" -> "{}""#, (builder.dbg_text), (artifact.dbg_text)),
-		}.unwrap();
-		*/
 	}
 }
 
-
+/// **Notice: This struct is only available if the `diagnostics` feature has been activated**.
 pub struct NoopDoctor;
 
-impl Doctor for NoopDoctor {
-	fn resolve(&self, builder: &BuilderEntry, used: &BuilderEntry) {
+impl ArtifactCacheDoctor for NoopDoctor {
+	fn resolve(&self, _builder: &BuilderEntry, _used: &BuilderEntry) {
 		// NOOP
 	}
 	
-	fn build(&self, builder: &BuilderEntry, artifact: &ArtifactEntry) {
+	fn build(&self, _builder: &BuilderEntry, _artifact: &ArtifactEntry) {
 		// NOOP
 	}
 }

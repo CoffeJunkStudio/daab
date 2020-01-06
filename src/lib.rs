@@ -149,7 +149,7 @@ use std::borrow::Borrow;
 
 
 #[cfg(feature = "diagnostics")]
-mod diagnostics;
+pub mod diagnostics;
 
 
 /// Represents a builder for an artifact.
@@ -291,7 +291,7 @@ impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
 
 
 #[derive(Clone, Debug)]
-struct ArtifactEntry {
+pub struct ArtifactEntry {
 	value: Rc<dyn Any>,
 	
 	#[cfg(feature = "diagnostics")]
@@ -314,11 +314,27 @@ impl ArtifactEntry {
 			dbg_text,
 		}
 	}
+	
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	#[cfg(feature = "diagnostics")]
+	pub fn type_name(&self) -> &'static str {
+		self.type_name
+	}
+	
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	#[cfg(feature = "diagnostics")]
+	pub fn dbg_text(&self) -> &str {
+		&self.dbg_text
+	}
+	
+	pub fn value(&self) -> &dyn Any {
+		&self.value
+	}
 }
 
 
 #[derive(Clone, Debug)]
-struct BuilderEntry {
+pub struct BuilderEntry {
 	value: ArtifactPromise<dyn Any>,
 	id: BuilderId,
 	
@@ -343,6 +359,22 @@ impl BuilderEntry {
 			#[cfg(feature = "diagnostics")]
 			dbg_text,
 		}
+	}
+	
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	#[cfg(feature = "diagnostics")]
+	pub fn type_name(&self) -> &'static str {
+		self.type_name
+	}
+	
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	#[cfg(feature = "diagnostics")]
+	pub fn dbg_text(&self) -> &str {
+		&self.dbg_text
+	}
+	
+	pub fn value(&self) -> &dyn Any {
+		&self.value
 	}
 }
 
@@ -380,7 +412,7 @@ pub struct ArtifactCache {
 	
 	/// The doctor for error diagnostics.
 	#[cfg(feature = "diagnostics")]
-	doctor: Rc<dyn diagnostics::Doctor>,
+	doctor: Rc<dyn diagnostics::ArtifactCacheDoctor>,
 }
 
 impl Default for ArtifactCache {
@@ -396,7 +428,7 @@ impl ArtifactCache {
 	pub fn new() -> Self {
 		#[cfg(feature = "diagnostics")]
 		{
-			Self::new_with_doc(Rc::new(diagnostics::NoopDoctor))
+			Self::new_with_doctor(Rc::new(diagnostics::NoopDoctor))
 		}
 		
 		#[cfg(not(feature = "diagnostics"))]
@@ -410,8 +442,9 @@ impl ArtifactCache {
 	
 	/// Creates new empty cache with given doctor for drop-in inspection.
 	///
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
 	#[cfg(feature = "diagnostics")]
-	pub fn new_with_doc(doctor: Rc<dyn diagnostics::Doctor>) -> Self {
+	pub fn new_with_doctor(doctor: Rc<dyn diagnostics::ArtifactCacheDoctor>) -> Self {
 		Self {
 			cache: HashMap::new(),
 			dependants: HashMap::new(),
@@ -802,7 +835,7 @@ mod tests {
 	#[test]
 	#[cfg(feature = "diagnostics")]
 	fn test_vis_doc() {
-		let mut cache = ArtifactCache::new_with_doc(Rc::new(diagnostics::VisgraphDoc::def()));
+		let mut cache = ArtifactCache::new_with_doctor(Rc::new(diagnostics::VisgraphDoc::default()));
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
