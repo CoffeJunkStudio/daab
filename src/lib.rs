@@ -116,6 +116,7 @@
 //! fn main() {
 //!     // The cache to storing already created artifacts
 //!     let mut cache = ArtifactCache::new();
+//!     let cache = cache.as_mut();
 //!     
 //!     // Constructing builders
 //!     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
@@ -400,10 +401,28 @@ impl Borrow<BuilderId> for BuilderEntry {
 }
 
 
+#[cfg(not(feature = "diagnostics"))]
+use std::marker::PhantomData;
+
+
+#[cfg(not(feature = "diagnostics"))]
+pub trait Doctor {}
+#[cfg(feature = "diagnostics")]
+use diagnostics::ArtifactCacheDoctor as Doctor;
+
+#[cfg(not(feature = "diagnostics"))]
+type DefDoctor = ();
+#[cfg(feature = "diagnostics")]
+type DefDoctor = diagnostics::NoopDoctor;
+
+#[cfg(not(feature = "diagnostics"))]
+impl Doctor for DefDoctor {}
+
+
 
 /// Central structure to prevent dependency duplication on building.
 ///
-pub struct ArtifactCache {
+pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
 	
@@ -411,40 +430,53 @@ pub struct ArtifactCache {
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
 	
 	/// The doctor for error diagnostics.
-	#[cfg(feature = "diagnostics")]
-	doctor: Rc<dyn diagnostics::ArtifactCacheDoctor>,
+	//#[cfg(feature = "diagnostics")]
+	doctor: T,
+	//#[cfg(not(feature = "diagnostics"))]
+	//no_doctor: PhantomData<T>,
 }
 
+/*
 impl Default for ArtifactCache {
 	fn default() -> Self {
 		ArtifactCache::new()
 	}
 }
+*/
 
-impl ArtifactCache {
+impl ArtifactCache<DefDoctor> {
 	
 	/// Creates new empty cache
 	///
 	pub fn new() -> Self {
-		#[cfg(feature = "diagnostics")]
-		{
-			Self::new_with_doctor(Rc::new(diagnostics::NoopDoctor))
-		}
-		
-		#[cfg(not(feature = "diagnostics"))]
 		{
 			Self {
 				cache: HashMap::new(),
 				dependants: HashMap::new(),
+				
+				#[cfg(not(feature = "diagnostics"))]
+				doctor: (),
+				#[cfg(feature = "diagnostics")]
+				doctor: DefDoctor::default(),
 			}
 		}
 	}
+}
+
+impl<T: Doctor + 'static> AsMut<ArtifactCache> for ArtifactCache<T> {
+	fn as_mut(&mut self) -> &mut ArtifactCache {
+		self
+	}
+}
+
+
+#[cfg(feature = "diagnostics")]
+impl<T: Doctor> ArtifactCache<T> {
 	
 	/// Creates new empty cache with given doctor for drop-in inspection.
 	///
 	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	#[cfg(feature = "diagnostics")]
-	pub fn new_with_doctor(doctor: Rc<dyn diagnostics::ArtifactCacheDoctor>) -> Self {
+	pub fn new_with_doctor(doctor: T) -> Self {
 		Self {
 			cache: HashMap::new(),
 			dependants: HashMap::new(),
@@ -452,6 +484,14 @@ impl ArtifactCache {
 			doctor,
 		}
 	}
+	
+	pub fn get_doctor(&mut self) -> &mut T {
+		&mut self.doctor
+	}
+}
+
+impl ArtifactCache {
+	
 	
 	/// Resolves artifact of promise and records dependency between user and promise.
 	///
@@ -748,6 +788,7 @@ mod tests {
 	#[test]
 	fn test_leaf() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -764,6 +805,7 @@ mod tests {
 	#[test]
 	fn test_node() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -786,6 +828,7 @@ mod tests {
 	#[test]
 	fn test_complex() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -818,6 +861,7 @@ mod tests {
 	#[test]
 	fn test_clear() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		
@@ -835,7 +879,8 @@ mod tests {
 	#[test]
 	#[cfg(feature = "diagnostics")]
 	fn test_vis_doc() {
-		let mut cache = ArtifactCache::new_with_doctor(Rc::new(diagnostics::VisgraphDoc::default()));
+		let mut cache = ArtifactCache::new_with_doctor(diagnostics::VisgraphDoc::default());
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -859,6 +904,7 @@ mod tests {
 	#[test]
 	fn test_complex_clear() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -890,6 +936,7 @@ mod tests {
 	#[test]
 	fn test_invalidate() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		
@@ -907,6 +954,7 @@ mod tests {
 	#[test]
 	fn test_into() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = BuilderLeaf::new().into();
 		let lart = cache.get(&leaf1);
@@ -919,6 +967,7 @@ mod tests {
 	#[test]
 	fn test_complex_invalidate() {
 		let mut cache = ArtifactCache::new();
+		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());

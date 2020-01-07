@@ -15,8 +15,8 @@ use super::ArtifactEntry;
 
 /// **Notice: This trait is only available if the `diagnostics` feature has been activated**.
 pub trait ArtifactCacheDoctor {
-	fn resolve(&self, builder: &BuilderEntry, used: &BuilderEntry);
-	fn build(&self, builder: &BuilderEntry, artifact: &ArtifactEntry);
+	fn resolve(&mut self, builder: &BuilderEntry, used: &BuilderEntry);
+	fn build(&mut self, builder: &BuilderEntry, artifact: &ArtifactEntry);
 }
 
 /// **Notice: This struc is only available if the `diagnostics` feature has been activated**.
@@ -39,7 +39,7 @@ impl Default for VisgrapDocOptions {
 pub struct VisgraphDoc {
 	opts: VisgrapDocOptions,
 	output: File,
-	count: RefCell<u64>,
+	count: u64,
 }
 
 impl VisgraphDoc {
@@ -51,7 +51,7 @@ impl VisgraphDoc {
 		VisgraphDoc {
 			opts,
 			output,
-			count: RefCell::new(0),
+			count: 0,
 		}
 	}
 	
@@ -88,7 +88,7 @@ impl Drop for VisgraphDoc {
 }
 
 impl ArtifactCacheDoctor for VisgraphDoc {
-	fn resolve(&self, builder: &BuilderEntry, used: &BuilderEntry) {
+	fn resolve(&mut self, builder: &BuilderEntry, used: &BuilderEntry) {
 		let mut out = &self.output;
 	
 		writeln!(out,
@@ -108,8 +108,8 @@ impl ArtifactCacheDoctor for VisgraphDoc {
 	}
 	
 	
-	fn build(&self, builder: &BuilderEntry, artifact: &ArtifactEntry) {
-		let count = *self.count.borrow();
+	fn build(&mut self, builder: &BuilderEntry, artifact: &ArtifactEntry) {
+		let count = self.count;
 		let mut out = &self.output;
 		
 		writeln!(out,
@@ -133,7 +133,7 @@ impl ArtifactCacheDoctor for VisgraphDoc {
 		out.flush().unwrap();
 			
 		
-		*self.count.borrow_mut() += 1;
+		self.count += 1;
 		
 	}
 }
@@ -142,12 +142,18 @@ impl ArtifactCacheDoctor for VisgraphDoc {
 pub struct NoopDoctor;
 
 impl ArtifactCacheDoctor for NoopDoctor {
-	fn resolve(&self, _builder: &BuilderEntry, _used: &BuilderEntry) {
+	fn resolve(&mut self, _builder: &BuilderEntry, _used: &BuilderEntry) {
 		// NOOP
 	}
 	
-	fn build(&self, _builder: &BuilderEntry, _artifact: &ArtifactEntry) {
+	fn build(&mut self, _builder: &BuilderEntry, _artifact: &ArtifactEntry) {
 		// NOOP
+	}
+}
+
+impl Default for NoopDoctor {
+	fn default() -> Self {
+		NoopDoctor
 	}
 }
 
