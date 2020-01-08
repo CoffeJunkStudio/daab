@@ -171,12 +171,29 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 use std::borrow::Borrow;
+
+#[cfg(feature = "diagnostics")]
 use std::ops::Deref;
+
+#[cfg(feature = "diagnostics")]
 use std::ops::DerefMut;
 
 
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
+
+
+#[cfg(feature = "diagnostics")]
+use diagnostics::Doctor;
+
+#[cfg(feature = "diagnostics")]
+use diagnostics::ArtifactHandle;
+
+#[cfg(feature = "diagnostics")]
+use diagnostics::BuilderHandle;
+
+#[cfg(feature = "diagnostics")]
+use diagnostics::NoopDoctor as DefDoctor;
 
 
 /// Represents a builder for an artifact.
@@ -290,13 +307,22 @@ impl<B: Builder + 'static> From<B> for ArtifactPromise<B> {
 pub struct ArtifactResolver<'a> {
 	user: &'a BuilderEntry,
 	cache: &'a mut ArtifactCache,
+	#[cfg(feature = "diagnostics")]
+	diag_builder: &'a BuilderHandle,
 }
 
 impl<'a> ArtifactResolver<'a> {
 	/// Resolves the given `ArtifactPromise` into its `Artifact`.
 	///
 	pub fn resolve<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+		#[cfg(feature = "diagnostics")]
+		{
+		self.cache.do_resolve(self.user, self.diag_builder, promise)
+		}
+		#[cfg(not(feature = "diagnostics"))]
+		{
 		self.cache.do_resolve(self.user, promise)
+		}
 	}
 }
 
@@ -320,88 +346,31 @@ impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
 #[derive(Clone, Debug)]
 pub struct ArtifactEntry {
 	value: Rc<dyn Any>,
-	
-	#[cfg(feature = "diagnostics")]
-	type_name: &'static str,
-	#[cfg(feature = "diagnostics")]
-	dbg_text: String,
 }
 
 impl ArtifactEntry {
 	fn new<T: Any + Debug>(value: Rc<T>) -> Self {
-		#[cfg(feature = "diagnostics")]
-		let dbg_text = format!("{:#?}", &value);
-		
 		ArtifactEntry {
 			value,
-			
-			#[cfg(feature = "diagnostics")]
-			type_name: std::any::type_name::<T>(),
-			#[cfg(feature = "diagnostics")]
-			dbg_text,
 		}
-	}
-	
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	#[cfg(feature = "diagnostics")]
-	pub fn type_name(&self) -> &'static str {
-		self.type_name
-	}
-	
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	#[cfg(feature = "diagnostics")]
-	pub fn dbg_text(&self) -> &str {
-		&self.dbg_text
-	}
-	
-	pub fn value(&self) -> &dyn Any {
-		&self.value
 	}
 }
 
 
 #[derive(Clone, Debug)]
-pub struct BuilderEntry {
+struct BuilderEntry {
 	value: ArtifactPromise<dyn Any>,
 	id: BuilderId,
-	
-	#[cfg(feature = "diagnostics")]
-	type_name: &'static str,
-	#[cfg(feature = "diagnostics")]
-	dbg_text: String,
 }
 
 impl BuilderEntry {
 	fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
-		#[cfg(feature = "diagnostics")]
-		let dbg_text = format!("{:#?}", &value);
 		let id = value.id;
 		
 		BuilderEntry {
 			value: value.into_any(),
 			id,
-			
-			#[cfg(feature = "diagnostics")]
-			type_name: std::any::type_name::<T>(),
-			#[cfg(feature = "diagnostics")]
-			dbg_text,
 		}
-	}
-	
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	#[cfg(feature = "diagnostics")]
-	pub fn type_name(&self) -> &'static str {
-		self.type_name
-	}
-	
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	#[cfg(feature = "diagnostics")]
-	pub fn dbg_text(&self) -> &str {
-		&self.dbg_text
-	}
-	
-	pub fn value(&self) -> &dyn Any {
-		&self.value
 	}
 }
 
@@ -427,23 +396,6 @@ impl Borrow<BuilderId> for BuilderEntry {
 }
 
 
-// Define Doctor
-#[cfg(not(feature = "diagnostics"))]
-pub trait Doctor {}
-#[cfg(feature = "diagnostics")]
-use diagnostics::Doctor;
-
-// Define default Doctor
-#[cfg(not(feature = "diagnostics"))]
-type DefDoctor = ();
-#[cfg(feature = "diagnostics")]
-type DefDoctor = diagnostics::NoopDoctor;
-
-// Dummy impl for non-diagnostics
-#[cfg(not(feature = "diagnostics"))]
-impl Doctor for DefDoctor {}
-
-
 
 /// Central structure to prevent dependency duplication on building.
 ///
@@ -459,6 +411,36 @@ impl Doctor for DefDoctor {}
 /// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
 /// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
 ///
+#[cfg(not(feature = "diagnostics"))]
+pub struct ArtifactCache {
+	/// Maps Builder-Capsules to their Artifact value
+	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
+	
+	/// Tracks the direct promise dependants of each promise
+	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
+}
+
+#[cfg(not(feature = "diagnostics"))]
+impl Default for ArtifactCache {
+	fn default() -> Self {
+		ArtifactCache::new()
+	}
+}
+
+#[cfg(not(feature = "diagnostics"))]
+impl ArtifactCache {
+	/// Creates new empty cache
+	///
+	pub fn new() -> Self {
+		Self {
+			cache: HashMap::new(),
+			dependants: HashMap::new(),
+		}
+	}
+}
+
+
+#[cfg(feature = "diagnostics")]
 pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
@@ -471,28 +453,29 @@ pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	doctor: T,
 }
 
+#[cfg(feature = "diagnostics")]
 impl Default for ArtifactCache<DefDoctor> {
 	fn default() -> Self {
 		ArtifactCache::new()
 	}
 }
 
+
+#[cfg(feature = "diagnostics")]
 impl ArtifactCache<DefDoctor> {
-	
 	/// Creates new empty cache
 	///
 	pub fn new() -> Self {
-		{
-			Self {
-				cache: HashMap::new(),
-				dependants: HashMap::new(),
-				
-				doctor: DefDoctor::default(),
-			}
+		Self {
+			cache: HashMap::new(),
+			dependants: HashMap::new(),
+			
+			doctor: DefDoctor::default(),
 		}
 	}
 }
 
+#[cfg(feature = "diagnostics")]
 impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
 	type Target = ArtifactCache;
 
@@ -501,12 +484,14 @@ impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
 	}
 }
 
+#[cfg(feature = "diagnostics")]
 impl<T: Doctor + 'static> DerefMut for ArtifactCache<T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		self
 	}
 }
 
+#[cfg(feature = "diagnostics")]
 impl<T: Doctor + 'static> AsMut<ArtifactCache> for ArtifactCache<T> {
 	fn as_mut(&mut self) -> &mut ArtifactCache {
 		self
@@ -515,11 +500,12 @@ impl<T: Doctor + 'static> AsMut<ArtifactCache> for ArtifactCache<T> {
 
 
 #[cfg(feature = "diagnostics")]
-impl<T: Doctor> ArtifactCache<T> {
+impl<T: Doctor + 'static> ArtifactCache<T> {
 	
 	/// Creates new empty cache with given doctor for drop-in inspection.
 	///
 	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	///
 	pub fn new_with_doctor(doctor: T) -> Self {
 		Self {
 			cache: HashMap::new(),
@@ -529,6 +515,10 @@ impl<T: Doctor> ArtifactCache<T> {
 		}
 	}
 	
+	/// Returns a reference of the inner doctor.
+	///
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	///
 	pub fn get_doctor(&mut self) -> &mut T {
 		&mut self.doctor
 	}
@@ -536,10 +526,10 @@ impl<T: Doctor> ArtifactCache<T> {
 
 impl ArtifactCache {
 	
-	
-	/// Resolves artifact of promise and records dependency between user and promise.
+	/// Resolves the artifact of `promise` and records dependency between `user`
+	/// and `promise`.
 	///
-	fn do_resolve<B: Builder + 'static>(&mut self, user: &BuilderEntry, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+	fn do_resolve<B: Builder + 'static>(&mut self, user: &BuilderEntry, #[cfg(feature = "diagnostics")] diag_builder: &BuilderHandle, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		
 		let deps = self.get_dependants(&promise.clone().into_any());
 		if !deps.contains(user.borrow()) {
@@ -547,7 +537,7 @@ impl ArtifactCache {
 		}
 		
 		#[cfg(feature = "diagnostics")]
-		self.doctor.resolve(user, &BuilderEntry::new(promise.clone()));
+		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
 		
 		self.get(promise)
 	}
@@ -581,9 +571,6 @@ impl ArtifactCache {
 	///
 	fn insert(&mut self, builder: BuilderEntry, artifact: ArtifactEntry) {
 		
-		#[cfg(feature = "diagnostics")]
-		self.doctor.build(&builder, &artifact);
-		
 		// Insert artifact
 		self.cache.insert(
 			builder.value,
@@ -598,8 +585,9 @@ impl ArtifactCache {
 	/// present in the cache, or it will use the builder to build and store the
 	/// artifact.
 	///
-	/// Notice the given builder will be stored kept to prevent it from
-	/// deallocating. `clear()` must be called in order to free those Rcs.
+	/// Notice the given promise will be stored kept to prevent it from
+	/// deallocating. `clear()` or `invalidate()` must be called in order to
+	/// free those `Rc`s if required.
 	///
 	pub fn get<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
 			where <B as Builder>::Artifact: 'static {
@@ -610,10 +598,18 @@ impl ArtifactCache {
 		} else {
 			let ent = BuilderEntry::new(promise.clone());
 			
+			#[cfg(feature = "diagnostics")]
+			let diag_builder = BuilderHandle::new(promise.clone());
+			
 			let rc = Rc::new(promise.builder.build(&mut ArtifactResolver {
 				user: &ent,
 				cache: self,
+				#[cfg(feature = "diagnostics")]
+				diag_builder: &diag_builder,
 			}));
+		
+			#[cfg(feature = "diagnostics")]
+			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
 			
 			self.insert(ent, ArtifactEntry::new( rc.clone() ));
 			
@@ -621,7 +617,7 @@ impl ArtifactCache {
 		}
 	}
 	
-	/// Clears the entire cache including all hold builder Rcs.
+	/// Clears the entire cache including all kept builder and artifact `Rc`s.
 	///
 	pub fn clear(&mut self) {
 		self.cache.clear();

@@ -1,69 +1,11 @@
 
-//!
-//! # Extensive debugging analysis module.
-//!
-//! **Notice: This module is only available if the `diagnostics` feature has been activated**.
-//!
-//! This module contains the types used in debugging the [`ArtifactCache`].
-//! The most important one is [`Doctor`] which conducts a diagnosis on a
-//! `ArtifactCache` if constructed via [`ArtifactCache::new_with_doctor()`].
-//!
-//! `Doctor` has methods for various events happening in the `ArtifactCache` getting the relevant builder or artifact as argument.
-//! See the respective method of the `Doctor`.
-//!
-//! Additionally, to the generic `Doctor` trait, there are several pre-implemented
-//! Doctors such as: `VisgraphDoc`.
-//!
-//! [`ArtifactCache`]: ../struct.ArtifactCache.html
-//! [`Doctor`]: trait.Doctor.html
-//! [`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
 
-// TODO:
-// - Printout Doctor
-// - visgraph options Display
-// - doctor default impl
-// - doctor additional functions
-// - doctor special artifact/builder wrapper
+use super::Doctor;
+use super::BuilderHandle;
+use super::ArtifactHandle;
 
 use std::io::Write;
 
-use super::BuilderEntry;
-use super::ArtifactEntry;
-
-/// `ArtifactCache` Debugger.
-///
-/// **Notice: This trait is only available if the `diagnostics` feature has been activated**.
-///
-/// The Doctor conducts diagnoses on the `ArtifactCache`, if it is passed
-/// with [`ArtifactCache::new_with_doctor()`]. The `ArtifactCache` will
-/// call the methods of this trait whenever the respective event happens.
-/// It will be supplied with relevant object(s), such as `Builder`s and artifacts.
-/// For details on each event see the respective method.
-///
-/// Each method as a default implementation to ease implementing specialized `Doctor`s which don't need all the events. Each default implementation just dose nothing, i.e. are no-ops.
-///
-/// [`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
-///
-pub trait Doctor {
-	/// One `Builder` resolves another `Builder`.
-	///
-	/// This methods means that `builder` appearently depends on `used`.
-	///
-	fn resolve(&mut self, _builder: &BuilderEntry, _used: &BuilderEntry) {
-		// NOOP
-	}
-	
-	/// One `Builder` builds its artifact.
-	///
-	/// This method is called each time `builder` is invoked to build
-	/// its `artifact`. Notice, this function is only called when a fresh
-	/// artifact is actually constructed, i.e. first time it is resolved
-	/// or when it is resolved after a reset or invalidation.
-	///
-	fn build(&mut self, _builder: &BuilderEntry, _artifact: &ArtifactEntry) {
-		// NOOP
-	}
-}
 
 /// Output options for `VisgrapDoc`.
 ///
@@ -157,7 +99,7 @@ impl<W: Write> VisgraphDoc<W> {
 	}
 	
 	/// Strigify given builder entry.
-	fn builder_str<'a>(&self, builder: &'a BuilderEntry) -> &'a str {
+	fn builder_str<'a>(&self, builder: &'a BuilderHandle) -> &'a str {
 		if self.opts.show_builder_values {
 			&builder.dbg_text
 		} else {
@@ -173,7 +115,7 @@ impl<W: Write> Drop for VisgraphDoc<W> {
 }
 
 impl<W: Write> Doctor for VisgraphDoc<W> {
-	fn resolve(&mut self, builder: &BuilderEntry, used: &BuilderEntry) {
+	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
 	
 		writeln!(self.output,
 			r#"  "{:p}" [label = {:?}]"#,
@@ -198,7 +140,7 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 	}
 	
 	
-	fn build(&mut self, builder: &BuilderEntry, artifact: &ArtifactEntry) {
+	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle) {
 		let count = self.count;
 		
 		writeln!(self.output,
@@ -237,26 +179,6 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 		
 	}
 }
-
-/// Default no-op `Doctor`.
-///
-/// **Notice: This struct is only available if the `diagnostics` feature has been activated**.
-///
-/// A no-op implementation of the `Doctor` i.e. a `Doctor` that does nothing. It is used as default `Doctor`,
-/// i.e. if no actual `Doctor` is specified.
-///
-pub struct NoopDoctor;
-
-impl Doctor for NoopDoctor {
-	// Use default impl
-}
-
-impl Default for NoopDoctor {
-	fn default() -> Self {
-		NoopDoctor
-	}
-}
-
 
 
 
