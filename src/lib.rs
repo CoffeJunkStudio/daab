@@ -164,6 +164,7 @@
 
 // prevents compilation with broken Deref impl causing nasty stack overflows.
 #![deny(unconditional_recursion)]
+#![warn(missing_docs)]
 
 
 use std::rc::Rc;
@@ -208,8 +209,13 @@ use diagnostics::NoopDoctor as DefDoctor;
 /// artifact.
 ///
 pub trait Builder: Debug {
+	/// The artifact type as produced by this builder.
+	///
 	type Artifact : Debug;
 	
+	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// dependencies.
+	///
 	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
 }
 
@@ -320,11 +326,11 @@ impl<'a> ArtifactResolver<'a> {
 	pub fn resolve<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		#[cfg(feature = "diagnostics")]
 		{
-		self.cache.do_resolve(self.user, self.diag_builder, promise)
+			self.cache.do_resolve(self.user, self.diag_builder, promise)
 		}
 		#[cfg(not(feature = "diagnostics"))]
 		{
-		self.cache.do_resolve(self.user, promise)
+			self.cache.do_resolve(self.user, promise)
 		}
 	}
 }
@@ -347,7 +353,7 @@ impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
 
 
 #[derive(Clone, Debug)]
-pub struct ArtifactEntry {
+struct ArtifactEntry {
 	value: Rc<dyn Any>,
 }
 
@@ -530,6 +536,10 @@ impl<T: Doctor + 'static> ArtifactCache<T> {
 		&mut self.doctor
 	}
 	
+	/// Takes the `ArtifactCache` and returns the inner doctor.
+	///
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	///
 	pub fn into_doctor(self) -> T {
 		self.doctor
 	}
@@ -637,9 +647,12 @@ impl ArtifactCache {
 	pub fn clear(&mut self) {
 		self.cache.clear();
 		self.dependants.clear();
+		
+		#[cfg(feature = "diagnostics")]
+		self.doctor.clear();
 	}
 	
-	/// Auxiliary invalidation function using `Any` `ArtifactPromise`.
+	/// Auxiliary invalidation function using a `BuilderId`.
 	///
 	fn invalidate_any(&mut self, builder: BuilderId) {
 		if let Some(set) = self.dependants.remove(&builder) {
@@ -661,6 +674,9 @@ impl ArtifactCache {
 		let any_promise = promise.clone().into_any();
 		
 		self.invalidate_any(any_promise.id);
+		
+		#[cfg(feature = "diagnostics")]
+		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
 	}
 }
 

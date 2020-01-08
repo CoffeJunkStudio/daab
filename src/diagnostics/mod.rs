@@ -71,6 +71,29 @@ pub trait Doctor {
 	fn build(&mut self, _builder: &BuilderHandle, _artifact: &ArtifactHandle) {
 		// NOOP
 	}
+	
+	/// The entire cache is cleared.
+	///
+	fn clear(&mut self) {
+		// NOOP
+	}
+	
+	/// The given `Builder` is invalidate.
+	///
+	/// This method is only called if invalidation is call directly with
+	/// `builder` as its argument.
+	///
+	/// **Notice:** All dependants of `builder` are invalidated as well, but
+	/// this function will not be called for the dependant invalidations. If
+	/// deep invalidation tracking is desirable, the dependencies have to be
+	/// tracked via the `resolve` call back.
+	///
+	/// **Notice:** This invalidation might result in clearing the entire cache,
+	/// but `clear` will not be called in such a case.
+	///
+	fn invalidate(&mut self, _builder: &BuilderHandle) {
+		// NOOP
+	}
 }
 
 
@@ -85,12 +108,19 @@ pub trait Doctor {
 ///
 #[derive(Clone, Debug)]
 pub struct ArtifactHandle {
+	/// The actual artifact value.
 	pub value: Rc<dyn Any>,
+	
+	/// The type name of the artifact as of `std::any::type_name`.
 	pub type_name: &'static str,
+	
+	/// The value of the artifact as of `std::fmt::Debug`.
 	pub dbg_text: String,
 }
 
 impl ArtifactHandle {
+	/// Constructs a new artifact handle with the given value.
+	///
 	pub fn new<T: Any + Debug>(value: Rc<T>) -> Self {
 		let dbg_text = format!("{:#?}", &value);
 		
@@ -119,14 +149,30 @@ impl Eq for ArtifactHandle {
 }
 
 
+/// Encapsulates a generic builder with some debugging information.
+///
+/// This struct encapsulates a builder as `ArtifactPromise<dyn Any>` which is fairly usless,
+/// unless one wants to cast or test it against a concrete type.
+/// Thus this struct also contains the strinified type name of that value
+/// as well as the `Debug` string of the value.
+/// Also notice, that different builders can be differentiated by the allocation
+/// pointer thus the implementation of `Hash` and `Eq`.
+///
 #[derive(Clone, Debug)]
 pub struct BuilderHandle {
+	/// The actual builder as promise.
 	pub value: ArtifactPromise<dyn Any>,
+	
+	/// The type name of the builder as of `std::any::type_name`.
 	pub type_name: &'static str,
+	
+	/// The value of the builder as of `std::fmt::Debug`.
 	pub dbg_text: String,
 }
 
 impl BuilderHandle {
+	/// Constructs a new builder handle with the given value.
+	///
 	pub fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
 		let dbg_text = format!("{:#?}", &value);
 		

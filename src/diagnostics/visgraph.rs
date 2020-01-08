@@ -74,8 +74,10 @@ impl Default for VisgraphDocOptions {
 pub struct VisgraphDoc<W: Write> {
 	/// Output options
 	opts: VisgraphDocOptions,
+	
 	/// Output Write
 	output: Option<W>,
+	
 	/// Counts (generation, instance) of artifacts
 	/// It is used to making each artifact unique.
 	/// The generation increases whenever a artifact might be recreated
@@ -115,6 +117,8 @@ impl<W: Write> VisgraphDoc<W> {
 		writeln!(self.output(), "}}").unwrap();
 	}
 	
+	/// Dismantles this struct and returns the inner `Write`.
+	///
 	pub fn into_inner(mut self) -> W {
 		self.finish();
 		self.output.take().unwrap()
@@ -195,6 +199,18 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 		
 		self.count.1 += 1;
 		
+	}
+	
+	fn clear(&mut self) {
+		// Generations inc
+		self.count.0 += 1;
+		self.count.1 = 0;
+	}
+	
+	fn invalidate(&mut self, _builder: &BuilderHandle) {
+		// Generations inc
+		self.count.0 += 1;
+		self.count.1 = 0;
 	}
 }
 
