@@ -7,7 +7,6 @@
 
 
 use std::io::Write;
-use std::cell::RefCell;
 use std::fs::File;
 
 use super::BuilderEntry;

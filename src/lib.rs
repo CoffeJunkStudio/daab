@@ -116,7 +116,6 @@
 //! fn main() {
 //!     // The cache to storing already created artifacts
 //!     let mut cache = ArtifactCache::new();
-//!     let cache = cache.as_mut();
 //!     
 //!     // Constructing builders
 //!     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
@@ -147,6 +146,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 use std::borrow::Borrow;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 
 #[cfg(feature = "diagnostics")]
@@ -401,20 +402,19 @@ impl Borrow<BuilderId> for BuilderEntry {
 }
 
 
-#[cfg(not(feature = "diagnostics"))]
-use std::marker::PhantomData;
-
-
+// Define Doctor
 #[cfg(not(feature = "diagnostics"))]
 pub trait Doctor {}
 #[cfg(feature = "diagnostics")]
 use diagnostics::ArtifactCacheDoctor as Doctor;
 
+// Define default Doctor
 #[cfg(not(feature = "diagnostics"))]
 type DefDoctor = ();
 #[cfg(feature = "diagnostics")]
 type DefDoctor = diagnostics::NoopDoctor;
 
+// Dummy impl for non-diagnostics
 #[cfg(not(feature = "diagnostics"))]
 impl Doctor for DefDoctor {}
 
@@ -430,10 +430,8 @@ pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
 	
 	/// The doctor for error diagnostics.
-	//#[cfg(feature = "diagnostics")]
+	#[allow(dead_code)]
 	doctor: T,
-	//#[cfg(not(feature = "diagnostics"))]
-	//no_doctor: PhantomData<T>,
 }
 
 /*
@@ -454,12 +452,23 @@ impl ArtifactCache<DefDoctor> {
 				cache: HashMap::new(),
 				dependants: HashMap::new(),
 				
-				#[cfg(not(feature = "diagnostics"))]
-				doctor: (),
-				#[cfg(feature = "diagnostics")]
 				doctor: DefDoctor::default(),
 			}
 		}
+	}
+}
+
+impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
+	type Target = ArtifactCache;
+
+	fn deref(&self) -> &Self::Target {
+		self
+	}
+}
+
+impl<T: Doctor + 'static> DerefMut for ArtifactCache<T> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		self
 	}
 }
 
@@ -788,7 +797,6 @@ mod tests {
 	#[test]
 	fn test_leaf() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -805,7 +813,6 @@ mod tests {
 	#[test]
 	fn test_node() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -828,7 +835,6 @@ mod tests {
 	#[test]
 	fn test_complex() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -861,7 +867,6 @@ mod tests {
 	#[test]
 	fn test_clear() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		
@@ -880,7 +885,6 @@ mod tests {
 	#[cfg(feature = "diagnostics")]
 	fn test_vis_doc() {
 		let mut cache = ArtifactCache::new_with_doctor(diagnostics::VisgraphDoc::default());
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -904,7 +908,6 @@ mod tests {
 	#[test]
 	fn test_complex_clear() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -936,7 +939,6 @@ mod tests {
 	#[test]
 	fn test_invalidate() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		
@@ -954,7 +956,6 @@ mod tests {
 	#[test]
 	fn test_into() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = BuilderLeaf::new().into();
 		let lart = cache.get(&leaf1);
@@ -967,7 +968,6 @@ mod tests {
 	#[test]
 	fn test_complex_invalidate() {
 		let mut cache = ArtifactCache::new();
-		let cache = cache.as_mut();
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
