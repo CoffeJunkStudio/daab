@@ -136,6 +136,31 @@
 //! }
 //! ```
 //!
+//! ## Debugging
+//!
+//! `daab` comes with extensive debugging gear. However, in order to
+//! keep the production impact as low as possible, the debugging facilityies
+//! are capsuled behind the `diagnostics` feature.
+//!
+//! Of course, the debugging feature is for the user of this crate to
+//! debug their graphs. Therefore, it is rather modeled as a
+//! diagnostics feature (hence the name). Consequently, the diagnosis
+//! is carried out by a [`Doctor`], which is a trait receiving various
+//! internal events in order to record them, print them, or otherwise help treating the bug.
+//!
+//! Care has been taken to keep the `diagnostics` feature broadly applicable as
+//! well as keeping the non-`diagnostics` API compatible with the
+//! `diagnostics`-API, meaning that a project using not using the
+//! `diagnostics` feature can be easily converted to using the
+//! `diagnostics`, usually by just replacing `ArtifactCache::new()`
+//! by `ArtifactCache::new_with_doctor()`.
+//! For this reason the ArtifactCache is generic to its doctor, which is
+//! important on its creation. The rest of the time the ArtifactCache
+//! uses `dyn Doctor` as its (fixed) generic argument.
+//! To ease conversion between them, all creatable `ArtifactCache`s
+//! (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
+//! `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+//!
 
 
 use std::rc::Rc;
@@ -406,7 +431,7 @@ impl Borrow<BuilderId> for BuilderEntry {
 #[cfg(not(feature = "diagnostics"))]
 pub trait Doctor {}
 #[cfg(feature = "diagnostics")]
-use diagnostics::ArtifactCacheDoctor as Doctor;
+use diagnostics::Doctor;
 
 // Define default Doctor
 #[cfg(not(feature = "diagnostics"))]
@@ -422,6 +447,18 @@ impl Doctor for DefDoctor {}
 
 /// Central structure to prevent dependency duplication on building.
 ///
+/// For debugging, the `ArtifactCache` contains a debugging `Doctor`, which
+/// allows run-time inspection of various events. Therefore, `ArtifactCache`
+/// is generic to some `Doctor`, even if the debugging feature is disabled.
+/// Thus, the `new()` function returns actually a `ArtifactCache<T>`
+/// where `T` is either `()` or `NoopDoctor`.
+///
+/// However, since most of the code does not care about the concrete
+/// `Doctor` the default generic is `dyn Doctor`.
+/// To ease conversion between them, all creatable `ArtifactCache`s
+/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
+/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+///
 pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
@@ -434,13 +471,11 @@ pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	doctor: T,
 }
 
-/*
-impl Default for ArtifactCache {
+impl Default for ArtifactCache<DefDoctor> {
 	fn default() -> Self {
 		ArtifactCache::new()
 	}
 }
-*/
 
 impl ArtifactCache<DefDoctor> {
 	
@@ -881,10 +916,26 @@ mod tests {
 		
 	}
 	
+	#[cfg(feature = "diagnostics")]
+	fn visgraph_doc() -> diagnostics::VisgraphDoc<std::fs::File> {
+		diagnostics::VisgraphDoc::new(
+			diagnostics::VisgraphDocOptions {
+				show_builder_values: false,
+				show_artifact_values: true,
+			},
+			std::fs::OpenOptions::new()
+				.write(true)
+				.truncate(true)
+				.create(true)
+				.open("output")
+				.unwrap()
+		)
+	}
+	
 	#[test]
 	#[cfg(feature = "diagnostics")]
 	fn test_vis_doc() {
-		let mut cache = ArtifactCache::new_with_doctor(diagnostics::VisgraphDoc::default());
+		let mut cache = ArtifactCache::new_with_doctor(visgraph_doc());
 		
 		let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 		let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
