@@ -20,10 +20,7 @@
 
 // TODO:
 // - Printout Doctor
-// - visgraph options Display
-// - doctor default impl
 // - doctor additional functions
-// - doctor special artifact/builder wrapper
 
 use std::any::Any;
 use std::hash::Hash;

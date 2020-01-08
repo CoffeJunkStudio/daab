@@ -8,8 +8,6 @@ use std::sync::atomic::AtomicU32;
 // Dummy counter to differentiate instances
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-const TEST_OUTPUT: &'static str = "/tmp/test-output";
-
 
 #[derive(Debug, PartialEq, Eq)]
 struct Leaf {
@@ -256,7 +254,9 @@ fn test_clear() {
 }
 
 #[cfg(feature = "diagnostics")]
-fn visgraph_doc() -> diagnostics::VisgraphDoc<std::fs::File> {
+fn visgraph_doc_file() -> diagnostics::VisgraphDoc<std::fs::File> {
+	const TEST_OUTPUT: &'static str = "/tmp/test-output";
+	
 	diagnostics::VisgraphDoc::new(
 		diagnostics::VisgraphDocOptions {
 			show_builder_values: false,
@@ -271,28 +271,86 @@ fn visgraph_doc() -> diagnostics::VisgraphDoc<std::fs::File> {
 	)
 }
 
+#[cfg(feature = "diagnostics")]
+fn visgraph_doc(buf: Vec<u8>) -> diagnostics::VisgraphDoc<std::io::Cursor<Vec<u8>>> {
+	diagnostics::VisgraphDoc::new(
+		diagnostics::VisgraphDocOptions {
+			show_builder_values: false,
+			show_artifact_values: true,
+		},
+		std::io::Cursor::new(buf),
+	)
+}
+
 #[test]
 #[cfg(feature = "diagnostics")]
 fn test_vis_doc() {
-	let mut cache = ArtifactCache::new_with_doctor(visgraph_doc());
 	
+	// Expected value as Regular Expression due to variable addresses and counters
+	let regex = Box::new(regex::Regex::new(
+		r##"strict digraph \{ graph \[labeljust = l\];
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
+  "0x[0-9a-f]+" -> "0x[0-9a-f]+"
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
+  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 daab::test::Leaf :
+Leaf \{
+    id: [0-9]+,
+\}", shape = box\]
+  "0x[0-9a-f]+" -> "0.0-0x[0-9a-f]+" \[arrowhead = "none"\]
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
+  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 daab::test::SimpleNode :
+SimpleNode \{
+    id: [0-9]+,
+    leaf: Leaf \{
+        id: [0-9]+,
+    \},
+\}", shape = box\]
+  "0x[0-9a-f]+" -> "0.1-0x[0-9a-f]+" \[arrowhead = "none"\]
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
+  "0x[0-9a-f]+" -> "0x[0-9a-f]+"
+  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
+  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 daab::test::SimpleNode :
+SimpleNode \{
+    id: [0-9]+,
+    leaf: Leaf \{
+        id: [0-9]+,
+    \},
+\}", shape = box\]
+  "0x[0-9a-f]+" -> "0.2-0x[0-9a-f]+" \[arrowhead = "none"\]
+\}"##).unwrap());
+
+
+	// Visgraph output storage
+	let mut data = Vec::new();
+	
+	
+	let mut cache = ArtifactCache::new_with_doctor(visgraph_doc(data));
+	
+	// Test data
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 	
 	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
 	
 	// Ensure same builder results in same artifact
-	assert_eq!(cache.get(&node1), cache.get(&node1));
+	assert_eq!(cache.get(&node2), cache.get(&node2));
 	
 	// Ensure different builder result in different artifacts
-	assert_ne!(cache.get(&node2), cache.get(&node3));
+	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
+	assert_eq!(cache.get(&node2).leaf, cache.get(&node1).leaf);
 	
-	//TODO check result!
+	// Get the vector back, dissolves cache & doctor
+	data = cache.into_doctor().into_inner().into_inner();
+	
+	let string = String::from_utf8(data).unwrap();
+	// Print the resulting string, very usable in case it does not match
+	println!("{}", string);
+	
+	assert!(regex.is_match(&string));
 }
 
 #[test]

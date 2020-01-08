@@ -75,7 +75,7 @@ pub struct VisgraphDoc<W: Write> {
 	/// Output options
 	opts: VisgraphDocOptions,
 	/// Output Write
-	output: W,
+	output: Option<W>,
 	/// Counts (generation, instance) of artifacts
 	/// It is used to making each artifact unique.
 	/// The generation increases whenever a artifact might be recreated
@@ -89,11 +89,11 @@ impl<W: Write> VisgraphDoc<W> {
 	pub fn new(opts: VisgraphDocOptions,
 		mut output: W) -> Self {
 		
-		writeln!(output, "strict digraph \"{:?}\" {{ graph [labeljust = l];", opts).unwrap();
+		writeln!(output, "strict digraph {{ graph [labeljust = l];").unwrap();
 		
 		VisgraphDoc {
 			opts,
-			output,
+			output: Some(output),
 			count: (0, 0),
 		}
 	}
@@ -106,36 +106,53 @@ impl<W: Write> VisgraphDoc<W> {
 			builder.type_name
 		}
 	}
+	
+	fn output(&mut self) -> &mut W {
+		self.output.as_mut().unwrap()
+	}
+	
+	fn finish(&mut self) {
+		writeln!(self.output(), "}}").unwrap();
+	}
+	
+	pub fn into_inner(mut self) -> W {
+		self.finish();
+		self.output.take().unwrap()
+	}
 }
 
 impl<W: Write> Drop for VisgraphDoc<W> {
 	fn drop(&mut self) {
-		writeln!(self.output, "}}").unwrap();
+		if self.output.is_some() {
+			self.finish();
+		}
 	}
 }
 
 impl<W: Write> Doctor for VisgraphDoc<W> {
 	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
 	
-		writeln!(self.output,
+		let s = self.builder_str(builder);
+		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
 			builder.value.builder,
-			self.builder_str(builder)
+			s
 		).unwrap();
 		
-		writeln!(self.output,
+		let s = self.builder_str(used);
+		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
 			used.value.builder,
-			self.builder_str(used)
+			s
 		).unwrap();
 		
-		writeln!(self.output,
+		writeln!(self.output(),
 			r#"  "{:p}" -> "{:p}""#,
 			builder.value.builder,
 			used.value.builder
 		).unwrap();
 		
-		self.output.flush().unwrap();
+		self.output().flush().unwrap();
 		
 	}
 	
@@ -143,10 +160,11 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle) {
 		let count = self.count;
 		
-		writeln!(self.output,
+		let s = self.builder_str(builder);
+		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
 			builder.value.builder,
-			self.builder_str(builder)
+			s
 		).unwrap();
 		
 		let s = if self.opts.show_artifact_values {
@@ -155,7 +173,7 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 			"".into()
 		};
 		
-		writeln!(self.output,
+		writeln!(self.output(),
 			r##"  "{0}.{1}-{2:p}" [label = "#{0}.{1} {3}{4}", shape = box]"##,
 			count.0,
 			count.1,
@@ -164,7 +182,7 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 			s
 		).unwrap();
 			
-		writeln!(self.output,
+		writeln!(self.output(),
 			r#"  "{:p}" -> "{}.{}-{:p}" [arrowhead = "none"]"#,
 			builder.value.builder,
 			count.0,
@@ -172,7 +190,7 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 			artifact.value
 		).unwrap();
 		
-		self.output.flush().unwrap();
+		self.output().flush().unwrap();
 			
 		
 		self.count.1 += 1;

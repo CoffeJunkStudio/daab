@@ -162,6 +162,9 @@
 //! `ArtifactCache<dyn Doctor>` which has all the methods implemented.
 //!
 
+// prevents compilation with broken Deref impl causing nasty stack overflows.
+#![deny(unconditional_recursion)]
+
 
 use std::rc::Rc;
 use std::collections::HashMap;
@@ -399,17 +402,13 @@ impl Borrow<BuilderId> for BuilderEntry {
 
 /// Central structure to prevent dependency duplication on building.
 ///
-/// For debugging, the `ArtifactCache` contains a debugging `Doctor`, which
-/// allows run-time inspection of various events. Therefore, `ArtifactCache`
-/// is generic to some `Doctor`, even if the debugging feature is disabled.
-/// Thus, the `new()` function returns actually a `ArtifactCache<T>`
-/// where `T` is either `()` or `NoopDoctor`.
+/// Notice the debugging version (activating the `diagnostics` feature) of this
+/// struct contains a `Doctor`, which allows run-time inspection of various
+/// events. Therefore, the `ArtifactCache` with the `diagnostics` feature
+/// is generic to some `Doctor`.
 ///
-/// However, since most of the code does not care about the concrete
-/// `Doctor` the default generic is `dyn Doctor`.
-/// To ease conversion between them, all creatable `ArtifactCache`s
-/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+/// However, code written without the `diagnostics` feature is expected to
+/// still work if the the `diagnostics` feature is activated.
 ///
 #[cfg(not(feature = "diagnostics"))]
 pub struct ArtifactCache {
@@ -429,7 +428,7 @@ impl Default for ArtifactCache {
 
 #[cfg(not(feature = "diagnostics"))]
 impl ArtifactCache {
-	/// Creates new empty cache
+	/// Creates a new empty cache.
 	///
 	pub fn new() -> Self {
 		Self {
@@ -440,6 +439,21 @@ impl ArtifactCache {
 }
 
 
+/// Central structure to prevent dependency duplication on building.
+///
+/// For debugging, the `ArtifactCache` contains a debugging `Doctor`, which
+/// allows run-time inspection of various events. Therefore, `ArtifactCache`
+/// is generic to some `Doctor`.
+/// Thus, the `new()` function returns actually a `ArtifactCache<NoopDoctor>`
+/// and `new_with_doctor()` returns some `ArtifactCache<T>` those
+/// can be store in variables.
+///
+/// However, since most of the code does not care about the concrete
+/// `Doctor` the default generic is `dyn Doctor`.
+/// To ease conversion between them, all creatable `ArtifactCache`s
+/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
+/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+///
 #[cfg(feature = "diagnostics")]
 pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
@@ -463,7 +477,7 @@ impl Default for ArtifactCache<DefDoctor> {
 
 #[cfg(feature = "diagnostics")]
 impl ArtifactCache<DefDoctor> {
-	/// Creates new empty cache
+	/// Creates a new empty cache with a dummy doctor.
 	///
 	pub fn new() -> Self {
 		Self {
@@ -487,13 +501,6 @@ impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
 #[cfg(feature = "diagnostics")]
 impl<T: Doctor + 'static> DerefMut for ArtifactCache<T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		self
-	}
-}
-
-#[cfg(feature = "diagnostics")]
-impl<T: Doctor + 'static> AsMut<ArtifactCache> for ArtifactCache<T> {
-	fn as_mut(&mut self) -> &mut ArtifactCache {
 		self
 	}
 }
@@ -522,6 +529,10 @@ impl<T: Doctor + 'static> ArtifactCache<T> {
 	pub fn get_doctor(&mut self) -> &mut T {
 		&mut self.doctor
 	}
+	
+	pub fn into_doctor(self) -> T {
+		self.doctor
+	}
 }
 
 impl ArtifactCache {
@@ -529,7 +540,11 @@ impl ArtifactCache {
 	/// Resolves the artifact of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
-	fn do_resolve<B: Builder + 'static>(&mut self, user: &BuilderEntry, #[cfg(feature = "diagnostics")] diag_builder: &BuilderHandle, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+	fn do_resolve<B: Builder + 'static>(&mut self,
+			user: &BuilderEntry,
+			#[cfg(feature = "diagnostics")]
+			diag_builder: &BuilderHandle,
+			promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		
 		let deps = self.get_dependants(&promise.clone().into_any());
 		if !deps.contains(user.borrow()) {

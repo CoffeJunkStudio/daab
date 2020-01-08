@@ -17,3 +17,8 @@ diagnostics = []
 
 [dependencies]
 
+
+[dev-dependencies]
+regex = "1.3"
+
+
