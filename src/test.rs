@@ -287,7 +287,7 @@ fn visgraph_doc(buf: Vec<u8>) -> diagnostics::VisgraphDoc<std::io::Cursor<Vec<u8
 fn test_vis_doc() {
 	
 	// Expected value as Regular Expression due to variable addresses and counters
-	let regex = Box::new(regex::Regex::new(
+	let regex = regex::Regex::new(
 		r##"strict digraph \{ graph \[labeljust = l\];
   "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
@@ -319,7 +319,7 @@ SimpleNode \{
     \},
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.2-0x[0-9a-f]+" \[arrowhead = "none"\]
-\}"##).unwrap());
+\}"##).unwrap();
 
 
 	// Visgraph output storage
@@ -360,21 +360,25 @@ SimpleNode \{
 fn test_text_doc() {
 	
 	// Expected value as Regular Expression due to variable addresses and counters
-	let regex = Box::new(regex::Regex::new(
-		r##"uiae"##).unwrap());
+	let pattern = r##"resolves BuilderSimpleNode -> BuilderLeaf
+built #0.0  BuilderLeaf => Leaf
+built #0.1  BuilderSimpleNode => SimpleNode
+resolves BuilderSimpleNode -> BuilderLeaf
+built #0.2  BuilderSimpleNode => SimpleNode
+"##;
 
-	// Visgraph output storage
-	//let mut data = Vec::new();
+	// Textual output storage
+	let mut data = Vec::new();
 	
 	let mut cache = ArtifactCache::new_with_doctor(
 		diagnostics::TextualDoc::new(
 			diagnostics::TextualDocOptions {
 				show_builder_values: false,
 				show_artifact_values: false,
-				show_addresses: true,
+				show_addresses: false,
 				tynm_m_n: Some((0,0)),
 			},
-			std::io::stdout()
+			data
 		)
 	);
 	
@@ -394,16 +398,14 @@ fn test_text_doc() {
 	// Enusre that different artifacts may link the same dependent artifact
 	assert_eq!(cache.get(&node2).leaf, cache.get(&node1).leaf);
 	
-	/*
 	// Get the vector back, dissolves cache & doctor
-	data = cache.into_doctor().into_inner().into_inner();
+	data = cache.into_doctor().into_inner();
 	
 	let string = String::from_utf8(data).unwrap();
 	// Print the resulting string, very usable in case it does not match
 	println!("{}", string);
 	
-	assert!(regex.is_match(&string));
-	*/
+	assert_eq!(pattern, &string);
 }
 
 #[test]

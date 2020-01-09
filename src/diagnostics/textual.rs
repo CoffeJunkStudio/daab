@@ -60,7 +60,8 @@ impl Default for TextualDocOptions {
 ///
 /// **Notice: This struct is only available if the `diagnostics` feature has been activated**.
 ///
-/// The Textual Doctor generates text containing the list of events.
+/// The Textual Doctor generates writes the list of events in text form
+/// to its output (e.g. `stdout`).
 ///
 /// ## Example
 ///
@@ -141,6 +142,8 @@ impl<W: Write> TextualDoc<W> {
 		}
 	}
 	
+	/// Auxiliary to get the output by `&mut`.
+	/// depricated
 	fn output(&mut self) -> &mut W {
 		&mut self.output
 	}

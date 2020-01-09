@@ -268,14 +268,6 @@ impl<B: ?Sized> Borrow<BuilderId> for ArtifactPromise<B> {
 	}
 }
 
-impl<B: ?Sized> ArtifactPromise<B> {
-	/// Returns the pointer to the inner value.
-	///
-	fn as_ptr(&self) -> *const B {
-		self.builder.as_ref() as &B as *const B
-	}
-}
-
 impl<B: ?Sized> Clone for ArtifactPromise<B> {
 	fn clone(&self) -> Self {
 		ArtifactPromise {
