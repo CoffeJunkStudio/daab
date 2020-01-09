@@ -287,13 +287,13 @@ impl<B: ?Sized> Clone for ArtifactPromise<B> {
 
 impl<B: ?Sized> Hash for ArtifactPromise<B> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.as_ptr().hash(state);
+		self.id.hash(state);
 	}
 }
 
 impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
 	fn eq(&self, other: &Self) -> bool {
-		self.as_ptr().eq(&other.as_ptr())
+		self.id.eq(&other.id)
 	}
 }
 
