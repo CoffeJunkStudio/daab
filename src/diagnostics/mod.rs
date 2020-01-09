@@ -18,9 +18,6 @@
 //! [`Doctor`]: trait.Doctor.html
 //! [`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
 
-// TODO:
-// - Printout Doctor
-// - doctor additional functions
 
 use std::any::Any;
 use std::hash::Hash;
