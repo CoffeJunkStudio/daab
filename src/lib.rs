@@ -192,11 +192,11 @@ impl<B> ArtifactPromise<B> {
 	}
 }
 
-impl<B: ?Sized> ArtifactPromise<B> {
+impl ArtifactPromise<dyn Any> {
 	/// Returns the pointer to the inner value.
 	///
-	fn as_ptr(&self) -> *const B {
-		self.builder.as_ref() as &B as *const B
+	fn as_ptr(&self) -> *const usize {
+		self.builder.as_ref() as &dyn Any as *const dyn Any as *const usize
 	}
 }
 
@@ -208,19 +208,19 @@ impl<B: ?Sized> Clone for ArtifactPromise<B> {
 	}
 }
 
-impl<B: ?Sized> Hash for ArtifactPromise<B> {
+impl Hash for ArtifactPromise<dyn Any> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.as_ptr().hash(state);
 	}
 }
 
-impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
+impl PartialEq for ArtifactPromise<dyn Any> {
 	fn eq(&self, other: &Self) -> bool {
 		self.as_ptr().eq(&other.as_ptr())
 	}
 }
 
-impl<B: ?Sized> Eq for ArtifactPromise<B> {
+impl Eq for ArtifactPromise<dyn Any> {
 }
 
 impl<B: Builder> From<B> for ArtifactPromise<B> {
