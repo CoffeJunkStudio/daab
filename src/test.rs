@@ -360,12 +360,20 @@ SimpleNode \{
 fn test_text_doc() {
 	
 	// Expected value as Regular Expression due to variable addresses and counters
-	let pattern = r##"resolves BuilderSimpleNode -> BuilderLeaf
+	#[cfg(not(feature = "tynm"))]
+	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
+built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
+built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
+built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+";
+	#[cfg(feature = "tynm")]
+	let pattern = r"resolves BuilderSimpleNode -> BuilderLeaf
 built #0.0  BuilderLeaf => Leaf
 built #0.1  BuilderSimpleNode => SimpleNode
 resolves BuilderSimpleNode -> BuilderLeaf
 built #0.2  BuilderSimpleNode => SimpleNode
-"##;
+";
 
 	// Textual output storage
 	let mut data = Vec::new();
