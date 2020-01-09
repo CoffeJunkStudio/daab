@@ -16,20 +16,21 @@
 //! The basic principal on which this crate is build, suggests two levels of
 //! abstraction, the builder level and the artifact level. Each builder type has
 //! one specific artifact type. The builders are represented by any struct,
-//! which implements the `Builder` trait, which in turn has an associate type
+//! which implements the [`Builder`] trait, which in turn has an associate type
 //! that specifies the artifact type.
 //!
-//! `Builder`s are supposed to be wrapped in `ArtifactPromise`s, which prevents
-//! to call its `build()` method directly. However, the `ArtifactPromise` acts
-//! like an `Rc` and thus allows to share one instance among several dependants.
+//! `Builder`s are supposed to be wrapped in [`ArtifactPromise`]s, which prevents
+//! to call its `Builder::build()` method directly. In other respects, the
+//! `ArtifactPromise` acts a lot like an `Rc` and thus allows to share one
+//! instance among several dependants.
 //! This `Rc`-like structure creates naturally a DAG.
 //!
-//! For building a `Builder`, its `build()` method is provided with a
-//! `ArtifactResolver` that allows to resolve depending `ArtifactPromise`s into
+//! For building a `Builder`, its `Builder::build()` method is provided with a
+//! [`ArtifactResolver`] that allows to resolve depending `ArtifactPromise`s into
 //! their respective artifacts, which is, in order to form a DAG, wrapped
 //! behind a `Rc`.
 //!
-//! As entry point serves the `ArtifactCache`, which allows to resolve any
+//! As entry point serves the [`ArtifactCache`], which allows to resolve any
 //! `ArtifactPromise` to its artifact outside of a `Builder`. The
 //! `ArtifactCache` is essentially a cache. It can be used to translate any
 //! number of `ArtifactPromise`s, sharing their common dependencies.
@@ -42,6 +43,12 @@
 //! Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
 //! builder artifact including its dependants (i.e. those artifacts which had
 //! used the invalidated one).
+//!
+//![`Builder`]: trait.Builder.html
+//![`ArtifactPromise`]: struct.ArtifactPromise.html
+//![`ArtifactResolver`]: struct.ArtifactResolver.html
+//![`ArtifactCache`]: struct.ArtifactCache.html
+//!
 //!
 //!
 //! ## Example
@@ -113,27 +120,25 @@
 //!     }
 //! }
 //! 
-//! fn main() {
-//!     // The cache to storing already created artifacts
-//!     let mut cache = ArtifactCache::new();
-//!     
-//!     // Constructing builders
-//!     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
-//!     
-//!     let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-//!     let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
+//! // The cache to storing already created artifacts
+//! let mut cache = ArtifactCache::new();
 //!
-//!     // Using the cache to access the artifacts from the builders
+//! // Constructing builders
+//! let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
 //!
-//!     // The same builder results in same artifact
-//!     assert!(Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_1)));
-//!     
-//!     // Different builders result in different artifacts
-//!     assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_2)));
-//!     
-//!     // Different artifacts may link the same dependent artifact
-//!     assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
-//! }
+//! let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
+//! let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
+//!
+//! // Using the cache to access the artifacts from the builders
+//!
+//! // The same builder results in same artifact
+//! assert!(Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_1)));
+//!
+//! // Different builders result in different artifacts
+//! assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_2)));
+//!
+//! // Different artifacts may link the same dependent artifact
+//! assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
 //! ```
 //!
 //! ## Debugging
@@ -154,31 +159,36 @@
 //! `diagnostics` feature can be easily converted to using the
 //! `diagnostics`, usually by just replacing `ArtifactCache::new()`
 //! by `ArtifactCache::new_with_doctor()`.
-//! For this reason the ArtifactCache is generic to its doctor, which is
-//! important on its creation. The rest of the time the ArtifactCache
+//! For this reason the `ArtifactCache` is generic to its doctor, which is
+//! important on its creation. The rest of the time the `ArtifactCache`
 //! uses `dyn Doctor` as its (fixed) generic argument.
 //! To ease conversion between them, all creatable `ArtifactCache`s
 //! (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
 //! `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+//!
+//![`Doctor`]: diagnostics/trait.Doctor.html
 //!
 //!
 //! ## Features
 //!
 //! This crate offers the following features:
 //!
-//! - `diagnostics` enables elaborate graph and cache interaction debugging.
+//! - **`diagnostics`** enables elaborate graph and cache interaction debugging.
 //!   It adds the `new_with_doctor()` function to the `ArtifactCache` and adds
 //!   the `diagnostics` module with the `Doctor` trait definition and some
 //!   default `Doctor`s.
 //!
-//! - `tynm` enable the optional dependency on the `tynm` crate which adds
+//! - **`tynm`** enable the optional dependency on the [`tynm`] crate which adds
 //!   functionality to abbreviate type names, which are used by some default
 //!   `Doctor`s, hence it is only useful in connection with the `diagnostics`
 //!   feature.
 //!
+//![`tynm`]: https://crates.io/crates/tynm
+//!
 
 // prevents compilation with broken Deref impl causing nasty stack overflows.
 #![deny(unconditional_recursion)]
+
 #![warn(missing_docs)]
 
 
@@ -415,21 +425,37 @@ impl Borrow<BuilderId> for BuilderEntry {
 
 /// Central structure to prevent dependency duplication on building.
 ///
-/// Notice the debugging version (activating the `diagnostics` feature) of this
-/// struct contains a `Doctor`, which allows run-time inspection of various
-/// events. Therefore, the `ArtifactCache` with the `diagnostics` feature
+/// Notice the debugging version (activating the **`diagnostics`** feature) of this
+/// struct contains a debugging `Doctor`, which
+/// allows run-time inspection of various events. Therefore, `ArtifactCache`
 /// is generic to some `Doctor`.
+/// Thus, the `new()` function returns actually a `ArtifactCache<NoopDoctor>`
+/// and `new_with_doctor()` returns some `ArtifactCache<T>` those
+/// can be store in variables.
 ///
-/// However, code written without the `diagnostics` feature is expected to
-/// still work if the the `diagnostics` feature is activated.
+/// However, since most of the code does not care about the concrete
+/// `Doctor` the default generic is `dyn Doctor`.
+/// To ease conversion between them, all creatable `ArtifactCache`s
+/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
+/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
 ///
-#[cfg(not(feature = "diagnostics"))]
-pub struct ArtifactCache {
+pub struct ArtifactCache< #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
 	
 	/// Tracks the direct promise dependants of each promise
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
+	
+	/// The doctor for error diagnostics.
+	#[cfg(feature = "diagnostics")]
+	doctor: T,
+}
+
+#[cfg(feature = "diagnostics")]
+impl Default for ArtifactCache<DefDoctor> {
+	fn default() -> Self {
+		ArtifactCache::new()
+	}
 }
 
 #[cfg(not(feature = "diagnostics"))]
@@ -448,42 +474,6 @@ impl ArtifactCache {
 			cache: HashMap::new(),
 			dependants: HashMap::new(),
 		}
-	}
-}
-
-
-/// Central structure to prevent dependency duplication on building.
-///
-/// For debugging, the `ArtifactCache` contains a debugging `Doctor`, which
-/// allows run-time inspection of various events. Therefore, `ArtifactCache`
-/// is generic to some `Doctor`.
-/// Thus, the `new()` function returns actually a `ArtifactCache<NoopDoctor>`
-/// and `new_with_doctor()` returns some `ArtifactCache<T>` those
-/// can be store in variables.
-///
-/// However, since most of the code does not care about the concrete
-/// `Doctor` the default generic is `dyn Doctor`.
-/// To ease conversion between them, all creatable `ArtifactCache`s
-/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
-///
-#[cfg(feature = "diagnostics")]
-pub struct ArtifactCache<T: ?Sized = dyn Doctor> {
-	/// Maps Builder-Capsules to their Artifact value
-	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
-	
-	/// Tracks the direct promise dependants of each promise
-	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
-	
-	/// The doctor for error diagnostics.
-	#[allow(dead_code)]
-	doctor: T,
-}
-
-#[cfg(feature = "diagnostics")]
-impl Default for ArtifactCache<DefDoctor> {
-	fn default() -> Self {
-		ArtifactCache::new()
 	}
 }
 
@@ -543,7 +533,7 @@ impl<T: Doctor + 'static> ArtifactCache<T> {
 		&mut self.doctor
 	}
 	
-	/// Takes the `ArtifactCache` and returns the inner doctor.
+	/// Consumes the `ArtifactCache` and returns the inner doctor.
 	///
 	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
 	///

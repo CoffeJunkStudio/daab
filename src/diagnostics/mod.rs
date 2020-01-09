@@ -8,15 +8,22 @@
 //! The most important one is [`Doctor`] which conducts a diagnosis on a
 //! `ArtifactCache` if constructed via [`ArtifactCache::new_with_doctor()`].
 //!
-//! `Doctor` has methods for various events happening in the `ArtifactCache` getting the relevant builder or artifact as argument.
-//! See the respective method of the `Doctor`.
+//! `Doctor` has methods for various events happening in the `ArtifactCache`
+//! receiving the relevant builder or artifact as argument
+//! (as [`ArtifactHandle`] or [`BuilderHandle`] respectivly).
+//! See the respective method of the `Doctor` for details.
 //!
 //! Additionally, to the generic `Doctor` trait, there are several pre-implemented
-//! Doctors such as: `VisgraphDoc`.
+//! Doctors such as: [`VisgraphDoc`] or [`TextualDoc`].
 //!
-//! [`ArtifactCache`]: ../struct.ArtifactCache.html
-//! [`Doctor`]: trait.Doctor.html
-//! [`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
+//![`ArtifactCache`]: ../struct.ArtifactCache.html
+//![`Doctor`]: trait.Doctor.html
+//![`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
+//![`ArtifactHandle`]: struct.ArtifactHandle.html
+//![`BuilderHandle`]: struct.BuilderHandle.html
+//![`VisgraphDoc`]: struct.VisgraphDoc.html
+//![`TextualDoc`]: struct.TextualDoc.html
+//!
 
 
 use std::any::Any;
@@ -41,7 +48,7 @@ pub use textual::TextualDoc;
 
 
 
-/// `ArtifactCache` Debugger.
+/// Debugger for the [`ArtifactCache`].
 ///
 /// **Notice: This trait is only available if the `diagnostics` feature has been activated**.
 ///
@@ -53,7 +60,8 @@ pub use textual::TextualDoc;
 ///
 /// Each method as a default implementation to ease implementing specialized `Doctor`s which don't need all the events. Each default implementation just dose nothing, i.e. are no-ops.
 ///
-/// [`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
+///[`ArtifactCache`]: ../struct.ArtifactCache.html
+///[`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
 ///
 pub trait Doctor {
 	/// One `Builder` resolves another `Builder`.

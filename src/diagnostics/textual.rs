@@ -7,7 +7,7 @@ use super::ArtifactHandle;
 use std::io::Write;
 
 
-/// Output options for `TextualDoc`.
+/// Output options for [`TextualDoc`].
 ///
 /// **Notice: This struc is only available if the `diagnostics` feature has been activated**.
 ///
@@ -26,34 +26,46 @@ use std::io::Write;
 /// assert_eq!(opts, TextualDocOptions::default());
 /// ```
 ///
+///[`TextualDoc`]: struct.TextualDoc.html
+///
+///
 /// ## Features
 ///
 /// By default, this `Doctor` prints the type names of the builders and artifacts encountered.
 /// The stringification is done via `std::any::type_name()`. However, this usually
-/// generates long names, therefore this carte has the `tynm` feature, which adds
-/// the `tynm` crate and allows to abbreviate the type names configured by this
-/// struct's `tynm_m_n` field.
+/// generates long names, therefore this carte has the **`tynm`** feature, which adds
+/// the [`tynm`] crate and allows to abbreviate the type names configured by this
+/// struct's `tynm_m_n` field. Also see the [tynm docs] for details about `m` and `n`.
+///
+///[`tynm`]: https://crates.io/crates/tynm
+///[tynm docs]: https://docs.rs/tynm/
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TextualDocOptions {
-	/// Configures whether builders should be only visualized by their type (`false`) or
-	/// by their value (`true`).
+	/// Configures whether builders should be only visualized by their
+	/// value (`true`) instead of by their type (`false`)
+	/// .
 	pub show_builder_values: bool,
 	
-	/// Configures whether artifacts should be only visualized by their type (`false`) or
-	/// by their value (`true`).
+	/// Configures whether artifacts should be only visualized by their
+	/// value (`true`) instead of by their type (`false`)
 	pub show_artifact_values: bool,
 	
-	/// Configures whether the pointer of artifacts and builders should be printed for better identification (`true`) or
+	/// Configures whether the pointer of artifacts and builders should be
+	/// printed for better identification (`true`) or
 	/// not for better readability (`false`).
 	pub show_addresses: bool,
 	
 	/// Configures type name abbreviations according to `tynm`s `type_namemn()` function.
 	///
 	/// `None` specifies to use the normal `std::any::type_name()`, and is the
-	/// fallback if the `tynm` feature is not activated.
+	/// fallback if the **`tynm`** feature is not activated.
 	///
-	/// **Notice:*** the `tynm` feature is required for this field to take effect.
+	/// See the [tynm docs] for details about how to specify `m` and `n`.
+	///
+	/// **Notice:** the **`tynm`** feature is required for this field to take effect.
+	///
+	///[tynm docs]: https://docs.rs/tynm/
 	///
 	pub tynm_m_n: Option<(usize, usize)>,
 }
@@ -99,6 +111,16 @@ impl Default for TextualDocOptions {
 /// //...
 /// ```
 ///
+/// Example output:
+///
+/// ```text
+/// resolves BuilderSimpleNode -> BuilderLeaf
+/// built #0.0  BuilderLeaf => Leaf
+/// built #0.1  BuilderSimpleNode => SimpleNode
+/// resolves BuilderSimpleNode -> BuilderLeaf
+/// built #0.2  BuilderSimpleNode => SimpleNode
+/// ```
+///
 pub struct TextualDoc<W: Write> {
 	/// Output options
 	opts: TextualDocOptions,
@@ -122,7 +144,7 @@ impl<W: Write> TextualDoc<W> {
 		
 		TextualDoc {
 			opts,
-			output: output,
+			output,
 			count: (0, 0),
 		}
 	}

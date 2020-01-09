@@ -26,12 +26,13 @@ use std::io::Write;
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct VisgraphDocOptions {
-	/// Configures whether builders should be only visualized by their type (`false`) or
-	/// by their value (`true`).
+	/// Configures whether builders should be only visualized by their
+	/// value (`true`) instead of by their type (`false`)
+	/// .
 	pub show_builder_values: bool,
 	
-	/// Configures whether artifacts should be only visualized by their type (`false`) or
-	/// by their value (`true`).
+	/// Configures whether artifacts should be only visualized by their
+	/// value (`true`) instead of by their type (`false`)
 	pub show_artifact_values: bool,
 }
 
@@ -70,6 +71,24 @@ impl Default for VisgraphDocOptions {
 ///
 /// //...
 /// ```
+///
+/// Example output in [DOT format]:
+///
+/// ```text
+/// strict digraph { graph [labeljust = l];
+///   "0x7faf30003960" [label = "daab::test::BuilderSimpleNode"]
+///   "0x7faf30005090" [label = "daab::test::BuilderLeaf"]
+///   "0x7faf30003960" -> "0x7faf30005090"
+///   "0x7faf30005090" [label = "daab::test::BuilderLeaf"]
+///   "0.0-0x7faf30015710" [label = "#0.0 daab::test::Leaf :
+/// Leaf {
+///     id: 0,
+/// }", shape = box]
+///   "0x7faf30005090" -> "0.0-0x7faf30015710" [arrowhead = "none"]
+/// }
+/// ```
+///
+///[DOT format]: https://en.wikipedia.org/wiki/DOT_%28graph_description_language%29
 ///
 pub struct VisgraphDoc<W: Write> {
 	/// Output options
