@@ -31,10 +31,16 @@ use std::fmt::Debug;
 use super::ArtifactPromise;
 use super::Builder;
 
+
 mod visgraph;
 
 pub use visgraph::VisgraphDocOptions;
 pub use visgraph::VisgraphDoc;
+
+mod textual;
+
+pub use textual::TextualDocOptions;
+pub use textual::TextualDoc;
 
 
 
@@ -174,7 +180,7 @@ impl BuilderHandle {
 	/// Constructs a new builder handle with the given value.
 	///
 	pub fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
-		let dbg_text = format!("{:#?}", &value);
+		let dbg_text = format!("{:#?}", &value.builder);
 		
 		BuilderHandle {
 			value: value.into_any(),
