@@ -277,19 +277,19 @@ impl<B: ?Sized> Clone for ArtifactPromise<B> {
 	}
 }
 
-impl<B: ?Sized> Hash for ArtifactPromise<B> {
+impl Hash for ArtifactPromise<dyn Any> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 	}
 }
 
-impl<B: ?Sized> PartialEq for ArtifactPromise<B> {
+impl PartialEq for ArtifactPromise<dyn Any> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id.eq(&other.id)
 	}
 }
 
-impl<B: ?Sized> Eq for ArtifactPromise<B> {
+impl Eq for ArtifactPromise<dyn Any> {
 }
 
 impl<B: Builder + 'static> From<B> for ArtifactPromise<B> {
