@@ -1,6 +1,6 @@
 [package]
 name = "daab"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["cryptjar <cryptjar@junk.studio>", "dezajno <dezajno@junk.studio>"]
 edition = "2018"
 description = "DAG aware artifact builder"
@@ -10,14 +10,22 @@ readme = "README.md"
 #license = "Apache-2.0"
 license-file = "LICENSE"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+categories = ["caching", "data-structures"]
+keywords = ["dag", "artifacts", "dependencies", "builders", "producers"]
+
+
+[package.metadata.docs.rs]
+all-features = true
+
 
 [features]
 default = []
 diagnostics = []
 
+
 [dependencies]
 tynm = {version = "0.1.1", optional = true}
+
 
 [dev-dependencies]
 regex = "1.3"
