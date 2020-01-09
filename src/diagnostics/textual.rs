@@ -26,6 +26,14 @@ use std::io::Write;
 /// assert_eq!(opts, TextualDocOptions::default());
 /// ```
 ///
+/// ## Features
+///
+/// By default, this `Doctor` prints the type names of the builders and artifacts encountered.
+/// The stringification is done via `std::any::type_name()`. However, this usually
+/// generates long names, therefore this carte has the `tynm` feature, which adds
+/// the `tynm` crate and allows to abbreviate the type names configured by this
+/// struct's `tynm_m_n` field.
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TextualDocOptions {
 	/// Configures whether builders should be only visualized by their type (`false`) or
@@ -41,6 +49,11 @@ pub struct TextualDocOptions {
 	pub show_addresses: bool,
 	
 	/// Configures type name abbreviations according to `tynm`s `type_namemn()` function.
+	///
+	/// `None` specifies to use the normal `std::any::type_name()`, and is the
+	/// fallback if the `tynm` feature is not activated.
+	///
+	/// **Notice:*** the `tynm` feature is required for this field to take effect.
 	///
 	pub tynm_m_n: Option<(usize, usize)>,
 }

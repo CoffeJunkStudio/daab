@@ -1,5 +1,8 @@
-# DAG aware artifact builder
+[![Crates.io](https://img.shields.io/crates/v/daab.svg)](https://crates.io/crates/daab)
 
+
+DAG Aware Artifact Builder
+==========================
 
 Rust crate for managing the building of artifacts by builders which are
 connected in a directed acyclic graph (DAG) like manner.
@@ -42,18 +45,20 @@ builder artifact including its dependants (i.e. those artifacts which had
 used the invalidated one).
 
 
-## Example
+### Example
 
 ```rust
 use std::rc::Rc;
 use daab::*;
 
 // Simple artifact
+#[derive(Debug)]
 struct Leaf {
     //...
 }
 
 // Simple builder
+#[derive(Debug)]
 struct BuilderLeaf {
     // ...
 }
@@ -66,7 +71,7 @@ impl BuilderLeaf {
 }
 impl Builder for BuilderLeaf {
     type Artifact = Leaf;
-    
+
     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
         Leaf{
             // ...
@@ -75,12 +80,14 @@ impl Builder for BuilderLeaf {
 }
 
 // Composed artifact, linking to a Leaf
+#[derive(Debug)]
 struct Node {
     leaf: Rc<Leaf>, // Dependency artifact
     // ...
 }
 
 // Composed builder, depending on BuilderLeaf
+#[derive(Debug)]
 struct BuilderNode {
     builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
     // ...
@@ -95,11 +102,11 @@ impl BuilderNode {
 }
 impl Builder for BuilderNode {
     type Artifact = Node;
-    
+
     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
         // Resolve ArtifactPromise to its artifact
         let leaf = cache.resolve(&self.builder_leaf);
-        
+
         Node {
             leaf,
             // ...
@@ -110,27 +117,71 @@ impl Builder for BuilderNode {
 fn main() {
     // The cache to storing already created artifacts
     let mut cache = ArtifactCache::new();
-    
+
     // Constructing builders
     let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
-    
+
     let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-    let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
+    let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
 
     // Using the cache to access the artifacts from the builders
 
     // The same builder results in same artifact
     assert!(Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_1)));
-    
+
     // Different builders result in different artifacts
     assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_2)));
-    
+
     // Different artifacts may link the same dependent artifact
     assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
 }
 ```
 
+### Debugging
+
+`daab` comes with extensive debugging gear. However, in order to
+keep the production impact as low as possible, the debugging facilityies
+are capsuled behind the `diagnostics` feature.
+
+Of course, the debugging feature is for the user of this crate to
+debug their graphs. Therefore, it is rather modeled as a
+diagnostics feature (hence the name). Consequently, the diagnosis
+is carried out by a [`Doctor`], which is a trait receiving various
+internal events in order to record them, print them, or otherwise help treating the bug.
+
+Care has been taken to keep the `diagnostics` feature broadly applicable as
+well as keeping the non-`diagnostics` API compatible with the
+`diagnostics`-API, meaning that a project using not using the
+`diagnostics` feature can be easily converted to using the
+`diagnostics`, usually by just replacing `ArtifactCache::new()`
+by `ArtifactCache::new_with_doctor()`.
+For this reason the ArtifactCache is generic to its doctor, which is
+important on its creation. The rest of the time the ArtifactCache
+uses `dyn Doctor` as its (fixed) generic argument.
+To ease conversion between them, all creatable `ArtifactCache`s
+(i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
+`ArtifactCache<dyn Doctor>` which has all the methods implemented.
 
 
+### Features
+
+This crate offers the following features:
+
+- `diagnostics` enables elaborate graph and cache interaction debugging.
+  It adds the `new_with_doctor()` function to the `ArtifactCache` and adds
+  the `diagnostics` module with the `Doctor` trait definition and some
+  default `Doctor`s.
+
+- `tynm` enable the optional dependency on the `tynm` crate which adds
+  functionality to abbreviate type names, which are used by some default
+  `Doctor`s, hence it is only useful in connection with the `diagnostics`
+  feature.
 
 
+## License
+
+Licensed under Apache License, Version 2.0 ([LICENSE](LICENSE) or https://www.apache.org/licenses/LICENSE-2.0).
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be licensed as above, without any additional terms or conditions.

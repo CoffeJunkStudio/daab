@@ -161,6 +161,21 @@
 //! (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
 //! `ArtifactCache<dyn Doctor>` which has all the methods implemented.
 //!
+//!
+//! ## Features
+//!
+//! This crate offers the following features:
+//!
+//! - `diagnostics` enables elaborate graph and cache interaction debugging.
+//!   It adds the `new_with_doctor()` function to the `ArtifactCache` and adds
+//!   the `diagnostics` module with the `Doctor` trait definition and some
+//!   default `Doctor`s.
+//!
+//! - `tynm` enable the optional dependency on the `tynm` crate which adds
+//!   functionality to abbreviate type names, which are used by some default
+//!   `Doctor`s, hence it is only useful in connection with the `diagnostics`
+//!   feature.
+//!
 
 // prevents compilation with broken Deref impl causing nasty stack overflows.
 #![deny(unconditional_recursion)]
