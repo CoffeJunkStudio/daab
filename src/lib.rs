@@ -49,6 +49,8 @@
 //![`ArtifactResolver`]: struct.ArtifactResolver.html
 //![`ArtifactCache`]: struct.ArtifactCache.html
 //!
+//! Minimal Rust version: **1.40**
+//!
 //!
 //!
 //! ## Example
@@ -141,32 +143,38 @@
 //! assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
 //! ```
 //!
+//!
+//!
 //! ## Debugging
 //!
 //! `daab` comes with extensive debugging gear. However, in order to
-//! keep the production impact as low as possible, the debugging facilityies
-//! are capsuled behind the `diagnostics` feature.
+//! keep the production impact as low as possible, the debugging facilities
+//! are capsuled behind the **`diagnostics`** feature.
 //!
 //! Of course, the debugging feature is for the user of this crate to
-//! debug their graphs. Therefore, it is rather modeled as a
-//! diagnostics feature (hence the name). Consequently, the diagnosis
+//! debug their graphs. Therefore, it is rather modelled as a
+//! diagnostics feature (hence the name). The diagnosis
 //! is carried out by a [`Doctor`], which is a trait receiving various
-//! internal events in order to record them, print them, or otherwise help treating the bug.
+//! internal events in order to record them, print them, or otherwise help
+//! treating the bug.
 //!
-//! Care has been taken to keep the `diagnostics` feature broadly applicable as
-//! well as keeping the non-`diagnostics` API compatible with the
-//! `diagnostics`-API, meaning that a project using not using the
-//! `diagnostics` feature can be easily converted to using the
+//! Care has been taken to keep the **`diagnostics`** feature broadly applicable
+//! as well as keeping the non-`diagnostics` API compatible with the
+//! `diagnostics`-API, meaning that a project not using the
+//! `diagnostics` feature can be easily converted to using
 //! `diagnostics`, usually by just replacing `ArtifactCache::new()`
-//! by `ArtifactCache::new_with_doctor()`.
-//! For this reason the `ArtifactCache` is generic to its doctor, which is
-//! important on its creation. The rest of the time the `ArtifactCache`
-//! uses `dyn Doctor` as its (fixed) generic argument.
+//! with `ArtifactCache::new_with_doctor()`.
+//! In order to store the `Doctor` the `ArtifactCache` is generic to a doctor,
+//! which is important on its creation and for storing it by value.
+//! The rest of the time the `ArtifactCache` uses `dyn Doctor` as its default
+//! generic argument.
 //! To ease conversion between them, all creatable `ArtifactCache`s
 //! (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-//! `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+//! `&mut ArtifactCache<dyn Doctor>` which has all the important methods
+//! implemented.
 //!
 //![`Doctor`]: diagnostics/trait.Doctor.html
+//!
 //!
 //!
 //! ## Features
