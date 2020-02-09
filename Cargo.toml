@@ -1,14 +1,14 @@
 [package]
 name = "daab"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["cryptjar <cryptjar@junk.studio>", "dezajno <dezajno@junk.studio>"]
 edition = "2018"
 description = "DAG aware artifact builder"
 
 repository = "https://github.com/CoffeJunkStudio/daab"
 readme = "README.md"
-#license = "Apache-2.0"
-license-file = "LICENSE"
+license = "Apache-2.0"
+#license-file = "LICENSE"
 
 categories = ["caching", "data-structures"]
 keywords = ["dag", "artifacts", "dependencies", "builders", "producers"]
@@ -24,8 +24,8 @@ diagnostics = []
 
 
 [dependencies]
-tynm = {version = "0.1.1", optional = true}
 cfg-if = "0.1"
+tynm = {version = "0.1.1", optional = true}
 
 
 [dev-dependencies]
