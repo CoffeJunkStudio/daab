@@ -78,7 +78,7 @@
 //!     }
 //! }
 //! impl ArtifactRelated for BuilderLeaf {
-//! 	type Artifact = Leaf;
+//!     type Artifact = Leaf;
 //! }
 //! impl Builder for BuilderLeaf {
 //!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
@@ -110,7 +110,7 @@
 //!     }
 //! }
 //! impl ArtifactRelated for BuilderNode {
-//! 	type Artifact = Node;
+//!     type Artifact = Node;
 //! }
 //! impl Builder for BuilderNode {
 //!     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
