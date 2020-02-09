@@ -79,9 +79,8 @@
 //! }
 //! impl Builder for BuilderLeaf {
 //!     type Artifact = Leaf;
-//!     type UserData = ();
 //!     
-//!     fn build(&self, _cache: &mut ArtifactResolver, _ud: Option<Rc<()>>) -> Self::Artifact {
+//!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -92,6 +91,7 @@
 //! #[derive(Debug)]
 //! struct Node {
 //!     leaf: Rc<Leaf>, // Dependency artifact
+//!     value: u8, // Some custom value
 //!     // ...
 //! }
 //! 
@@ -109,16 +109,17 @@
 //!         }
 //!     }
 //! }
-//! impl Builder for BuilderNode {
+//! impl BuilderWithData for BuilderNode {
 //!     type Artifact = Node;
-//!     type UserData = ();
+//!     type UserData = u8;
 //!     
-//!     fn build(&self, cache: &mut ArtifactResolver, _ud: Option<Rc<()>>) -> Self::Artifact {
+//!     fn build(&self, cache: &mut ArtifactResolver, data: Option<Rc<u8>>) -> Self::Artifact {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = cache.resolve(&self.builder_leaf);
 //!         
 //!         Node {
 //!             leaf,
+//!             value: *data.unwrap_or(42.into()), // *-deref Rc
 //!             // ...
 //!         }
 //!     }
@@ -143,6 +144,22 @@
 //!
 //! // Different artifacts may link the same dependent artifact
 //! assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
+//!
+//! // Test user data
+//! assert_eq!(cache.get(&node_builder_1).value, 42);
+//! 
+//! // Change user data
+//! cache.set_user_data(&node_builder_1, 127.into());
+//! // Without invalidation, the cached artefact remains unchanged
+//! assert_eq!(cache.get_user_data(&node_builder_1), Some(127.into()));
+//! assert_eq!(cache.get(&node_builder_1).value, 42);
+//! // Invalidate node, and ensure it made use of the user data
+//! cache.invalidate(&node_builder_1);
+//! assert_eq!(cache.get(&node_builder_1).value, 127);
+//!
+//! // User data of node 2 remains unchanged
+//! assert_eq!(cache.get(&node_builder_2).value, 42);
+//! assert_eq!(cache.get_user_data(&node_builder_2), None);
 //! ```
 //!
 //!
@@ -240,6 +257,18 @@ pub trait Builder: Debug {
 	///
 	type Artifact : Debug;
 	
+	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// dependencies.
+	///
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
+}
+
+
+pub trait BuilderWithData: Debug {
+	/// The artifact type as produced by this builder.
+	///
+	type Artifact : Debug;
+	
 	// TODO: docs
 	type UserData : Debug + 'static;
 	
@@ -247,6 +276,16 @@ pub trait Builder: Debug {
 	/// dependencies.
 	///
 	fn build(&self, cache: &mut ArtifactResolver, user_data: Option<Rc<Self::UserData>>) -> Self::Artifact;
+}
+
+impl<B: Builder> BuilderWithData for B {
+	type Artifact = B::Artifact;
+	
+	type UserData = ();
+	
+	fn build(&self, cache: &mut ArtifactResolver, user_data: Option<Rc<Self::UserData>>) -> Self::Artifact {
+		self.build(cache)
+	}
 }
 
 // TODO: add legacy builder with generic impl
@@ -270,7 +309,7 @@ pub struct ArtifactPromise<B: ?Sized> {
 	id: BuilderId,
 }
 
-impl<B: Builder + 'static> ArtifactPromise<B> {
+impl<B: BuilderWithData + 'static> ArtifactPromise<B> {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self {
@@ -325,7 +364,7 @@ impl PartialEq for ArtifactPromise<dyn Any> {
 impl Eq for ArtifactPromise<dyn Any> {
 }
 
-impl<B: Builder + 'static> From<B> for ArtifactPromise<B> {
+impl<B: BuilderWithData + 'static> From<B> for ArtifactPromise<B> {
 	fn from(b: B) -> Self {
 		Self::new(b)
 	}
@@ -348,7 +387,7 @@ pub struct ArtifactResolver<'a> {
 impl<'a> ArtifactResolver<'a> {
 	/// Resolves the given `ArtifactPromise` into its `Artifact`.
 	///
-	pub fn resolve<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
+	pub fn resolve<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
 				self.cache.do_resolve(self.user, self.diag_builder, promise)
@@ -361,7 +400,7 @@ impl<'a> ArtifactResolver<'a> {
 	// TODO: consider whether mutable access is actually a good option
 	// TODO: consider may be to even allow invalidation
 	// TODO: docs
-	pub fn get_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<Rc<B::UserData>> {
+	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<Rc<B::UserData>> {
 		self.cache.get_user_data(promise)
 	}
 }
@@ -371,12 +410,12 @@ impl<'a> ArtifactResolver<'a> {
 ///
 /// Notice, this type simply wraps `*const` to the builder `Rc`s.
 /// Consequentially, a `BuilderId`s validity is limited to the life time of
-/// the respective `Builder`.
+/// the respective `BuilderWithData`.
 ///
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct BuilderId(*const dyn Any);
 
-impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
+impl<B: BuilderWithData + 'static> From<&Rc<B>> for BuilderId {
 	fn from(rc: &Rc<B>) -> Self {
 		BuilderId(rc.as_ref() as &dyn Any as *const dyn Any)
 	}
@@ -404,7 +443,7 @@ struct BuilderEntry {
 }
 
 impl BuilderEntry {
-	fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
+	fn new<T: BuilderWithData + 'static>(value: ArtifactPromise<T>) -> Self {
 		let id = value.id;
 		
 		BuilderEntry {
@@ -557,7 +596,7 @@ cfg_if! {
 	}
 }
 
-fn cast_user_data<B: Builder + 'static>(v: Option<Rc<dyn Any>>)
+fn cast_user_data<B: BuilderWithData + 'static>(v: Option<Rc<dyn Any>>)
 		-> Option<Rc<B::UserData>> {
 	
 	v.map(
@@ -574,7 +613,7 @@ impl ArtifactCache {
 	/// Resolves the artifact of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
-	fn do_resolve<B: Builder + 'static>(&mut self,
+	fn do_resolve<B: BuilderWithData + 'static>(&mut self,
 			user: &BuilderEntry,
 			#[cfg(feature = "diagnostics")]
 			diag_builder: &BuilderHandle,
@@ -603,8 +642,8 @@ impl ArtifactCache {
 	
 	/// Get the stored artifact if it exists.
 	///
-	fn lookup<B: Builder + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
-			where <B as Builder>::Artifact: 'static {
+	fn lookup<B: BuilderWithData + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
+			where <B as BuilderWithData>::Artifact: 'static {
 		
 		// Get the artifact from the hash map ensuring integrity
 		self.cache.get(&builder.id).map(
@@ -638,8 +677,8 @@ impl ArtifactCache {
 	/// deallocating. `clear()` or `invalidate()` must be called in order to
 	/// free those `Rc`s if required.
 	///
-	pub fn get<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
-			where <B as Builder>::Artifact: 'static {
+	pub fn get<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
+			where <B as BuilderWithData>::Artifact: 'static {
 		
 		if let Some(rc) = self.lookup(promise) {
 			rc
@@ -672,7 +711,7 @@ impl ArtifactCache {
 	}
 	
 	// TODO: docs
-	pub fn get_user_data<B: Builder + 'static>(&self, promise: &ArtifactPromise<B>)
+	pub fn get_user_data<B: BuilderWithData + 'static>(&self, promise: &ArtifactPromise<B>)
 			-> Option<Rc<B::UserData>> {
 		
 		cast_user_data::<B>(
@@ -681,7 +720,7 @@ impl ArtifactCache {
 	}
 	
 	// TODO: docs
-	pub fn set_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: Rc<B::UserData>)
+	pub fn set_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: Rc<B::UserData>)
 			-> Option<Rc<B::UserData>> {
 		
 		cast_user_data::<B>(
@@ -693,7 +732,7 @@ impl ArtifactCache {
 	// pub fn set_user_data_and_invalidate_on_change(...)
 	
 	// TODO: docs
-	pub fn remove_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>)
+	pub fn remove_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>)
 			-> Option<Rc<B::UserData>> {
 		
 		cast_user_data::<B>(
@@ -738,7 +777,7 @@ impl ArtifactCache {
 	/// its building. The dependencies are automatically tracked using the
 	/// `ArtifactResolver` struct.
 	///
-	pub fn invalidate<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) {
+	pub fn invalidate<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) {
 		let any_promise = promise.clone().into_any();
 		
 		self.invalidate_any(any_promise.id);
