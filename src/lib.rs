@@ -80,7 +80,7 @@
 //! impl Builder for BuilderLeaf {
 //!     type Artifact = Leaf;
 //!     
-//!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
+//!     fn build(&self, _resolver: &mut ArtifactResolver) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -113,13 +113,13 @@
 //!     type Artifact = Node;
 //!     type UserData = u8;
 //!     
-//!     fn build(&self, cache: &mut ArtifactResolver, data: Option<Rc<u8>>) -> Self::Artifact {
+//!     fn build(&self, resolver: &mut ArtifactResolver<Self::UserData>) -> Self::Artifact {
 //!         // Resolve ArtifactPromise to its artifact
-//!         let leaf = cache.resolve(&self.builder_leaf);
+//!         let leaf = resolver.resolve(&self.builder_leaf);
 //!         
 //!         Node {
 //!             leaf,
-//!             value: *data.unwrap_or(42.into()), // *-deref Rc
+//!             value: resolver.get_my_user_data().copied().unwrap_or(42),
 //!             // ...
 //!         }
 //!     }
@@ -151,7 +151,7 @@
 //! // Change user data
 //! cache.set_user_data(&node_builder_1, 127.into());
 //! // Without invalidation, the cached artefact remains unchanged
-//! assert_eq!(cache.get_user_data(&node_builder_1), Some(127.into()));
+//! assert_eq!(cache.get_user_data(&node_builder_1), Some(&mut 127));
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //! // Invalidate node, and ensure it made use of the user data
 //! cache.invalidate(&node_builder_1);
@@ -227,6 +227,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 use std::borrow::Borrow;
+use std::marker::PhantomData;
+
 use cfg_if::cfg_if;
 
 #[cfg(feature = "diagnostics")]
@@ -275,20 +277,20 @@ pub trait BuilderWithData: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver, user_data: Option<Rc<Self::UserData>>) -> Self::Artifact;
+	fn build(&self, cache: &mut ArtifactResolver<Self::UserData>) -> Self::Artifact;
 }
 
+// Generic impl for legacy builder
 impl<B: Builder> BuilderWithData for B {
 	type Artifact = B::Artifact;
 	
 	type UserData = ();
 	
-	fn build(&self, cache: &mut ArtifactResolver, user_data: Option<Rc<Self::UserData>>) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
 		self.build(cache)
 	}
 }
 
-// TODO: add legacy builder with generic impl
 
 
 
@@ -377,14 +379,15 @@ impl<B: BuilderWithData + 'static> From<B> for ArtifactPromise<B> {
 /// This struct records each resolution in order to keep track of dependencies.
 /// This is used for correct cache invalidation.
 ///
-pub struct ArtifactResolver<'a> {
+pub struct ArtifactResolver<'a, T = ()> {
 	user: &'a BuilderEntry,
 	cache: &'a mut ArtifactCache,
 	#[cfg(feature = "diagnostics")]
 	diag_builder: &'a BuilderHandle,
+	_b: PhantomData<T>,
 }
 
-impl<'a> ArtifactResolver<'a> {
+impl<'a, T: 'static> ArtifactResolver<'a, T> {
 	/// Resolves the given `ArtifactPromise` into its `Artifact`.
 	///
 	pub fn resolve<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
@@ -397,10 +400,18 @@ impl<'a> ArtifactResolver<'a> {
 		}
 	}
 	
+	
 	// TODO: consider whether mutable access is actually a good option
 	// TODO: consider may be to even allow invalidation
+	pub fn my_user_data(&mut self) -> &mut T {
+		self.cache.get_user_data_cast(self.user.borrow()).unwrap()
+	}
+	
+	pub fn get_my_user_data(&mut self) -> Option<&mut T> {
+		self.cache.get_user_data_cast(self.user.borrow())
+	}
 	// TODO: docs
-	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<Rc<B::UserData>> {
+	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<&mut B::UserData> {
 		self.cache.get_user_data(promise)
 	}
 }
@@ -497,7 +508,7 @@ pub struct ArtifactCache< #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
 	
 	/// Maps Builder-Capsules to their UserData value
-	user_data: HashMap<BuilderId, Rc<dyn Any>>,
+	user_data: HashMap<BuilderId, Box<dyn Any>>,
 	
 	/// Tracks the direct promise dependants of each promise
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
@@ -596,13 +607,17 @@ cfg_if! {
 	}
 }
 
-fn cast_user_data<B: BuilderWithData + 'static>(v: Option<Rc<dyn Any>>)
-		-> Option<Rc<B::UserData>> {
+/// Auxiliarry function to casts an `Option` of `Box` of `Any` to `T`.
+///
+/// Must only be used with the correct `T`, or panics.
+///
+fn cast_user_data<T: 'static>(v: Option<Box<dyn Any>>)
+		-> Option<Box<T>> {
 	
 	v.map(
-		|rc| {
+		|b| {
 			// Ensure value type
-			rc.clone().downcast()
+			b.downcast()
 				.expect("Cached Builder UserData is of invalid type")
 		}
 	)
@@ -689,16 +704,14 @@ impl ArtifactCache {
 			#[cfg(feature = "diagnostics")]
 			let diag_builder = BuilderHandle::new(promise.clone());
 			
-			let user_data = self.get_user_data(promise);
-			
 			let rc = Rc::new(promise.builder.build(
 				&mut ArtifactResolver {
 					user: &ent,
 					cache: self,
 					#[cfg(feature = "diagnostics")]
 					diag_builder: &diag_builder,
+					_b: PhantomData,
 				},
-				user_data,
 			));
 		
 			#[cfg(feature = "diagnostics")]
@@ -710,21 +723,34 @@ impl ArtifactCache {
 		}
 	}
 	
-	// TODO: docs
-	pub fn get_user_data<B: BuilderWithData + 'static>(&self, promise: &ArtifactPromise<B>)
-			-> Option<Rc<B::UserData>> {
-		
-		cast_user_data::<B>(
-			self.user_data.get(&promise.id).cloned()
+	/// Get and cast the user data of given builder id.
+	///
+	/// `T` must be the type of the respective user data of `bid`, or panics.
+	///
+	fn get_user_data_cast<T: 'static>(&mut self, bid: &BuilderId) -> Option<&mut T> {
+		self.user_data.get_mut(bid)
+		.map(
+			|b| {
+				// Ensure data type
+				b.downcast_mut()
+					.expect("Cached Builder UserData is of invalid type")
+			}
 		)
 	}
 	
 	// TODO: docs
-	pub fn set_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: Rc<B::UserData>)
-			-> Option<Rc<B::UserData>> {
+	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>)
+			-> Option<&mut B::UserData> {
 		
-		cast_user_data::<B>(
-			self.user_data.insert(promise.id, user_data)
+		self.get_user_data_cast(&promise.id)
+	}
+	
+	// TODO: docs
+	pub fn set_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: B::UserData)
+			-> Option<Box<B::UserData>> {
+		
+		cast_user_data(
+			self.user_data.insert(promise.id, Box::new(user_data))
 		)
 	}
 	
@@ -733,9 +759,9 @@ impl ArtifactCache {
 	
 	// TODO: docs
 	pub fn remove_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>)
-			-> Option<Rc<B::UserData>> {
+			-> Option<Box<B::UserData>> {
 		
-		cast_user_data::<B>(
+		cast_user_data(
 			self.user_data.remove(&promise.id)
 		)
 	}
