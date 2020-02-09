@@ -5,7 +5,7 @@ use super::BuilderHandle;
 use super::ArtifactHandle;
 
 use std::io::Write;
-
+use cfg_if::cfg_if;
 
 /// Output options for [`TextualDoc`].
 ///
@@ -150,21 +150,20 @@ impl<W: Write> TextualDoc<W> {
 	}
 	
 	fn tynm(&self, ty: &str) -> String {
-		#[cfg(feature = "tynm")]
-		{
-			if let Some((m, n)) = self.opts.tynm_m_n {
-				use tynm::TypeName;
-				
-				let tn: TypeName = ty.into();
-				
-				tn.as_str_mn(m, n)
+		cfg_if! {
+			if #[cfg(feature = "tynm")] {
+				if let Some((m, n)) = self.opts.tynm_m_n {
+					use tynm::TypeName;
+					
+					let tn: TypeName = ty.into();
+					
+					tn.as_str_mn(m, n)
+				} else {
+					ty.to_string()
+				}
 			} else {
 				ty.to_string()
 			}
-		}
-		#[cfg(not(feature = "tynm"))]
-		{
-			ty.to_string()
 		}
 	}
 	

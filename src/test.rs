@@ -254,24 +254,6 @@ fn test_clear() {
 }
 
 #[cfg(feature = "diagnostics")]
-fn visgraph_doc_file() -> diagnostics::VisgraphDoc<std::fs::File> {
-	const TEST_OUTPUT: &'static str = "/tmp/test-output";
-	
-	diagnostics::VisgraphDoc::new(
-		diagnostics::VisgraphDocOptions {
-			show_builder_values: false,
-			show_artifact_values: true,
-		},
-		std::fs::OpenOptions::new()
-			.write(true)
-			.truncate(true)
-			.create(true)
-			.open(TEST_OUTPUT)
-			.unwrap()
-	)
-}
-
-#[cfg(feature = "diagnostics")]
 fn visgraph_doc(buf: Vec<u8>) -> diagnostics::VisgraphDoc<std::io::Cursor<Vec<u8>>> {
 	diagnostics::VisgraphDoc::new(
 		diagnostics::VisgraphDocOptions {

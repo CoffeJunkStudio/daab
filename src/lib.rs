@@ -208,29 +208,19 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 use std::borrow::Borrow;
+use cfg_if::cfg_if;
 
-#[cfg(feature = "diagnostics")]
-use std::ops::Deref;
-
-#[cfg(feature = "diagnostics")]
-use std::ops::DerefMut;
-
-
-#[cfg(feature = "diagnostics")]
-pub mod diagnostics;
-
-
-#[cfg(feature = "diagnostics")]
-use diagnostics::Doctor;
-
-#[cfg(feature = "diagnostics")]
-use diagnostics::ArtifactHandle;
-
-#[cfg(feature = "diagnostics")]
-use diagnostics::BuilderHandle;
-
-#[cfg(feature = "diagnostics")]
-use diagnostics::NoopDoctor as DefDoctor;
+cfg_if! {
+	if #[cfg(feature = "diagnostics")] {
+		use std::ops::Deref;
+		use std::ops::DerefMut;
+		pub mod diagnostics;
+		use diagnostics::Doctor;
+		use diagnostics::ArtifactHandle;
+		use diagnostics::BuilderHandle;
+		use diagnostics::NoopDoctor as DefDoctor;
+	}
+}
 
 
 /// Represents a builder for an artifact.
@@ -349,13 +339,12 @@ impl<'a> ArtifactResolver<'a> {
 	/// Resolves the given `ArtifactPromise` into its `Artifact`.
 	///
 	pub fn resolve<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
-		#[cfg(feature = "diagnostics")]
-		{
-			self.cache.do_resolve(self.user, self.diag_builder, promise)
-		}
-		#[cfg(not(feature = "diagnostics"))]
-		{
-			self.cache.do_resolve(self.user, promise)
+		cfg_if! {
+			if #[cfg(feature = "diagnostics")] {
+				self.cache.do_resolve(self.user, self.diag_builder, promise)
+			} else {
+				self.cache.do_resolve(self.user, promise)
+			}
 		}
 	}
 }
@@ -459,94 +448,89 @@ pub struct ArtifactCache< #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor
 	doctor: T,
 }
 
-#[cfg(feature = "diagnostics")]
-impl Default for ArtifactCache<DefDoctor> {
-	fn default() -> Self {
-		ArtifactCache::new()
-	}
-}
-
-#[cfg(not(feature = "diagnostics"))]
-impl Default for ArtifactCache {
-	fn default() -> Self {
-		ArtifactCache::new()
-	}
-}
-
-#[cfg(not(feature = "diagnostics"))]
-impl ArtifactCache {
-	/// Creates a new empty cache.
-	///
-	pub fn new() -> Self {
-		Self {
-			cache: HashMap::new(),
-			dependants: HashMap::new(),
+cfg_if! {
+	if #[cfg(feature = "diagnostics")] {
+		impl Default for ArtifactCache<DefDoctor> {
+			fn default() -> Self {
+				ArtifactCache::new()
+			}
 		}
-	}
-}
 
+		impl ArtifactCache<DefDoctor> {
+			/// Creates a new empty cache with a dummy doctor.
+			///
+			pub fn new() -> Self {
+				Self {
+					cache: HashMap::new(),
+					dependants: HashMap::new(),
+					
+					doctor: DefDoctor::default(),
+				}
+			}
+		}
 
-#[cfg(feature = "diagnostics")]
-impl ArtifactCache<DefDoctor> {
-	/// Creates a new empty cache with a dummy doctor.
-	///
-	pub fn new() -> Self {
-		Self {
-			cache: HashMap::new(),
-			dependants: HashMap::new(),
+		impl<T: Doctor + 'static> ArtifactCache<T> {
+	
+			/// Creates new empty cache with given doctor for drop-in inspection.
+			///
+			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+			///
+			pub fn new_with_doctor(doctor: T) -> Self {
+				Self {
+					cache: HashMap::new(),
+					dependants: HashMap::new(),
+					
+					doctor,
+				}
+			}
 			
-			doctor: DefDoctor::default(),
-		}
-	}
-}
-
-#[cfg(feature = "diagnostics")]
-impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
-	type Target = ArtifactCache;
-
-	fn deref(&self) -> &Self::Target {
-		self
-	}
-}
-
-#[cfg(feature = "diagnostics")]
-impl<T: Doctor + 'static> DerefMut for ArtifactCache<T> {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		self
-	}
-}
-
-
-#[cfg(feature = "diagnostics")]
-impl<T: Doctor + 'static> ArtifactCache<T> {
-	
-	/// Creates new empty cache with given doctor for drop-in inspection.
-	///
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	///
-	pub fn new_with_doctor(doctor: T) -> Self {
-		Self {
-			cache: HashMap::new(),
-			dependants: HashMap::new(),
+			/// Returns a reference of the inner doctor.
+			///
+			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+			///
+			pub fn get_doctor(&mut self) -> &mut T {
+				&mut self.doctor
+			}
 			
-			doctor,
+			/// Consumes the `ArtifactCache` and returns the inner doctor.
+			///
+			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+			///
+			pub fn into_doctor(self) -> T {
+				self.doctor
+			}
 		}
-	}
-	
-	/// Returns a reference of the inner doctor.
-	///
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	///
-	pub fn get_doctor(&mut self) -> &mut T {
-		&mut self.doctor
-	}
-	
-	/// Consumes the `ArtifactCache` and returns the inner doctor.
-	///
-	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
-	///
-	pub fn into_doctor(self) -> T {
-		self.doctor
+
+		impl<T: Doctor + 'static> Deref for ArtifactCache<T> {
+			type Target = ArtifactCache;
+		
+			fn deref(&self) -> &Self::Target {
+				self
+			}
+		}
+
+		impl<T: Doctor + 'static> DerefMut for ArtifactCache<T> {
+			fn deref_mut(&mut self) -> &mut Self::Target {
+				self
+			}
+		}
+	} else {
+		impl Default for ArtifactCache {
+			fn default() -> Self {
+				ArtifactCache::new()
+			}
+		}
+
+		impl ArtifactCache {
+			/// Creates a new empty cache.
+			///
+			pub fn new() -> Self {
+				Self {
+					cache: HashMap::new(),
+					dependants: HashMap::new(),
+				}
+			}
+		}
 	}
 }
 
