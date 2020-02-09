@@ -33,7 +33,7 @@ use std::rc::Rc;
 use std::fmt::Debug;
 
 use super::ArtifactPromise;
-use super::Builder;
+use super::ArtifactRelated;
 
 
 mod visgraph;
@@ -184,7 +184,7 @@ pub struct BuilderHandle {
 impl BuilderHandle {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
+	pub fn new<T: ArtifactRelated + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
 		let dbg_text = format!("{:#?}", &value.builder);
 		
 		BuilderHandle {

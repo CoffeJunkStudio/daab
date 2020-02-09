@@ -77,9 +77,10 @@
 //!         }
 //!     }
 //! }
+//! impl ArtifactRelated for BuilderLeaf {
+//! 	type Artifact = Leaf;
+//! }
 //! impl Builder for BuilderLeaf {
-//!     type Artifact = Leaf;
-//!     
 //!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
@@ -108,9 +109,10 @@
 //!         }
 //!     }
 //! }
+//! impl ArtifactRelated for BuilderNode {
+//! 	type Artifact = Node;
+//! }
 //! impl Builder for BuilderNode {
-//!     type Artifact = Node;
-//!     
 //!     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = cache.resolve(&self.builder_leaf);
@@ -232,6 +234,16 @@ use diagnostics::BuilderHandle;
 #[cfg(feature = "diagnostics")]
 use diagnostics::NoopDoctor as DefDoctor;
 
+/// Represents a type related to an artifact.
+///
+/// The purpose of this trait is to be a trait bound for every builder trait,
+/// such as the plain Builder or the BuilderWithArg.
+///
+pub trait ArtifactRelated: Debug {
+	/// The artifact type related to this type.
+	///
+	type Artifact: Debug;
+}
 
 /// Represents a builder for an artifact.
 ///
@@ -241,18 +253,28 @@ use diagnostics::NoopDoctor as DefDoctor;
 /// resolve depending builders (as `ArtifactPromise`) in order to create their
 /// artifact.
 ///
-pub trait Builder: Debug {
-	/// The artifact type as produced by this builder.
-	///
-	type Artifact : Debug;
-	
+pub trait Builder: ArtifactRelated {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
 	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
 }
 
+/// Represents a builder for an artifact which takes an extra argument in its
+/// `build_with_arg()` method. This allows to pass data to the build method
+/// that can be different for every call to `build_with_arg()`. Besides that
+/// it is equal in functionality to the `Builder` trait.
+///
+pub trait BuilderWithArg: ArtifactRelated {
+	/// The type of the argument passed to the `build_with_arg()` method.
+	/// 
+	type BuildArg;
 
+	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// dependencies.
+	///
+	fn build_with_arg(&self, cache: &mut ArtifactResolver, arg: Self::BuildArg) -> Self::Artifact;
+}
 
 /// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
 ///
@@ -270,7 +292,7 @@ pub struct ArtifactPromise<B: ?Sized> {
 	id: BuilderId,
 }
 
-impl<B: Builder + 'static> ArtifactPromise<B> {
+impl<B: ArtifactRelated + 'static> ArtifactPromise<B> {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self {
@@ -325,7 +347,7 @@ impl PartialEq for ArtifactPromise<dyn Any> {
 impl Eq for ArtifactPromise<dyn Any> {
 }
 
-impl<B: Builder + 'static> From<B> for ArtifactPromise<B> {
+impl<B: ArtifactRelated + 'static> From<B> for ArtifactPromise<B> {
 	fn from(b: B) -> Self {
 		Self::new(b)
 	}
@@ -358,6 +380,23 @@ impl<'a> ArtifactResolver<'a> {
 			self.cache.do_resolve(self.user, promise)
 		}
 	}
+
+	/// Resolves the given `ArtifactPromise` into its `Artifact`.
+	///
+	pub fn resolve_with_arg<B: BuilderWithArg + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<B>,
+		build_arg: B::BuildArg
+	) -> Rc<B::Artifact> {
+		#[cfg(feature = "diagnostics")]
+		{
+			self.cache.do_resolve_with_arg(self.user, self.diag_builder, promise, build_arg)
+		}
+		#[cfg(not(feature = "diagnostics"))]
+		{
+			self.cache.do_resolve_with_arg(self.user, promise, build_arg)
+		}
+	}
 }
 
 
@@ -370,7 +409,7 @@ impl<'a> ArtifactResolver<'a> {
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct BuilderId(*const dyn Any);
 
-impl<B: Builder + 'static> From<&Rc<B>> for BuilderId {
+impl<B: ArtifactRelated + 'static> From<&Rc<B>> for BuilderId {
 	fn from(rc: &Rc<B>) -> Self {
 		BuilderId(rc.as_ref() as &dyn Any as *const dyn Any)
 	}
@@ -398,7 +437,7 @@ struct BuilderEntry {
 }
 
 impl BuilderEntry {
-	fn new<T: Builder + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
+	fn new<T: ArtifactRelated + Debug + 'static>(value: ArtifactPromise<T>) -> Self {
 		let id = value.id;
 		
 		BuilderEntry {
@@ -552,6 +591,21 @@ impl<T: Doctor + 'static> ArtifactCache<T> {
 
 impl ArtifactCache {
 	
+	fn update_deps<B: ArtifactRelated + 'static>(&mut self,
+			user: &BuilderEntry,
+			#[cfg(feature = "diagnostics")]
+			diag_builder: &BuilderHandle,
+			promise: &ArtifactPromise<B>) {
+		
+		let deps = self.get_dependants(&promise.clone().into_any());
+		if !deps.contains(user.borrow()) {
+			deps.insert(user.id);
+		}
+		
+		#[cfg(feature = "diagnostics")]
+		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
+	}
+
 	/// Resolves the artifact of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
@@ -561,15 +615,28 @@ impl ArtifactCache {
 			diag_builder: &BuilderHandle,
 			promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		
-		let deps = self.get_dependants(&promise.clone().into_any());
-		if !deps.contains(user.borrow()) {
-			deps.insert(user.id);
-		}
-		
-		#[cfg(feature = "diagnostics")]
-		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
-		
+		self.update_deps(
+			user,
+			#[cfg(feature = "diagnostics")]
+			diag_builder,
+			promise);
 		self.get(promise)
+	}
+
+	fn do_resolve_with_arg<B: BuilderWithArg + 'static>(&mut self,
+			user: &BuilderEntry,
+			#[cfg(feature = "diagnostics")]
+			diag_builder: &BuilderHandle,
+			promise: &ArtifactPromise<B>,
+			arg: B::BuildArg) -> Rc<B::Artifact> {
+		
+		
+		self.update_deps(
+			user,
+			#[cfg(feature = "diagnostics")]
+			diag_builder,
+			promise);
+		self.get_with_arg(promise, arg)
 	}
 	
 	/// Returns the vector of dependants of promise
@@ -584,8 +651,8 @@ impl ArtifactCache {
 	
 	/// Get the stored artifact if it exists.
 	///
-	fn lookup<B: Builder + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
-			where <B as Builder>::Artifact: 'static {
+	fn lookup<B: ArtifactRelated + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
+			where <B as ArtifactRelated>::Artifact: 'static {
 		
 		// Get the artifact from the hash map ensuring integrity
 		self.cache.get(&builder.id).map(
@@ -620,7 +687,7 @@ impl ArtifactCache {
 	/// free those `Rc`s if required.
 	///
 	pub fn get<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
-			where <B as Builder>::Artifact: 'static {
+			where <B as ArtifactRelated>::Artifact: 'static {
 		
 		if let Some(rc) = self.lookup(promise) {
 			rc
@@ -637,6 +704,39 @@ impl ArtifactCache {
 				#[cfg(feature = "diagnostics")]
 				diag_builder: &diag_builder,
 			}));
+		
+			#[cfg(feature = "diagnostics")]
+			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
+			
+			self.insert(ent, ArtifactEntry::new( rc.clone() ));
+			
+			rc
+		}
+	}
+
+	/// Gets the artifact of the given builder using the given build argument.
+	/// 
+	/// Besides the build argument, this method is very similar to the plain
+	/// `get()` method.
+	///
+	pub fn get_with_arg<B: BuilderWithArg + 'static>(&mut self, promise: &ArtifactPromise<B>, arg: B::BuildArg) -> Rc<B::Artifact>
+			where <B as ArtifactRelated>::Artifact: 'static {
+		
+		if let Some(rc) = self.lookup(promise) {
+			rc
+			
+		} else {
+			let ent = BuilderEntry::new(promise.clone());
+			
+			#[cfg(feature = "diagnostics")]
+			let diag_builder = BuilderHandle::new(promise.clone());
+			
+			let rc = Rc::new(promise.builder.build_with_arg(&mut ArtifactResolver {
+				user: &ent,
+				cache: self,
+				#[cfg(feature = "diagnostics")]
+				diag_builder: &diag_builder,
+			}, arg));
 		
 			#[cfg(feature = "diagnostics")]
 			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
