@@ -210,11 +210,13 @@ use std::fmt::Debug;
 use std::borrow::Borrow;
 use cfg_if::cfg_if;
 
+#[cfg(feature = "diagnostics")]
+pub mod diagnostics;
+
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
 		use std::ops::Deref;
 		use std::ops::DerefMut;
-		pub mod diagnostics;
 		use diagnostics::Doctor;
 		use diagnostics::ArtifactHandle;
 		use diagnostics::BuilderHandle;
