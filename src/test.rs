@@ -172,6 +172,66 @@ impl Builder for BuilderComplexNode {
 	}
 }
 
+#[derive(Debug, PartialEq)]
+struct NodeWithArg {
+	arg: i32
+}
+
+#[derive(Debug)]
+struct BuilderNodeWithArg;
+
+impl ArtifactRelated for BuilderNodeWithArg {
+	type Artifact = NodeWithArg;
+}
+
+impl BuilderWithArg for BuilderNodeWithArg {
+	type BuildArg = i32;
+
+	fn build_with_arg(
+		&self,
+		_resolver: &mut ArtifactResolver,
+		arg: &Self::BuildArg
+	) -> Self::Artifact {
+
+		Self::Artifact {
+			arg: *arg
+		}
+	}
+}
+
+#[derive(Debug)]
+struct TransitiveNodeWithArg {
+	node_with_arg: Rc<NodeWithArg>,
+	arg: f32
+}
+
+#[derive(Debug)]
+struct BuilderTransitiveNodeWithArg {
+	node_with_arg: ArtifactPromise<BuilderNodeWithArg>,
+}
+
+impl ArtifactRelated for BuilderTransitiveNodeWithArg {
+	type Artifact = TransitiveNodeWithArg;
+}
+
+impl BuilderWithArg for BuilderTransitiveNodeWithArg {
+	type BuildArg = (i32, f32);
+
+	fn build_with_arg(
+		&self,
+		resolver: &mut ArtifactResolver,
+		(transitive_arg, arg): &Self::BuildArg
+	) -> Self::Artifact {
+
+		let node_with_arg = resolver.resolve_with_arg(&self.node_with_arg, *transitive_arg);
+
+		Self::Artifact {
+			node_with_arg,
+			arg: *arg
+		}
+	}
+}
+
 #[test]
 fn test_leaf() {
 	let mut cache = ArtifactCache::new();
@@ -240,6 +300,23 @@ fn test_complex() {
 	assert_eq!(artifact_root.left().unwrap().right(), Some(&artifact_node));
 	assert_eq!(artifact_node.left().unwrap().leaf(), Some(&artifact_leaf));
 	
+}
+
+#[test]
+fn test_with_arg() {
+	let mut cache = ArtifactCache::new();
+
+	let promise1 = ArtifactPromise::new(BuilderNodeWithArg);
+	let node1 = cache.get_with_arg(&promise1, 42);
+	let node1_again = cache.get_with_arg(&promise1, 42);
+
+	let promise2 = ArtifactPromise::new(BuilderTransitiveNodeWithArg {
+		node_with_arg: promise1
+	});
+	let node2 = cache.get_with_arg(&promise2, (43, 4.2));
+
+	assert_eq!(node1, node1_again);
+	assert_ne!(node1, node2.node_with_arg);
 }
 
 #[test]

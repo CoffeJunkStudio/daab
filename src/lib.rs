@@ -268,12 +268,12 @@ pub trait Builder: ArtifactRelated {
 pub trait BuilderWithArg: ArtifactRelated {
 	/// The type of the argument passed to the `build_with_arg()` method.
 	/// 
-	type BuildArg;
+	type BuildArg: PartialEq + Any;
 
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build_with_arg(&self, cache: &mut ArtifactResolver, arg: Self::BuildArg) -> Self::Artifact;
+	fn build_with_arg(&self, cache: &mut ArtifactResolver, arg: &Self::BuildArg) -> Self::Artifact;
 }
 
 /// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
@@ -415,16 +415,27 @@ impl<B: ArtifactRelated + 'static> From<&Rc<B>> for BuilderId {
 	}
 }
 
-
 #[derive(Clone, Debug)]
 struct ArtifactEntry {
 	value: Rc<dyn Any>,
+	build_arg: Option<Rc<dyn Any>>
 }
 
 impl ArtifactEntry {
 	fn new<T: Any + Debug>(value: Rc<T>) -> Self {
 		ArtifactEntry {
 			value,
+			build_arg: None
+		}
+	}
+
+	fn new_with_arg<T: Any + Debug>(
+		value: Rc<T>,
+		build_arg: Rc<dyn Any>
+	) -> Self {
+		ArtifactEntry {
+			value,
+			build_arg: Some(build_arg)
 		}
 	}
 }
@@ -648,12 +659,9 @@ impl ArtifactCache {
 		
 		self.dependants.get_mut(promise.borrow()).unwrap()
 	}
-	
-	/// Get the stored artifact if it exists.
-	///
+
 	fn lookup<B: ArtifactRelated + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
 			where <B as ArtifactRelated>::Artifact: 'static {
-		
 		// Get the artifact from the hash map ensuring integrity
 		self.cache.get(&builder.id).map(
 			|ent| {
@@ -662,6 +670,31 @@ impl ArtifactCache {
 					.expect("Cached Builder Artifact is of invalid type")
 			}
 		)
+	}
+
+	fn lookup_with_arg<B: BuilderWithArg + 'static>(&self, builder: &ArtifactPromise<B>, arg: &Rc<B::BuildArg>) -> Option<Rc<B::Artifact>>
+			where <B as ArtifactRelated>::Artifact: 'static {
+		// Get the artifact from the hash map ensuring integrity
+		self.cache.get(&builder.id).map(
+			|ent| {
+				// Ensure value type
+				let value = ent.value.clone().downcast()
+					.expect("Cached Builder Artifact is of invalid type");
+				
+				let stored_arg = &ent.build_arg
+					.as_ref()
+					.expect("No cached build arg present")
+					.clone()
+					.downcast()
+					.expect("Cached Build Arg is of invalid type");
+
+				if arg != stored_arg {
+					None
+				} else {
+					Some(value)
+				}
+			}
+		).flatten()
 	}
 	
 	/// Store given artifact for given builder.
@@ -722,7 +755,9 @@ impl ArtifactCache {
 	pub fn get_with_arg<B: BuilderWithArg + 'static>(&mut self, promise: &ArtifactPromise<B>, arg: B::BuildArg) -> Rc<B::Artifact>
 			where <B as ArtifactRelated>::Artifact: 'static {
 		
-		if let Some(rc) = self.lookup(promise) {
+		let build_arg_rc = Rc::new(arg);
+
+		if let Some(rc) = self.lookup_with_arg(promise, &build_arg_rc) {
 			rc
 			
 		} else {
@@ -736,12 +771,12 @@ impl ArtifactCache {
 				cache: self,
 				#[cfg(feature = "diagnostics")]
 				diag_builder: &diag_builder,
-			}, arg));
+			}, &build_arg_rc));
 		
 			#[cfg(feature = "diagnostics")]
 			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
 			
-			self.insert(ent, ArtifactEntry::new( rc.clone() ));
+			self.insert(ent, ArtifactEntry::new_with_arg( rc.clone(), build_arg_rc ));
 			
 			rc
 		}
