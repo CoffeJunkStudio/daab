@@ -79,8 +79,9 @@
 //! }
 //! impl Builder for BuilderLeaf {
 //!     type Artifact = Leaf;
+//!     type UserData = ();
 //!     
-//!     fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
+//!     fn build(&self, _cache: &mut ArtifactResolver, _ud: Option<Rc<()>>) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -110,8 +111,9 @@
 //! }
 //! impl Builder for BuilderNode {
 //!     type Artifact = Node;
+//!     type UserData = ();
 //!     
-//!     fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+//!     fn build(&self, cache: &mut ArtifactResolver, _ud: Option<Rc<()>>) -> Self::Artifact {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = cache.resolve(&self.builder_leaf);
 //!         
@@ -238,11 +240,17 @@ pub trait Builder: Debug {
 	///
 	type Artifact : Debug;
 	
+	// TODO: docs
+	type UserData : Debug + 'static;
+	
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
+	fn build(&self, cache: &mut ArtifactResolver, user_data: Option<Rc<Self::UserData>>) -> Self::Artifact;
 }
+
+// TODO: add legacy builder with generic impl
+
 
 
 
@@ -349,6 +357,13 @@ impl<'a> ArtifactResolver<'a> {
 			}
 		}
 	}
+	
+	// TODO: consider whether mutable access is actually a good option
+	// TODO: consider may be to even allow invalidation
+	// TODO: docs
+	pub fn get_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<Rc<B::UserData>> {
+		self.cache.get_user_data(promise)
+	}
 }
 
 
@@ -442,6 +457,9 @@ pub struct ArtifactCache< #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtifactEntry>,
 	
+	/// Maps Builder-Capsules to their UserData value
+	user_data: HashMap<BuilderId, Rc<dyn Any>>,
+	
 	/// Tracks the direct promise dependants of each promise
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
 	
@@ -464,6 +482,7 @@ cfg_if! {
 			pub fn new() -> Self {
 				Self {
 					cache: HashMap::new(),
+					user_data: HashMap::new(),
 					dependants: HashMap::new(),
 					
 					doctor: DefDoctor::default(),
@@ -480,6 +499,7 @@ cfg_if! {
 			pub fn new_with_doctor(doctor: T) -> Self {
 				Self {
 					cache: HashMap::new(),
+					user_data: HashMap::new(),
 					dependants: HashMap::new(),
 					
 					doctor,
@@ -529,11 +549,24 @@ cfg_if! {
 			pub fn new() -> Self {
 				Self {
 					cache: HashMap::new(),
+					user_data: HashMap::new(),
 					dependants: HashMap::new(),
 				}
 			}
 		}
 	}
+}
+
+fn cast_user_data<B: Builder + 'static>(v: Option<Rc<dyn Any>>)
+		-> Option<Rc<B::UserData>> {
+	
+	v.map(
+		|rc| {
+			// Ensure value type
+			rc.clone().downcast()
+				.expect("Cached Builder UserData is of invalid type")
+		}
+	)
 }
 
 impl ArtifactCache {
@@ -617,12 +650,17 @@ impl ArtifactCache {
 			#[cfg(feature = "diagnostics")]
 			let diag_builder = BuilderHandle::new(promise.clone());
 			
-			let rc = Rc::new(promise.builder.build(&mut ArtifactResolver {
-				user: &ent,
-				cache: self,
-				#[cfg(feature = "diagnostics")]
-				diag_builder: &diag_builder,
-			}));
+			let user_data = self.get_user_data(promise);
+			
+			let rc = Rc::new(promise.builder.build(
+				&mut ArtifactResolver {
+					user: &ent,
+					cache: self,
+					#[cfg(feature = "diagnostics")]
+					diag_builder: &diag_builder,
+				},
+				user_data,
+			));
 		
 			#[cfg(feature = "diagnostics")]
 			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
@@ -633,10 +671,49 @@ impl ArtifactCache {
 		}
 	}
 	
+	// TODO: docs
+	pub fn get_user_data<B: Builder + 'static>(&self, promise: &ArtifactPromise<B>)
+			-> Option<Rc<B::UserData>> {
+		
+		cast_user_data::<B>(
+			self.user_data.get(&promise.id).cloned()
+		)
+	}
+	
+	// TODO: docs
+	pub fn set_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: Rc<B::UserData>)
+			-> Option<Rc<B::UserData>> {
+		
+		cast_user_data::<B>(
+			self.user_data.insert(promise.id, user_data)
+		)
+	}
+	
+	// TODO: add convenience function such as:
+	// pub fn set_user_data_and_invalidate_on_change(...)
+	
+	// TODO: docs
+	pub fn remove_user_data<B: Builder + 'static>(&mut self, promise: &ArtifactPromise<B>)
+			-> Option<Rc<B::UserData>> {
+		
+		cast_user_data::<B>(
+			self.user_data.remove(&promise.id)
+		)
+	}
+	
+	// TODO: docs
+	pub fn clear_user_data(&mut self) {
+		
+		self.user_data.clear();
+	}
+	
+	// TODO: consider whether user data shall survive invalidation or not
+	
 	/// Clears the entire cache including all kept builder and artifact `Rc`s.
 	///
 	pub fn clear(&mut self) {
 		self.cache.clear();
+		self.user_data.clear();
 		self.dependants.clear();
 		
 		#[cfg(feature = "diagnostics")]
