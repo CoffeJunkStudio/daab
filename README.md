@@ -26,23 +26,26 @@ to call its `Builder::build()` method directly. In other respects, the
 instance among several dependants.
 This `Rc`-like structure creates naturally a DAG.
 
-For building a `Builder`, its `Builder::build()` method is provided with a
-`ArtifactResolver` that allows to resolve depending `ArtifactPromise`s into
-their respective artifacts, which is, in order to form a DAG, wrapped
-behind a `Rc`.
+For building a `Builder`s artifact, its `Builder::build()` method is
+provided with a `ArtifactResolver` that allows to resolve depending
+`ArtifactPromise`s into their respective artifacts, which is,
+in order to form a DAG, wrapped behind a `Rc`.
 
-As entry point serves the `ArtifactCache`, which allows to resolve any
-`ArtifactPromise` to its artifact outside of a `Builder`. The
-`ArtifactCache` is essentially a cache. It can be used to translate any
-number of `ArtifactPromise`s, sharing their common dependencies.
+As entry point serves the `ArtifactCache`, which allows outside of a
+`Builder` to resolve any `ArtifactPromise` to its artifact. The
+`ArtifactCache` is essentially a cache for artifacts. It can be used to
+translate any number of `ArtifactPromise`s to their respective artifact,
+while sharing their common dependencies.
 Consequently, resolving the same `ArtifactPromise` using the same
 `ArtifactCache` results in the same `Rc`ed artifact.
+However, using different `ArtifactCache`s results in different artifacts.
 
-When artifacts shall be explicitly recreated, e.g. to form a second
-independent artifact DAG, `ArtifactCache` has a `clear()` method
-to reset the cache.
+The `ArtifactCache` has a `clear()` method to reset the cache.
+This could be useful to free the resources kept by all artifacts and
+builders, which are cached in it, or when artifacts shall be explicitly
+recreated, e.g. to form a second independent artifact DAG.
 Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
-builder artifact including its dependants (i.e. those artifacts which had
+builder and artifact including its dependants (i.e. those artifacts which had
 used the invalidated one).
 
 Minimal Rust version: **1.40**
@@ -168,6 +171,7 @@ To ease conversion between them, all creatable `ArtifactCache`s
 (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
 `&mut ArtifactCache<dyn Doctor>` which has all the important methods
 implemented.
+
 
 
 
