@@ -206,6 +206,7 @@ use std::collections::HashSet;
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::fmt;
 use std::fmt::Debug;
 use std::borrow::Borrow;
 use cfg_if::cfg_if;
@@ -457,6 +458,13 @@ cfg_if! {
 				ArtifactCache::new()
 			}
 		}
+		
+		impl<T: Debug> Debug for ArtifactCache<T> {
+			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
+					self.cache, self.dependants, self.doctor)
+			}
+		}
 
 		impl ArtifactCache<DefDoctor> {
 			/// Creates a new empty cache with a dummy doctor.
@@ -520,6 +528,13 @@ cfg_if! {
 		impl Default for ArtifactCache {
 			fn default() -> Self {
 				ArtifactCache::new()
+			}
+		}
+		
+		impl Debug for ArtifactCache {
+			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?} }}",
+					self.cache, self.dependants)
 			}
 		}
 
