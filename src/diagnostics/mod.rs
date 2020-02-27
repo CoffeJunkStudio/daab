@@ -1,6 +1,6 @@
 
 //!
-//! # Extensive debugging analysis module.
+//! # Extensive debugging and analysis module.
 //!
 //! **Notice: This module is only available if the `diagnostics` feature has been activated**.
 //!
@@ -58,7 +58,7 @@ pub use textual::TextualDoc;
 /// It will be supplied with relevant object(s), such as `Builder`s and artifacts.
 /// For details on each event see the respective method.
 ///
-/// Each method as a default implementation to ease implementing specialized `Doctor`s which don't need all the events. Each default implementation just dose nothing, i.e. are no-ops.
+/// Each method as a default implementation to ease implementing specialized `Doctor`s which don't need all the events. The default implementations do nothing, i.e. are no-ops.
 ///
 ///[`ArtifactCache`]: ../struct.ArtifactCache.html
 ///[`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
@@ -83,7 +83,7 @@ pub trait Doctor {
 		// NOOP
 	}
 	
-	/// The entire cache is cleared.
+	/// The entire cache is cleared via `ArtifactCache::clear()`.
 	///
 	fn clear(&mut self) {
 		// NOOP
@@ -110,7 +110,7 @@ pub trait Doctor {
 
 /// Encapsulates a generic artifact with some debugging information.
 ///
-/// This struct encapsulates a artifact as `Rc<dyn Any>` which is fairly usless,
+/// This struct encapsulates a artifact as `Rc<dyn Any>` which might be fairly usless,
 /// unless one wants to cast or test it against a concrete type.
 /// Thus this struct also contains the strinified type name of that value
 /// as well as the `Debug` string of the value.
@@ -162,8 +162,8 @@ impl Eq for ArtifactHandle {
 
 /// Encapsulates a generic builder with some debugging information.
 ///
-/// This struct encapsulates a builder as `ArtifactPromise<dyn Any>` which is fairly usless,
-/// unless one wants to cast or test it against a concrete type.
+/// This struct encapsulates a builder as `ArtifactPromise<dyn Any>` which might
+/// be fairly usless.
 /// Thus this struct also contains the strinified type name of that value
 /// as well as the `Debug` string of the value.
 /// Also notice, that different builders can be differentiated by the allocation

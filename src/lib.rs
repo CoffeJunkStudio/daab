@@ -25,23 +25,26 @@
 //! instance among several dependants.
 //! This `Rc`-like structure creates naturally a DAG.
 //!
-//! For building a `Builder`, its `Builder::build()` method is provided with a
-//! [`ArtifactResolver`] that allows to resolve depending `ArtifactPromise`s into
-//! their respective artifacts, which is, in order to form a DAG, wrapped
-//! behind a `Rc`.
+//! For building a `Builder`s artifact, its `Builder::build()` method is
+//! provided with a [`ArtifactResolver`] that allows to resolve depending
+//! `ArtifactPromise`s into their respective artifacts, which is,
+//! in order to form a DAG, wrapped behind a `Rc`.
 //!
-//! As entry point serves the [`ArtifactCache`], which allows to resolve any
-//! `ArtifactPromise` to its artifact outside of a `Builder`. The
-//! `ArtifactCache` is essentially a cache. It can be used to translate any
-//! number of `ArtifactPromise`s, sharing their common dependencies.
+//! As entry point serves the [`ArtifactCache`], which allows outside of a
+//! `Builder` to resolve any `ArtifactPromise` to its artifact. The
+//! `ArtifactCache` is essentially a cache for artifacts. It can be used to
+//! translate any number of `ArtifactPromise`s to their respective artifact,
+//! while sharing their common dependencies.
 //! Consequently, resolving the same `ArtifactPromise` using the same
 //! `ArtifactCache` results in the same `Rc`ed artifact.
+//! However, using different `ArtifactCache`s results in different artifacts.
 //!
-//! When artifacts shall be explicitly recreated, e.g. to form a second
-//! independent artifact DAG, `ArtifactCache` has a `clear()` method
-//! to reset the cache.
+//! The `ArtifactCache` has a `clear()` method to reset the cache.
+//! This could be useful to free the resources kept by all artifacts and
+//! builders, which are cached in it, or when artifacts shall be explicitly
+//! recreated, e.g. to form a second independent artifact DAG.
 //! Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
-//! builder artifact including its dependants (i.e. those artifacts which had
+//! builder and artifact including its dependants (i.e. those artifacts which had
 //! used the invalidated one).
 //!
 //![`Builder`]: trait.Builder.html
@@ -225,6 +228,7 @@ use std::collections::HashSet;
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::fmt;
 use std::fmt::Debug;
 use std::borrow::Borrow;
 use std::marker::PhantomData;
@@ -248,11 +252,11 @@ cfg_if! {
 
 /// Represents a builder for an artifact.
 ///
-/// Each builder is supposed to contain all direct dependencies possibly other
+/// Each builder is supposed to contain all direct dependencies such as other
 /// builders.
-/// In the `build()` function, the builder can access `cache` in order to
-/// resolve depending builders (as `ArtifactPromise`) in order to create their
-/// artifact.
+/// In the `build()` function, `resolver` gives access to the `ArtifactCache`
+/// in order to resolve depending builders (aka `ArtifactPromise`s) into their
+/// respective artifacts.
 ///
 pub trait Builder: Debug {
 	/// The artifact type as produced by this builder.
@@ -262,7 +266,7 @@ pub trait Builder: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact;
+	fn build(&self, resolver: &mut ArtifactResolver) -> Self::Artifact;
 }
 
 
@@ -295,15 +299,18 @@ impl<B: Builder> BuilderWithData for B {
 
 
 
-/// Encapsulates a builder as promise for its artifact from the `ArtifactCache`.
+/// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
 ///
 /// This struct is essentially a wrapper around `Rc<B>`, but it provides a
-/// `Hash` and `Eq` implementation based no the identity of the `Rc`s inner value.
-///
-/// All clones of an `ArtifactPromise` are considered identical.
+/// `Hash` and `Eq` implementation based on the identity of the `Rc`s inner
+/// value. In other words the address of the allocation behind the Rc is
+/// compared instead of the semantics (also see [`Rc::ptr_eq()`]).
+/// Thus all clones of an `ArtifactPromise` are considered identical.
 ///
 /// An `ArtifactPromise` can be either resolved using the `ArtifactCache::get()`
-/// or `ArtifactResolver::resolve()`.
+/// or `ArtifactResolver::resolve()`, whatever is available.
+///
+/// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
 ///
 #[derive(Debug)]
 pub struct ArtifactPromise<B: ?Sized> {
@@ -374,10 +381,16 @@ impl<B: BuilderWithData + 'static> From<B> for ArtifactPromise<B> {
 
 
 
-/// Resolves any `ArtifactPromise` used to resolve the dependencies of builders.
+/// Resolves any `ArtifactPromise` to the artifact of the inner builder.
 ///
-/// This struct records each resolution in order to keep track of dependencies.
-/// This is used for correct cache invalidation.
+/// This struct is only available to `Builder`s within their `build()` method.
+/// It gives certain access to the `ArtifactCache`, such as resolving
+/// `ArtifactPromise`s.
+///
+/// The `ArtifactResolver` records each resolution of an `ArtifactPromise`
+/// in order to keep track of dependencies between builders.
+/// This dependency information is used for correct invalidation of dependants
+/// on cache invalidation via `ArtifactCache::invalidate()`.
 ///
 pub struct ArtifactResolver<'a, T = ()> {
 	user: &'a BuilderEntry,
@@ -388,7 +401,9 @@ pub struct ArtifactResolver<'a, T = ()> {
 }
 
 impl<'a, T: 'static> ArtifactResolver<'a, T> {
-	/// Resolves the given `ArtifactPromise` into its `Artifact`.
+	/// Resolves the given `ArtifactPromise` into its artifact either by
+	/// looking up the cached value in the associated `ArtifactCache` or by
+	/// building it.
 	///
 	pub fn resolve<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact> {
 		cfg_if! {
@@ -433,6 +448,9 @@ impl<B: BuilderWithData + 'static> From<&Rc<B>> for BuilderId {
 }
 
 
+/// Auxiliary struct for the `ArtifactCache` containing an untyped (aka
+/// `dyn Any`) and `Rc`-ed artifact.
+///
 #[derive(Clone, Debug)]
 struct ArtifactEntry {
 	value: Rc<dyn Any>,
@@ -447,19 +465,18 @@ impl ArtifactEntry {
 }
 
 
+/// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
+/// `dyn Any`) ArtifactPromise.
+///
 #[derive(Clone, Debug)]
 struct BuilderEntry {
 	value: ArtifactPromise<dyn Any>,
-	id: BuilderId,
 }
 
 impl BuilderEntry {
 	fn new<T: BuilderWithData + 'static>(value: ArtifactPromise<T>) -> Self {
-		let id = value.id;
-		
 		BuilderEntry {
 			value: value.into_any(),
-			id,
 		}
 	}
 }
@@ -481,27 +498,42 @@ impl Eq for BuilderEntry {
 
 impl Borrow<BuilderId> for BuilderEntry {
 	fn borrow(&self) -> &BuilderId {
-		&self.id
+		&self.value.id
 	}
 }
 
 
 
-/// Central structure to prevent dependency duplication on building.
+/// Structure for caching and looking up artifacts.
 ///
-/// Notice the debugging version (activating the **`diagnostics`** feature) of this
-/// struct contains a debugging `Doctor`, which
-/// allows run-time inspection of various events. Therefore, `ArtifactCache`
-/// is generic to some `Doctor`.
-/// Thus, the `new()` function returns actually a `ArtifactCache<NoopDoctor>`
-/// and `new_with_doctor()` returns some `ArtifactCache<T>` those
-/// can be store in variables.
+/// The `ArtifactCache` is the central structure of this crate. It helps to
+/// avoid dependency duplication when multiple `Builder`s depend on the same
+/// artifact.
 ///
+/// Since all `Builder`s in the context of this crate are supposed to be wrapped
+/// within `ArtifactPromise`s, the `ArtifactCache` is the only way of acquiring
+/// an artifact in the first place.
+///
+/// Notice In the debugging version (when the **`diagnostics`** feature is active),
+/// this struct contains a debuger `Doctor`, which
+/// allows run-time inspection of various events.
+/// In order to store it, the **`diagnostics`** `ArtifactCache` is generic to
+/// some `Doctor`.
+/// The `new()` method then returns a `ArtifactCache<NoopDoctor>`
+/// and `new_with_doctor()` returns some `ArtifactCache<T>`.
+///
+/// Only an `ArtifactCache<T>` with `T: Sized` can be store in variables.
 /// However, since most of the code does not care about the concrete
-/// `Doctor` the default generic is `dyn Doctor`.
-/// To ease conversion between them, all creatable `ArtifactCache`s
-/// (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-/// `ArtifactCache<dyn Doctor>` which has all the methods implemented.
+/// `Doctor` the default generic is `dyn Doctor`, on which all other methods are
+/// defined.
+/// An `ArtifactCache<dyn Doctor>` can not be stored, but it can be passed
+/// on by reference (e.g. as `&mut ArtifactCache`). This prevents the use of
+/// additional generics in **`diagnostics`** mode, and allows to easier achive
+/// compatibility between **`diagnostics`** and non-**`diagnostics`** mode.
+/// To ease conversion between `ArtifactCache<T>` and
+/// `ArtifactCache<dyn Doctor>` (aka `ArtifactCache`), all creatable
+/// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
+/// to `ArtifactCache<dyn Doctor>`.
 ///
 pub struct ArtifactCache< #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor> {
 	/// Maps Builder-Capsules to their Artifact value
@@ -525,6 +557,13 @@ cfg_if! {
 				ArtifactCache::new()
 			}
 		}
+		
+		impl<T: Debug> Debug for ArtifactCache<T> {
+			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
+					self.cache, self.dependants, self.doctor)
+			}
+		}
 
 		impl ArtifactCache<DefDoctor> {
 			/// Creates a new empty cache with a dummy doctor.
@@ -542,7 +581,7 @@ cfg_if! {
 
 		impl<T: Doctor + 'static> ArtifactCache<T> {
 	
-			/// Creates new empty cache with given doctor for drop-in inspection.
+			/// Creates new empty cache with given doctor for inspection.
 			///
 			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
 			///
@@ -592,6 +631,13 @@ cfg_if! {
 				ArtifactCache::new()
 			}
 		}
+		
+		impl Debug for ArtifactCache {
+			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?} }}",
+					self.cache, self.dependants)
+			}
+		}
 
 		impl ArtifactCache {
 			/// Creates a new empty cache.
@@ -636,7 +682,7 @@ impl ArtifactCache {
 		
 		let deps = self.get_dependants(&promise.clone().into_any());
 		if !deps.contains(user.borrow()) {
-			deps.insert(user.id);
+			deps.insert(*user.borrow());
 		}
 		
 		#[cfg(feature = "diagnostics")]
@@ -655,7 +701,7 @@ impl ArtifactCache {
 		self.dependants.get_mut(promise.borrow()).unwrap()
 	}
 	
-	/// Get the stored artifact if it exists.
+	/// Get and cast the stored artifact if it exists.
 	///
 	fn lookup<B: BuilderWithData + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<Rc<B::Artifact>>
 			where <B as BuilderWithData>::Artifact: 'static {
@@ -685,12 +731,14 @@ impl ArtifactCache {
 	/// Gets the artifact of the given builder.
 	///
 	/// This method looks up whether the artifact for the given builder is still
-	/// present in the cache, or it will use the builder to build and store the
-	/// artifact.
+	/// present in the cache, or it will use the builder to build a fresh
+	/// artifact and store it in the cache for later reuse.
 	///
-	/// Notice the given promise will be stored kept to prevent it from
-	/// deallocating. `clear()` or `invalidate()` must be called in order to
-	/// free those `Rc`s if required.
+	/// Notice the given promise as well as the artifact will be stored in the
+	/// cache, until `clear()` or `invalidate()` with that promise are called.
+	/// The promise is kept to prevent it from deallocating, which is important
+	/// for correctness of the pointer comparison, internally done by the
+	/// promise.
 	///
 	pub fn get<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Rc<B::Artifact>
 			where <B as BuilderWithData>::Artifact: 'static {
@@ -774,7 +822,7 @@ impl ArtifactCache {
 	
 	// TODO: consider whether user data shall survive invalidation or not
 	
-	/// Clears the entire cache including all kept builder and artifact `Rc`s.
+	/// Clears the entire cache including all kept promise and artifact `Rc`s.
 	///
 	pub fn clear(&mut self) {
 		self.cache.clear();
@@ -785,7 +833,7 @@ impl ArtifactCache {
 		self.doctor.clear();
 	}
 	
-	/// Auxiliary invalidation function using a `BuilderId`.
+	/// Auxiliary invalidation function using an untyped (aka `dyn Any`) `BuilderId`.
 	///
 	fn invalidate_any(&mut self, builder: BuilderId) {
 		if let Some(set) = self.dependants.remove(&builder) {
@@ -797,11 +845,12 @@ impl ArtifactCache {
 		self.cache.remove(&builder);
 	}
 	
-	/// Clears cached artifact of the given builder and all depending artifacts.
+	/// Removes the given promise with its cached artifact from the cache and
+	/// all depending artifacts (with their promises).
 	///
 	/// Depending artifacts are all artifacts which used the former during
-	/// its building. The dependencies are automatically tracked using the
-	/// `ArtifactResolver` struct.
+	/// its building. The dependencies are automatically tracked via the
+	/// `ArtifactResolver`.
 	///
 	pub fn invalidate<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) {
 		let any_promise = promise.clone().into_any();
