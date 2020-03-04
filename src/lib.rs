@@ -296,10 +296,9 @@ impl<B: Builder> BuilderWithData for B where B::Artifact: 'static {
 }
 
 
-use std::ops::Deref;
 
 // Any wrapped specific value, i.e. Rc<Foo>, where Foo is a struct.
-pub trait SpecWrapper: Sized + Debug + Deref {
+pub trait SpecWrapper: Sized + Debug {
 	type AnyW: AnyWrapper<Self>;
 	
 	fn into_any(self) -> Self::AnyW;
@@ -319,7 +318,6 @@ impl<T: 'static> AnyWrapper<Rc<T>> for Rc<dyn Any> {
 	}
 }
 
-
 impl<T: 'static + Debug> SpecWrapper for Rc<T> {
 	type AnyW = Rc<dyn Any>;
 	
@@ -328,6 +326,38 @@ impl<T: 'static + Debug> SpecWrapper for Rc<T> {
 	}
 }
 
+use std::sync::Arc;
+
+impl<T: Send + Sync + 'static> AnyWrapper<Arc<T>> for Arc<dyn Any + Send + Sync> {
+	fn downcast_wrapper(&self) -> Option<Arc<T>> {
+		self.clone().downcast().ok()
+	}
+}
+
+impl<T: Debug + Send + Sync + 'static> SpecWrapper for Arc<T> {
+	type AnyW = Arc<dyn Any + Send + Sync>;
+	
+	fn into_any(self) -> Self::AnyW {
+		self
+	}
+}
+
+
+use ArtifactPromise as Ap;
+
+impl<T: Builder + Send + Sync + 'static> AnyWrapper<Ap<T>> for Ap<dyn Any> {
+	fn downcast_wrapper(&self) -> Option<Ap<T>> {
+		self.clone().downcast()
+	}
+}
+
+impl<T: Builder + Debug + Send + Sync + 'static> SpecWrapper for Ap<T> {
+	type AnyW = Ap<dyn Any>;
+	
+	fn into_any(self) -> Self::AnyW {
+		Ap::into_any(self)
+	}
+}
 
 
 /// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
@@ -371,6 +401,20 @@ impl<B: BuilderWithData + 'static> ArtifactPromise<B> {
 			builder: self.builder,
 			id: self.id,
 		}
+	}
+}
+
+impl ArtifactPromise<dyn Any> {
+	fn downcast<T: 'static>(self) -> Option<ArtifactPromise<T>> {
+		
+		let id = self.id;
+		
+		self.builder.downcast().map( |builder| {
+			ArtifactPromise {
+				builder,
+				id,
+			}}
+		).ok()
 	}
 }
 
@@ -927,6 +971,8 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod multi_level_test;
 
 
 
