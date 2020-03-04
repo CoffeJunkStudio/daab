@@ -92,11 +92,11 @@ impl Default for TextualDocOptions {
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use daab::ArtifactCache;
+/// use daab::ArtifactCacheRc;
 /// use daab::diagnostics::{TextualDoc, TextualDocOptions};
 /// use std::io::stdout;
 ///
-/// let mut cache = ArtifactCache::new_with_doctor(
+/// let mut cache = ArtifactCacheRc::new_with_doctor(
 ///     TextualDoc::new(
 ///         TextualDocOptions {
 ///             show_builder_values: false,
@@ -115,10 +115,10 @@ impl Default for TextualDocOptions {
 ///
 /// ```text
 /// resolves BuilderSimpleNode -> BuilderLeaf
-/// built #0.0  BuilderLeaf => Leaf
-/// built #0.1  BuilderSimpleNode => SimpleNode
+/// built #0.0  BuilderLeaf => Rc<Leaf>
+/// built #0.1  BuilderSimpleNode => Rc<SimpleNode>
 /// resolves BuilderSimpleNode -> BuilderLeaf
-/// built #0.2  BuilderSimpleNode => SimpleNode
+/// built #0.2  BuilderSimpleNode => Rc<SimpleNode>
 /// ```
 ///
 pub struct TextualDoc<W: Write> {
@@ -189,7 +189,7 @@ impl<W: Write> TextualDoc<W> {
 	}
 }
 
-impl<W: Write> Doctor for TextualDoc<W> {
+impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
 	
 		let bs = self.builder_str(builder);
@@ -213,7 +213,7 @@ impl<W: Write> Doctor for TextualDoc<W> {
 	}
 	
 	
-	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle) {
+	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle<ArtEnt>) {
 		let count = self.count;
 		
 		let bs = self.builder_str(builder);

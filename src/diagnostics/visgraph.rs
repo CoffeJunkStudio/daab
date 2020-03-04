@@ -56,10 +56,10 @@ impl Default for VisgraphDocOptions {
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use daab::ArtifactCache;
+/// use daab::ArtifactCacheRc;
 /// use daab::diagnostics::{VisgraphDoc, VisgraphDocOptions};
 ///
-/// let mut cache = ArtifactCache::new_with_doctor(
+/// let mut cache = ArtifactCacheRc::new_with_doctor(
 ///     VisgraphDoc::new(
 ///         VisgraphDocOptions {
 ///             show_builder_values: false,
@@ -76,10 +76,10 @@ impl Default for VisgraphDocOptions {
 ///
 /// ```text
 /// strict digraph { graph [labeljust = l];
-///   "0x7faf30003960" [label = "daab::test::BuilderSimpleNode"]
-///   "0x7faf30005090" [label = "daab::test::BuilderLeaf"]
+///   "0x7faf30003960" [label = "alloc::rc::Rc<daab::test::BuilderSimpleNode>"]
+///   "0x7faf30005090" [label = "alloc::rc::Rc<daab::test::BuilderLeaf>"]
 ///   "0x7faf30003960" -> "0x7faf30005090"
-///   "0x7faf30005090" [label = "daab::test::BuilderLeaf"]
+///   "0x7faf30005090" [label = "alloc::rc::Rc<daab::test::BuilderLeaf>"]
 ///   "0.0-0x7faf30015710" [label = "#0.0 daab::test::Leaf :
 /// Leaf {
 ///     id: 0,
@@ -152,7 +152,7 @@ impl<W: Write> Drop for VisgraphDoc<W> {
 	}
 }
 
-impl<W: Write> Doctor for VisgraphDoc<W> {
+impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for VisgraphDoc<W> {
 	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
 	
 		let s = self.builder_str(builder);
@@ -180,7 +180,7 @@ impl<W: Write> Doctor for VisgraphDoc<W> {
 	}
 	
 	
-	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle) {
+	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle<ArtEnt>) {
 		let count = self.count;
 		
 		let s = self.builder_str(builder);

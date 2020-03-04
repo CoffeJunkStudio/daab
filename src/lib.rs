@@ -304,8 +304,9 @@ pub trait SpecWrapper: Sized + Debug {
 	fn into_any(self) -> Self::AnyW;
 }
 
+
 // An wrapper aronud dyn Any, i.e. Rc<dyn Any>.
-pub trait AnyWrapper<T> {
+pub trait AnyWrapper<T>: fmt::Pointer {
 	fn downcast_wrapper(&self) -> Option<T>;
 }
 
@@ -454,6 +455,12 @@ impl<B: BuilderWithData + 'static> From<B> for ArtifactPromise<B> {
 	}
 }
 
+impl<B: ?Sized> fmt::Pointer for ArtifactPromise<B> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		writeln!(f, "{:p}", self.builder)
+	}
+}
+
 
 pub type ArtifactResolverW<'a, Wrapper, T> = ArtifactResolver<'a, <Wrapper as SpecWrapper>::AnyW, T>;
 
@@ -530,23 +537,6 @@ impl<B: BuilderWithData + 'static> From<&Rc<B>> for BuilderId {
 }
 
 
-/// Auxiliary struct for the `ArtifactCache` containing an untyped (aka
-/// `dyn Any`) and `Rc`-ed artifact.
-///
-#[derive(Clone, Debug)]
-struct ArtifactEntry {
-	value: Rc<dyn Any>,
-}
-
-impl ArtifactEntry {
-	fn new<T: Any + Debug>(value: Rc<T>) -> Self {
-		ArtifactEntry {
-			value,
-		}
-	}
-}
-
-
 /// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
 /// `dyn Any`) ArtifactPromise.
 ///
@@ -589,7 +579,7 @@ impl Borrow<BuilderId> for BuilderEntry {
 pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>>;
 
 #[cfg(feature = "diagnostics")]
-pub type ArtifactCacheRc<T: ?Sized = dyn Doctor> = ArtifactCache<Rc<dyn Any>, T>;
+pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, T>;
 
 
 /// Structure for caching and looking up artifacts.
@@ -623,7 +613,7 @@ pub type ArtifactCacheRc<T: ?Sized = dyn Doctor> = ArtifactCache<Rc<dyn Any>, T>
 /// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
 /// to `ArtifactCache<dyn Doctor>`.
 ///
-pub struct ArtifactCache<ArtEnt, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor> {
+pub struct ArtifactCache<ArtEnt, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtEnt>> {
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<ArtifactPromise<dyn Any>, ArtEnt>,
 	
@@ -646,14 +636,14 @@ cfg_if! {
 			}
 		}
 		
-		impl<ArtEnt, T: Debug> Debug for ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt: Debug, T: Debug> Debug for ArtifactCache<ArtEnt, T> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
 					self.cache, self.dependants, self.doctor)
 			}
 		}
 
-		impl ArtifactCache<ArtEnt, DefDoctor> {
+		impl<ArtEnt> ArtifactCache<ArtEnt, DefDoctor> {
 			/// Creates a new empty cache with a dummy doctor.
 			///
 			pub fn new() -> Self {
@@ -667,7 +657,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, T: Doctor + 'static> ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> ArtifactCache<ArtEnt, T> {
 	
 			/// Creates new empty cache with given doctor for inspection.
 			///
@@ -700,15 +690,15 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, T: Doctor + 'static> Deref for ArtifactCache<ArtEnt, T> {
-			type Target = ArtifactCache;
+		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> Deref for ArtifactCache<ArtEnt, T> {
+			type Target = ArtifactCache<ArtEnt>;
 		
 			fn deref(&self) -> &Self::Target {
 				self
 			}
 		}
 
-		impl<ArtEnt, T: Doctor + 'static> DerefMut for ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> DerefMut for ArtifactCache<ArtEnt, T> {
 			fn deref_mut(&mut self) -> &mut Self::Target {
 				self
 			}
@@ -859,9 +849,11 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 			);
 			
 			let any = art.into_any();
+			
+			let value = any.downcast_wrapper().unwrap();
 		
 			#[cfg(feature = "diagnostics")]
-			self.doctor.build(&diag_builder, &ArtifactHandle::new(rc.clone()));
+			self.doctor.build(&diag_builder, &ArtifactHandle::new(value));
 			
 			let value = any.downcast_wrapper().unwrap();
 			

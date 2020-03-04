@@ -29,11 +29,12 @@
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::rc::Rc;
 use std::fmt::Debug;
 
 use super::ArtifactPromise;
 use super::BuilderWithData;
+use super::SpecWrapper;
+use super::AnyWrapper;
 
 
 mod visgraph;
@@ -63,7 +64,7 @@ pub use textual::TextualDoc;
 ///[`ArtifactCache`]: ../struct.ArtifactCache.html
 ///[`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
 ///
-pub trait Doctor {
+pub trait Doctor<ArtEnt> {
 	/// One `Builder` resolves another `Builder`.
 	///
 	/// This methods means that `builder` appearently depends on `used`.
@@ -79,7 +80,7 @@ pub trait Doctor {
 	/// artifact is actually constructed, i.e. first time it is resolved
 	/// or when it is resolved after a reset or invalidation.
 	///
-	fn build(&mut self, _builder: &BuilderHandle, _artifact: &ArtifactHandle) {
+	fn build(&mut self, _builder: &BuilderHandle, _artifact: &ArtifactHandle<ArtEnt>) {
 		// NOOP
 	}
 	
@@ -118,9 +119,9 @@ pub trait Doctor {
 /// pointer thus the implementation of `Hash` and `Eq`.
 ///
 #[derive(Clone, Debug)]
-pub struct ArtifactHandle {
+pub struct ArtifactHandle<ArtEnt> {
 	/// The actual artifact value.
-	pub value: Rc<dyn Any>,
+	pub value: ArtEnt,
 	
 	/// The type name of the artifact as of `std::any::type_name`.
 	pub type_name: &'static str,
@@ -129,35 +130,40 @@ pub struct ArtifactHandle {
 	pub dbg_text: String,
 }
 
-impl ArtifactHandle {
+impl<ArtEnt> ArtifactHandle<ArtEnt> {
 	/// Constructs a new artifact handle with the given value.
 	///
-	pub fn new<T: Any + Debug>(value: Rc<T>) -> Self {
+	pub fn new<T: Any + Debug>(value: T) -> Self
+		where T: SpecWrapper<AnyW = ArtEnt>,
+			ArtEnt: AnyWrapper<T> {
+		
 		let dbg_text = format!("{:#?}", &value);
 		
 		ArtifactHandle {
-			value,
+			value: value.into_any(),
 			type_name: std::any::type_name::<T>(),
 			dbg_text,
 		}
 	}
 }
 
-impl Hash for ArtifactHandle {
+/*
+impl<ArtEnt> Hash for ArtifactHandle<ArtEnt> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		(self.value.as_ref() as *const dyn Any).hash(state);
 	}
 }
 
-impl PartialEq for ArtifactHandle {
+impl<ArtEnt> PartialEq for ArtifactHandle<ArtEnt> {
 	fn eq(&self, other: &Self) -> bool {
 		(self.value.as_ref() as *const dyn Any)
 			.eq(&(other.value.as_ref() as *const dyn Any))
 	}
 }
 
-impl Eq for ArtifactHandle {
+impl<ArtEnt> Eq for ArtifactHandle<ArtEnt> {
 }
+*/
 
 
 /// Encapsulates a generic builder with some debugging information.
@@ -220,7 +226,7 @@ impl Eq for BuilderHandle {
 ///
 pub struct NoopDoctor;
 
-impl Doctor for NoopDoctor {
+impl<ArtEnt> Doctor<ArtEnt> for NoopDoctor {
 	// Use default impl
 }
 

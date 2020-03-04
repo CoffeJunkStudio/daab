@@ -275,13 +275,13 @@ fn test_vis_doc() {
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
-  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 daab::test::Leaf :
+  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 alloc::rc::Rc<daab::test::Leaf> :
 Leaf \{
     id: [0-9]+,
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.0-0x[0-9a-f]+" \[arrowhead = "none"\]
   "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 daab::test::SimpleNode :
+  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 alloc::rc::Rc<daab::test::SimpleNode> :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -293,7 +293,7 @@ SimpleNode \{
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
   "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 daab::test::SimpleNode :
+  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 alloc::rc::Rc<daab::test::SimpleNode> :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -344,17 +344,17 @@ fn test_text_doc() {
 	// Expected value as Regular Expression due to variable addresses and counters
 	#[cfg(not(feature = "tynm"))]
 	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
-built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+built #0.0  daab::test::BuilderLeaf => alloc::rc::Rc<daab::test::Leaf>
+built #0.1  daab::test::BuilderSimpleNode => alloc::rc::Rc<daab::test::SimpleNode>
 resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+built #0.2  daab::test::BuilderSimpleNode => alloc::rc::Rc<daab::test::SimpleNode>
 ";
 	#[cfg(feature = "tynm")]
 	let pattern = r"resolves BuilderSimpleNode -> BuilderLeaf
-built #0.0  BuilderLeaf => Leaf
-built #0.1  BuilderSimpleNode => SimpleNode
+built #0.0  BuilderLeaf => Rc<Leaf>
+built #0.1  BuilderSimpleNode => Rc<SimpleNode>
 resolves BuilderSimpleNode -> BuilderLeaf
-built #0.2  BuilderSimpleNode => SimpleNode
+built #0.2  BuilderSimpleNode => Rc<SimpleNode>
 ";
 
 	// Textual output storage
