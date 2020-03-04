@@ -30,7 +30,7 @@ impl BuilderLeaf {
 impl Builder for BuilderLeaf {
 	type Artifact = Leaf;
 	
-	fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -60,7 +60,7 @@ impl BuilderSimpleNode {
 impl Builder for BuilderSimpleNode {
 	type Artifact = SimpleNode;
 	
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolverRc) -> Self::Artifact {
 		let leaf = cache.resolve(&self.leaf);
 		
 		SimpleNode{
@@ -89,7 +89,7 @@ enum BuilderLeafOrNodes {
 }
 
 impl BuilderLeafOrNodes {
-	fn build(&self, cache: &mut ArtifactResolver) -> LeafOrNodes {
+	fn build(&self, cache: &mut ArtifactResolverRc) -> LeafOrNodes {
 		match self {
 			Self::Leaf(l) => {
 				LeafOrNodes::Leaf(cache.resolve(l))
@@ -158,7 +158,7 @@ impl BuilderComplexNode {
 impl Builder for BuilderComplexNode {
 	type Artifact = ComplexNode;
 	
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolverRc) -> Self::Artifact {
 		ComplexNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			inner: self.inner.build(cache),
