@@ -297,6 +297,8 @@ impl<B: Builder> BuilderWithData for B where B::Artifact: 'static {
 
 
 
+
+
 // Any wrapped specific value, i.e. Rc<Foo>, where Foo is a struct.
 pub trait SpecWrapper: Sized + Debug {
 	type AnyW: AnyWrapper<Self>;
@@ -346,13 +348,13 @@ impl<T: Debug + Send + Sync + 'static> SpecWrapper for Arc<T> {
 
 use ArtifactPromise as Ap;
 
-impl<T: Builder + Send + Sync + 'static> AnyWrapper<Ap<T>> for Ap<dyn Any> {
+impl<T: BuilderWithData + Send + Sync + 'static> AnyWrapper<Ap<T>> for Ap<dyn Any> {
 	fn downcast_wrapper(&self) -> Option<Ap<T>> {
 		self.clone().downcast()
 	}
 }
 
-impl<T: Builder + Debug + Send + Sync + 'static> SpecWrapper for Ap<T> {
+impl<T: BuilderWithData + Debug + Send + Sync + 'static> SpecWrapper for Ap<T> {
 	type AnyW = Ap<dyn Any>;
 	
 	fn into_any(self) -> Self::AnyW {
@@ -462,7 +464,7 @@ impl<B: ?Sized> fmt::Pointer for ArtifactPromise<B> {
 }
 
 
-pub type ArtifactResolverW<'a, Wrapper, T> = ArtifactResolver<'a, <Wrapper as SpecWrapper>::AnyW, T>;
+pub type ArtifactResolverW<'a, Wrapper, T = ()> = ArtifactResolver<'a, <Wrapper as SpecWrapper>::AnyW, T>;
 
 pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, T>;
 

@@ -36,10 +36,11 @@ struct BuilderBuilder {
 	
 }
 
-impl Builder for BuilderBuilder {
+impl BuilderWithData for BuilderBuilder {
 	type Artifact = Ap<BuilderLeaf>;
+	type UserData = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolverW<Self::Artifact>) -> Self::Artifact {
 		Ap::new(
 			BuilderLeaf{}
 		)
@@ -53,10 +54,11 @@ struct SuperBuilder {
 	
 }
 
-impl Builder for SuperBuilder {
+impl BuilderWithData for SuperBuilder {
 	type Artifact = Ap<BuilderBuilder>;
+	type UserData = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolverW<Self::Artifact>) -> Self::Artifact {
 		Ap::new(
 			BuilderBuilder{}
 		)
