@@ -80,7 +80,7 @@
 //!         }
 //!     }
 //! }
-//! impl Builder for BuilderLeaf {
+//! impl SimpleBuilder for BuilderLeaf {
 //!     type Artifact = Leaf;
 //!     
 //!     fn build(&self, _resolver: &mut ArtifactResolverRc) -> Self::Artifact {
@@ -101,22 +101,23 @@
 //! // Composed builder, depending on BuilderLeaf
 //! #[derive(Debug)]
 //! struct BuilderNode {
-//!     builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
+//!     builder_leaf: ArtifactPromiseRc<BuilderLeaf>, // Dependency builder
 //!     // ...
 //! }
 //! impl BuilderNode {
-//!     pub fn new(builder_leaf: ArtifactPromise<BuilderLeaf>) -> Self {
+//!     pub fn new(builder_leaf: ArtifactPromiseRc<BuilderLeaf>) -> Self {
 //!         Self {
 //!             builder_leaf,
 //!             // ...
 //!         }
 //!     }
 //! }
-//! impl BuilderWithData for BuilderNode {
-//!     type Artifact = Rc<Node>;
+//! use std::any::Any;
+//! impl BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for BuilderNode {
+//!     type Artifact = Node;
 //!     type UserData = u8;
 //!     
-//!     fn build(&self, resolver: &mut ArtifactResolverRc<Self::UserData>) -> Self::Artifact {
+//!     fn build(&self, resolver: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!         
@@ -129,13 +130,13 @@
 //! }
 //! 
 //! // The cache to storing already created artifacts
-//! let mut cache = ArtifactCache::new();
+//! let mut cache = ArtifactCacheRc::new();
 //!
 //! // Constructing builders
 //! let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
 //!
 //! let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-//! let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
+//! let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
 //!
 //! // Using the cache to access the artifacts from the builders
 //!
@@ -222,6 +223,7 @@
 #![warn(missing_docs)]
 
 
+use std::ops::Deref;
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -258,7 +260,7 @@ cfg_if! {
 /// in order to resolve depending builders (aka `ArtifactPromise`s) into their
 /// respective artifacts.
 ///
-pub trait Builder: Debug {
+pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug;
@@ -270,10 +272,13 @@ pub trait Builder: Debug {
 }
 
 
-pub trait BuilderWithData: Debug {
+
+pub trait BuilderWithData<ArtCan, BCan>: Debug
+		where ArtCan: Can<Self::Artifact> {
+	
 	/// The artifact type as produced by this builder.
 	///
-	type Artifact : SpecWrapper;
+	type Artifact;
 	
 	// TODO: docs
 	type UserData : Debug + 'static;
@@ -281,87 +286,142 @@ pub trait BuilderWithData: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolverW<Self::Artifact, Self::UserData>) -> Self::Artifact;
+	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::UserData>) -> ArtCan::Bin;
 }
 
 // Generic impl for legacy builder
-impl<B: Builder> BuilderWithData for B where B::Artifact: 'static {
-	type Artifact = Rc<B::Artifact>;
+impl<B: SimpleBuilder> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B where B::Artifact: 'static {
+	type Artifact = B::Artifact;
 	
 	type UserData = ();
 	
-	fn build(&self, cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolverRc) -> Rc<Self::Artifact> {
 		Rc::new(self.build(cache))
 	}
 }
 
 
 
+pub trait CanBase: fmt::Pointer + Debug {
+	fn as_ptr(&self) -> *const dyn Any;
+}
 
-
-// Any wrapped specific value, i.e. Rc<Foo>, where Foo is a struct.
-pub trait SpecWrapper: Sized + Debug {
-	type AnyW: AnyWrapper<Self>;
+/// A can for `T`. Supposed to be akind to `dyn Any`.
+// For Artifacts
+pub trait Can<T: ?Sized>: CanBase {
+	type Bin: Debug;
 	
-	fn into_any(self) -> Self::AnyW;
+	fn downcast_can(&self) -> Option<Self::Bin>;
+	fn downcast_can_ref(&self) -> Option<&T>;
+	fn from_bin(b: Self::Bin) -> Self;
+	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
+}
+
+pub trait CanDeref<T>: Can<T> where Self::Bin: Deref<Target=T> {
+	
+}
+
+pub trait CanWithSize<T>: Can<T> + Sized {
+	fn into_bin(t: T) -> Self::Bin;
+	fn from_inner(t: T) -> Self {
+		Self::from_bin(Self::into_bin(t))
+	}
 }
 
 
-// An wrapper aronud dyn Any, i.e. Rc<dyn Any>.
-pub trait AnyWrapper<T>: fmt::Pointer {
-	fn downcast_wrapper(&self) -> Option<T>;
+impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
+	type Bin = Rc<T>;
+	
+	fn downcast_can(&self) -> Option<Self::Bin> {
+		self.clone().downcast().ok()
+	}
+	fn downcast_can_ref(&self) -> Option<&T> {
+		self.downcast_ref()
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
+	}
+	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
+		b.deref()
+	}
+}
+
+impl<T: Debug + 'static> CanWithSize<T> for Rc<dyn Any> {
+	fn into_bin(t: T) -> Self::Bin {
+		Rc::new(t)
+	}
+}
+
+impl CanBase for Rc<dyn Any> {
+	fn as_ptr(&self) -> *const dyn Any {
+		self
+	}
 }
 
 
 // TODO: impl for AP, Arc, maybe T/Box
 
-impl<T: 'static> AnyWrapper<Rc<T>> for Rc<dyn Any> {
-	fn downcast_wrapper(&self) -> Option<Rc<T>> {
-		self.clone().downcast().ok()
-	}
-}
-
-impl<T: 'static + Debug> SpecWrapper for Rc<T> {
-	type AnyW = Rc<dyn Any>;
-	
-	fn into_any(self) -> Self::AnyW {
-		self
-	}
-}
-
 use std::sync::Arc;
 
-impl<T: Send + Sync + 'static> AnyWrapper<Arc<T>> for Arc<dyn Any + Send + Sync> {
-	fn downcast_wrapper(&self) -> Option<Arc<T>> {
-		self.clone().downcast().ok()
-	}
-}
-
-impl<T: Debug + Send + Sync + 'static> SpecWrapper for Arc<T> {
-	type AnyW = Arc<dyn Any + Send + Sync>;
-	
-	fn into_any(self) -> Self::AnyW {
+impl CanBase for Arc<dyn Any + Send + Sync> {
+	fn as_ptr(&self) -> *const dyn std::any::Any {
 		self
 	}
 }
 
+impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
+	type Bin = Arc<T>;
+	
+	fn downcast_can(&self) -> Option<Self::Bin> {
+		self.clone().downcast().ok()
+	}
+	fn downcast_can_ref(&self) -> Option<&T> {
+		self.downcast_ref()
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
+	}
+	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
+		b.deref()
+	}
+}
 
+impl<T: Debug + Send + Sync + 'static> CanWithSize<T> for Arc<dyn Any + Send + Sync> {
+	fn into_bin(t: T) -> Self::Bin {
+		Arc::new(t)
+	}
+}
+
+
+/*
 use ArtifactPromise as Ap;
 
-impl<T: BuilderWithData + Send + Sync + 'static> AnyWrapper<Ap<T>> for Ap<dyn Any> {
-	fn downcast_wrapper(&self) -> Option<Ap<T>> {
-		self.clone().downcast()
+impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
+	fn as_ptr(&self) -> *const dyn std::any::Any {
+		self
 	}
 }
 
-impl<T: BuilderWithData + Debug + Send + Sync + 'static> SpecWrapper for Ap<T> {
-	type AnyW = Ap<dyn Any>;
+impl<BCan: CanBase + 'static, T: 'static> Can<T> for BuilderEntry<BCan> where BCan: Can<T> {
+	type Bin = Ap<BCan::Bin>;
 	
-	fn into_any(self) -> Self::AnyW {
-		Ap::into_any(self)
+	fn downcast_can_ref(&self) -> Option<&Self::Bin> {
+		self.downcast_ref()
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
+	}
+	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
+		b
 	}
 }
 
+impl<T: Send + Sync + 'static> CanWithSize<T> for Ap<dyn Any + Send + Sync> {
+	fn into_bin(t: T) -> Self::Bin {
+		Arc::new(t)
+	}
+}
+*/
 
 /// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
 ///
@@ -376,97 +436,65 @@ impl<T: BuilderWithData + Debug + Send + Sync + 'static> SpecWrapper for Ap<T> {
 ///
 /// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
 ///
-#[derive(Debug)]
-pub struct ArtifactPromise<B: ?Sized> {
-	builder: Rc<B>,
+#[derive(Debug, Clone)]
+pub struct ArtifactPromise<BBin> {
+	builder: BBin,
 	id: BuilderId,
 }
 
-impl<B: BuilderWithData + 'static> ArtifactPromise<B> {
+impl<BBin: Debug> ArtifactPromise<BBin> {
 	/// Crates a new promise for the given builder.
 	///
-	pub fn new(builder: B) -> Self {
-		let builder = Rc::new(builder);
-		let id = (&builder).into();
+	pub fn new<B, BCan, ArtCan>(builder: B) -> Self
+			where
+				B: BuilderWithData<ArtCan, BCan> + 'static,
+				BCan: CanWithSize<B, Bin=BBin>,
+				BBin: Deref<Target=B>,
+				ArtCan: Can<B::Artifact> {
+		
+		let bin = BCan::into_bin(builder);
+		let id = BuilderId(BCan::bin_as_ptr(&bin));
 		
 		Self {
-			builder,
+			builder: bin,
 			id,
 		}
 	}
 	
-	/// Changes the generic type of self to `dyn Any`.
-	///
-	fn into_any(self) -> ArtifactPromise<dyn Any>
-			where B: 'static {
-		
-		ArtifactPromise {
-			builder: self.builder,
-			id: self.id,
-		}
-	}
+	//pub into_can(self) -> ArtifactPromise
 }
 
-impl ArtifactPromise<dyn Any> {
-	fn downcast<T: 'static>(self) -> Option<ArtifactPromise<T>> {
-		
-		let id = self.id;
-		
-		self.builder.downcast().map( |builder| {
-			ArtifactPromise {
-				builder,
-				id,
-			}}
-		).ok()
-	}
-}
-
-impl<B: ?Sized> Borrow<BuilderId> for ArtifactPromise<B> {
+impl<Bin> Borrow<BuilderId> for ArtifactPromise<Bin> {
 	fn borrow(&self) -> &BuilderId {
 		&self.id
 	}
 }
 
-impl<B: ?Sized> Clone for ArtifactPromise<B> {
-	fn clone(&self) -> Self {
-		ArtifactPromise {
-			builder: self.builder.clone(),
-			id: self.id,
-		}
-	}
-}
-
-impl Hash for ArtifactPromise<dyn Any> {
+impl<Bin> Hash for ArtifactPromise<Bin> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 	}
 }
 
-impl PartialEq for ArtifactPromise<dyn Any> {
+impl<Bin> PartialEq for ArtifactPromise<Bin> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id.eq(&other.id)
 	}
 }
 
-impl Eq for ArtifactPromise<dyn Any> {
+impl<Bin> Eq for ArtifactPromise<Bin> {
 }
 
-impl<B: BuilderWithData + 'static> From<B> for ArtifactPromise<B> {
-	fn from(b: B) -> Self {
-		Self::new(b)
-	}
-}
-
-impl<B: ?Sized> fmt::Pointer for ArtifactPromise<B> {
+impl<C: CanBase> fmt::Pointer for ArtifactPromise<C> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", self.builder)
+		writeln!(f, "{:p}", self.builder.as_ptr())
 	}
 }
 
 
-pub type ArtifactResolverW<'a, Wrapper, T = ()> = ArtifactResolver<'a, <Wrapper as SpecWrapper>::AnyW, T>;
+pub type ArtifactPromiseRc<B> = ArtifactPromise<Rc<B>>;
 
-pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, T>;
+pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<dyn Any>, T>;
 
 
 /// Resolves any `ArtifactPromise` to the artifact of the inner builder.
@@ -480,22 +508,28 @@ pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, T>;
 /// This dependency information is used for correct invalidation of dependants
 /// on cache invalidation via `ArtifactCache::invalidate()`.
 ///
-pub struct ArtifactResolver<'a, ArtEnt, T = ()> {
-	user: &'a BuilderEntry,
-	cache: &'a mut ArtifactCache<ArtEnt>,
+pub struct ArtifactResolver<'a, ArtEnt, BCan, T = ()> {
+	user: &'a BuilderEntry<BCan>,
+	cache: &'a mut ArtifactCache<ArtEnt, BCan>,
 	#[cfg(feature = "diagnostics")]
 	diag_builder: &'a BuilderHandle,
 	_b: PhantomData<T>,
 }
 
-impl<'a, ArtEnt, T: 'static> ArtifactResolver<'a, ArtEnt, T> {
+impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, ArtCan, BCan, T> {
 	/// Resolves the given `ArtifactPromise` into its artifact either by
 	/// looking up the cached value in the associated `ArtifactCache` or by
 	/// building it.
 	///
-	pub fn resolve<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> B::Artifact
-			where <B as BuilderWithData>::Artifact: SpecWrapper<AnyW = ArtEnt>,
-				ArtEnt: AnyWrapper<<B as BuilderWithData>::Artifact> {
+	pub fn resolve<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<BCan::Bin>
+	) -> ArtCan::Bin
+			where
+				ArtCan: Can<B::Artifact>,
+				BCan: Can<B>,
+				BCan::Bin: AsRef<B>,
+				BCan::Bin: Clone {
 		
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -517,7 +551,11 @@ impl<'a, ArtEnt, T: 'static> ArtifactResolver<'a, ArtEnt, T> {
 		self.cache.get_user_data_cast(self.user.borrow())
 	}
 	// TODO: docs
-	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> Option<&mut B::UserData> {
+	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<BCan::Bin>
+	) -> Option<&mut B::UserData> where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+		
 		self.cache.get_user_data(promise)
 	}
 }
@@ -532,53 +570,73 @@ impl<'a, ArtEnt, T: 'static> ArtifactResolver<'a, ArtEnt, T> {
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct BuilderId(*const dyn Any);
 
-impl<B: BuilderWithData + 'static> From<&Rc<B>> for BuilderId {
+/*
+impl<BCan, B: BuilderWithData<BCan> + 'static> From<&Rc<B>> for BuilderId {
 	fn from(rc: &Rc<B>) -> Self {
 		BuilderId(rc.as_ref() as &dyn Any as *const dyn Any)
 	}
 }
+*/
 
 
 /// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
 /// `dyn Any`) ArtifactPromise.
 ///
 #[derive(Clone, Debug)]
-struct BuilderEntry {
-	value: ArtifactPromise<dyn Any>,
+struct BuilderEntry<BCan> {
+	builder: BCan,
+	id: BuilderId,
 }
 
-impl BuilderEntry {
-	fn new<T: BuilderWithData + 'static>(value: ArtifactPromise<T>) -> Self {
+impl<BCan> BuilderEntry<BCan> {
+	fn new<ArtCan, B: BuilderWithData<ArtCan, BCan> + 'static>(value: ArtifactPromise<BCan::Bin>) -> Self
+			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+		
 		BuilderEntry {
-			value: value.into_any(),
+			builder: BCan::from_bin(value.builder),
+			id: value.id,
 		}
 	}
+	
+	/*
+	fn downcast<ArtCan, B: BuilderWithData<ArtCan, BCan> + 'static>(self) -> ArtifactPromise<BCan::Bin>
+			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+		
+		self.builder.downcast_can_ref()
+	}
+	*/
 }
 
-impl Hash for BuilderEntry {
+impl<BCan> Hash for BuilderEntry<BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.value.hash(state);
+		self.id.hash(state);
 	}
 }
 
-impl PartialEq for BuilderEntry {
+impl<BCan> PartialEq for BuilderEntry<BCan> {
 	fn eq(&self, other: &Self) -> bool {
-		self.value.eq(&other.value)
+		self.id.eq(&other.id)
 	}
 }
 
-impl Eq for BuilderEntry {
+impl<BCan> Eq for BuilderEntry<BCan> {
 }
 
-impl Borrow<BuilderId> for BuilderEntry {
+impl<BCan> Borrow<BuilderId> for BuilderEntry<BCan> {
 	fn borrow(&self) -> &BuilderId {
-		&self.value.id
+		&self.id
+	}
+}
+
+impl<BCan: CanBase> fmt::Pointer for BuilderEntry<BCan> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		writeln!(f, "{:p}", self.builder.as_ptr())
 	}
 }
 
 
 #[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>>;
+pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>>;
 
 #[cfg(feature = "diagnostics")]
 pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, T>;
@@ -615,9 +673,9 @@ pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any
 /// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
 /// to `ArtifactCache<dyn Doctor>`.
 ///
-pub struct ArtifactCache<ArtEnt, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtEnt>> {
+pub struct ArtifactCache<ArtEnt, BCan, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtEnt>> {
 	/// Maps Builder-Capsules to their Artifact value
-	cache: HashMap<ArtifactPromise<dyn Any>, ArtEnt>,
+	cache: HashMap<BuilderEntry<BCan>, ArtEnt>,
 	
 	/// Maps Builder-Capsules to their UserData value
 	user_data: HashMap<BuilderId, Box<dyn Any>>,
@@ -632,20 +690,20 @@ pub struct ArtifactCache<ArtEnt, #[cfg(feature = "diagnostics")] T: ?Sized = dyn
 
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
-		impl<ArtEnt> Default for ArtifactCache<ArtEnt, DefDoctor> {
+		impl<ArtEnt, BCan> Default for ArtifactCache<ArtEnt, BCan, DefDoctor> {
 			fn default() -> Self {
 				ArtifactCache::new()
 			}
 		}
 		
-		impl<ArtEnt: Debug, T: Debug> Debug for ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt: Debug, BCan: Debug, T: Debug> Debug for ArtifactCache<ArtEnt, BCan, T> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
 					self.cache, self.dependants, self.doctor)
 			}
 		}
 
-		impl<ArtEnt> ArtifactCache<ArtEnt, DefDoctor> {
+		impl<ArtEnt, BCan> ArtifactCache<ArtEnt, BCan, DefDoctor> {
 			/// Creates a new empty cache with a dummy doctor.
 			///
 			pub fn new() -> Self {
@@ -659,7 +717,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> ArtifactCache<ArtEnt, BCan, T> {
 	
 			/// Creates new empty cache with given doctor for inspection.
 			///
@@ -692,7 +750,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> Deref for ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> Deref for ArtifactCache<ArtEnt, BCan, T> {
 			type Target = ArtifactCache<ArtEnt>;
 		
 			fn deref(&self) -> &Self::Target {
@@ -700,7 +758,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, T: Doctor<ArtEnt> + 'static> DerefMut for ArtifactCache<ArtEnt, T> {
+		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> DerefMut for ArtifactCache<ArtEnt, BCan, T> {
 			fn deref_mut(&mut self) -> &mut Self::Target {
 				self
 			}
@@ -708,20 +766,20 @@ cfg_if! {
 		
 		
 	} else {
-		impl<ArtEnt> Default for ArtifactCache<ArtEnt> {
+		impl<ArtEnt, BCan> Default for ArtifactCache<ArtEnt, BCan> {
 			fn default() -> Self {
 				ArtifactCache::new()
 			}
 		}
 		
-		impl<ArtEnt: Debug> Debug for ArtifactCache<ArtEnt> {
+		impl<ArtEnt: Debug, BCan: Debug> Debug for ArtifactCache<ArtEnt, BCan> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?} }}",
 					self.cache, self.dependants)
 			}
 		}
 
-		impl<ArtEnt> ArtifactCache<ArtEnt> {
+		impl<ArtEnt, BCan> ArtifactCache<ArtEnt, BCan> {
 			/// Creates a new empty cache.
 			///
 			pub fn new() -> Self {
@@ -751,22 +809,25 @@ fn cast_user_data<T: 'static>(v: Option<Box<dyn Any>>)
 	)
 }
 
-impl<ArtEnt> ArtifactCache<ArtEnt> {
+impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	
 	/// Resolves the artifact of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
-	fn do_resolve<B: BuilderWithData + 'static>(&mut self,
-			user: &BuilderEntry,
+	fn do_resolve<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self,
+			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
 			diag_builder: &BuilderHandle,
-			promise: &ArtifactPromise<B>) -> B::Artifact
+			promise: &ArtifactPromise<BCan::Bin>) -> ArtCan::Bin
 		
-			where <B as BuilderWithData>::Artifact: SpecWrapper<AnyW = ArtEnt>,
-				ArtEnt: AnyWrapper<<B as BuilderWithData>::Artifact> {
+			where
+				ArtCan: Can<B::Artifact>,
+				BCan: Can<B>,
+				BCan::Bin: AsRef<B>,
+				BCan::Bin: Clone {
 		
 		
-		let deps = self.get_dependants(&promise.clone().into_any());
+		let deps = self.get_dependants(&promise);
 		if !deps.contains(user.borrow()) {
 			deps.insert(*user.borrow());
 		}
@@ -779,7 +840,7 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	
 	/// Returns the vector of dependants of promise
 	///
-	fn get_dependants(&mut self, promise: &ArtifactPromise<dyn Any>) -> &mut HashSet<BuilderId> {
+	fn get_dependants<Bin>(&mut self, promise: &ArtifactPromise<Bin>) -> &mut HashSet<BuilderId> {
 		if !self.dependants.contains_key(promise.borrow()) {
 			self.dependants.insert(*promise.borrow(), HashSet::new());
 		}
@@ -789,15 +850,19 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	
 	/// Get and cast the stored artifact if it exists.
 	///
-	fn lookup<B: BuilderWithData + 'static>(&self, builder: &ArtifactPromise<B>) -> Option<B::Artifact>
-			where <B as BuilderWithData>::Artifact: SpecWrapper<AnyW = ArtEnt>,
-				ArtEnt: AnyWrapper<<B as BuilderWithData>::Artifact> {
+	pub fn lookup<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&self,
+		builder: &ArtifactPromise<BCan::Bin>
+	) -> Option<ArtCan::Bin>
+		where
+			ArtCan: Can<B::Artifact>,
+			BCan: Can<B> {
 		
 		// Get the artifact from the hash map ensuring integrity
 		self.cache.get(&builder.id).map(
 			|ent| {
 				// Ensure value type
-				ent.downcast_wrapper()
+				ent.downcast_can()
 					.expect("Cached Builder Artifact is of invalid type")
 			}
 		)
@@ -805,14 +870,19 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	
 	/// Store given artifact for given builder.
 	///
-	fn insert(&mut self, builder: BuilderEntry, artifact: ArtEnt) {
+	fn insert(&mut self, builder: BuilderEntry<BCan>, artifact: ArtCan) -> &ArtCan {
+		
+		let id = builder.id;
 		
 		// Insert artifact
 		self.cache.insert(
-			builder.value,
+			builder,
 			artifact,
 		);
 		
+		let c = self.cache.get(&id).unwrap();
+		
+		c
 	}
 	
 	/// Gets the artifact of the given builder.
@@ -827,12 +897,19 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	/// for correctness of the pointer comparison, internally done by the
 	/// promise.
 	///
-	pub fn get<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) -> B::Artifact
-			where <B as BuilderWithData>::Artifact: SpecWrapper<AnyW = ArtEnt>,
-				ArtEnt: AnyWrapper<<B as BuilderWithData>::Artifact> {
+	pub fn get<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<BCan::Bin>
+	) -> ArtCan::Bin
+		where
+			ArtCan: Can<B::Artifact>,
+			BCan: Can<B>,
+			BCan::Bin: AsRef<B>,
+			BCan::Bin: Clone {
 		
-		if let Some(rc) = self.lookup(promise) {
-			rc
+		if self.lookup(promise).is_some() {
+			// No if-let because of borrow-checker error
+			self.lookup(promise).unwrap()
 			
 		} else {
 			let ent = BuilderEntry::new(promise.clone());
@@ -840,7 +917,7 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 			#[cfg(feature = "diagnostics")]
 			let diag_builder = BuilderHandle::new(promise.clone());
 			
-			let art = promise.builder.build(
+			let art_bin = promise.builder.as_ref().build(
 				&mut ArtifactResolver {
 					user: &ent,
 					cache: self,
@@ -850,20 +927,18 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 				},
 			);
 			
-			let any = art.into_any();
+			let art_can = ArtCan::from_bin(art_bin);
 			
-			let value = any.downcast_wrapper().unwrap();
-		
+			
+			#[cfg(feature = "diagnostics")]
+			let value = art_can.downcast_can_ref().unwrap();
 			#[cfg(feature = "diagnostics")]
 			self.doctor.build(&diag_builder, &ArtifactHandle::new(value));
 			
-			let value = any.downcast_wrapper().unwrap();
-			
-			self.insert(ent,  any);
-			
-			value
+			self.insert(ent,  art_can).downcast_can().unwrap()
 		}
 	}
+	
 	
 	/// Get and cast the user data of given builder id.
 	///
@@ -881,15 +956,22 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	}
 	
 	// TODO: docs
-	pub fn get_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>)
-			-> Option<&mut B::UserData> {
+	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&mut self, promise: &ArtifactPromise<BCan::Bin>
+	) -> Option<&mut B::UserData>
+		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+		
 		
 		self.get_user_data_cast(&promise.id)
 	}
 	
 	// TODO: docs
-	pub fn set_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>, user_data: B::UserData)
-			-> Option<Box<B::UserData>> {
+	pub fn set_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<BCan::Bin>,
+		user_data: B::UserData
+	) -> Option<Box<B::UserData>>
+		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
 		cast_user_data(
 			self.user_data.insert(promise.id, Box::new(user_data))
@@ -900,8 +982,9 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	// pub fn set_user_data_and_invalidate_on_change(...)
 	
 	// TODO: docs
-	pub fn remove_user_data<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>)
-			-> Option<Box<B::UserData>> {
+	pub fn remove_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<BCan::Bin>)
+			-> Option<Box<B::UserData>>
+			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
 		cast_user_data(
 			self.user_data.remove(&promise.id)
@@ -946,10 +1029,10 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 	/// its building. The dependencies are automatically tracked via the
 	/// `ArtifactResolver`.
 	///
-	pub fn invalidate<B: BuilderWithData + 'static>(&mut self, promise: &ArtifactPromise<B>) {
-		let any_promise = promise.clone().into_any();
+	pub fn invalidate<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<BCan::Bin>)
+			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
-		self.invalidate_any(any_promise.id);
+		self.invalidate_any(promise.id);
 		
 		#[cfg(feature = "diagnostics")]
 		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
@@ -965,8 +1048,8 @@ impl<ArtEnt> ArtifactCache<ArtEnt> {
 #[cfg(test)]
 mod test;
 
-#[cfg(test)]
-mod multi_level_test;
+//#[cfg(test)]
+//mod multi_level_test;
 
 
 
