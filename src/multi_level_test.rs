@@ -41,11 +41,11 @@ struct BuilderBuilder {
 	
 }
 
-impl Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for BuilderBuilder {
+impl SuperBuilderRc for BuilderBuilder {
 	type Artifact = BuilderLeaf;
 	type DynState = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolver<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>) -> Ap<Self::Artifact> {
+	fn build(&self, _cache: &mut SuperArtifactResolverRc) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderLeaf{}
 		)
@@ -59,11 +59,11 @@ struct SuperBuilder {
 	
 }
 
-impl Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for SuperBuilder {
+impl SuperBuilderRc for SuperBuilder {
 	type Artifact = BuilderBuilder;
 	type DynState = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolver<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>) -> Ap<Self::Artifact> {
+	fn build(&self, _cache: &mut SuperArtifactResolverRc) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderBuilder{}
 		)

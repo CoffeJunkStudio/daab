@@ -223,7 +223,6 @@
 #![warn(missing_docs)]
 
 
-use std::ops::Deref;
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -250,6 +249,7 @@ pub mod diagnostics;
 
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
+		use std::ops::Deref;
 		use std::ops::DerefMut;
 		use diagnostics::Doctor;
 		use diagnostics::ArtifactHandle;
@@ -465,7 +465,7 @@ impl fmt::Pointer for BuilderId {
 /// `dyn Any`) ArtifactPromise.
 ///
 #[derive(Clone, Debug)]
-struct BuilderEntry<BCan> {
+pub struct BuilderEntry<BCan> {
 	builder: BCan,
 	id: BuilderId,
 }

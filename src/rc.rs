@@ -8,6 +8,7 @@ pub type ArtifactPromiseRc<B> = ArtifactPromise<B, Rc<dyn Any>>;
 
 pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<dyn Any>, T>;
 
+pub type SuperArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>, T>;
 
 
 #[cfg(not(feature = "diagnostics"))]
@@ -15,6 +16,12 @@ pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>>;
 
 #[cfg(feature = "diagnostics")]
 pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>, Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>, T>;
+
+#[cfg(not(feature = "diagnostics"))]
+pub type SuperArtifactCacheRc = ArtifactCache<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>;
+
+#[cfg(feature = "diagnostics")]
+pub type SuperArtifactCacheRc<T = dyn Doctor<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>> = ArtifactCache<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>, T>;
 
 
 pub trait SimpleBuilder: Debug {
@@ -56,5 +63,23 @@ impl<B: BuilderRc> Builder<Rc<dyn Any>, Rc<dyn Any>> for B {
 		self.build(cache)
 	}
 }
+
+pub trait SuperBuilderRc: Debug {
+	type Artifact : Debug + 'static;
+	
+	type DynState : Debug + 'static;
+	
+	fn build(&self, resolver: &mut SuperArtifactResolverRc<Self::DynState>) -> ArtifactPromiseRc<Self::Artifact>;
+}
+
+impl<B: SuperBuilderRc> Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for B {
+	type Artifact = B::Artifact;
+	type DynState = B::DynState;
+	
+	fn build(&self, cache: &mut SuperArtifactResolverRc<Self::DynState>) -> ArtifactPromiseRc<Self::Artifact> {
+		self.build(cache)
+	}
+}
+
 
 
