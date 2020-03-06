@@ -32,7 +32,7 @@ pub trait SimpleBuilder: Debug {
 impl<B: SimpleBuilder> BuilderRc for B {
 	type Artifact = B::Artifact;
 	
-	type UserData = ();
+	type DynState = ();
 	
 	fn build(&self, cache: &mut ArtifactResolverRc) -> Rc<Self::Artifact> {
 		Rc::new(self.build(cache))
@@ -43,16 +43,16 @@ impl<B: SimpleBuilder> BuilderRc for B {
 pub trait BuilderRc: Debug {
 	type Artifact : Debug + 'static;
 	
-	type UserData : Debug + 'static;
+	type DynState : Debug + 'static;
 	
-	fn build(&self, resolver: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact>;
+	fn build(&self, resolver: &mut ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact>;
 }
 
 impl<B: BuilderRc> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B {
 	type Artifact = B::Artifact;
-	type UserData = B::UserData;
+	type DynState = B::DynState;
 	
-	fn build(&self, cache: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
+	fn build(&self, cache: &mut ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact> {
 		self.build(cache)
 	}
 }

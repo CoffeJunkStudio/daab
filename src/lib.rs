@@ -115,9 +115,9 @@
 //! use std::any::Any;
 //! impl BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for BuilderNode {
 //!     type Artifact = Node;
-//!     type UserData = u8;
+//!     type DynState = u8;
 //!     
-//!     fn build(&self, resolver: &mut rc::ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
+//!     fn build(&self, resolver: &mut rc::ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact> {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!         
@@ -149,21 +149,21 @@
 //! // Different artifacts may link the same dependent artifact
 //! assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
 //!
-//! // Test user data
+//! // Test dynamic state
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //! 
-//! // Change user data
-//! cache.set_user_data(&node_builder_1, 127.into());
+//! // Change state
+//! cache.set_dyn_state(&node_builder_1, 127.into());
 //! // Without invalidation, the cached artefact remains unchanged
-//! assert_eq!(cache.get_user_data(&node_builder_1), Some(&mut 127));
+//! assert_eq!(cache.get_dyn_state(&node_builder_1), Some(&mut 127));
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
-//! // Invalidate node, and ensure it made use of the user data
+//! // Invalidate node, and ensure it made use of the state
 //! cache.invalidate(node_builder_1.clone());
 //! assert_eq!(cache.get(&node_builder_1).value, 127);
 //!
-//! // User data of node 2 remains unchanged
+//! // State of node 2 remains unchanged
 //! assert_eq!(cache.get(&node_builder_2).value, 42);
-//! assert_eq!(cache.get_user_data(&node_builder_2), None);
+//! assert_eq!(cache.get_dyn_state(&node_builder_2), None);
 //! ```
 //!
 //!
@@ -279,12 +279,12 @@ pub trait BuilderWithData<ArtCan, BCan>: Debug
 	type Artifact : Debug + 'static;
 	
 	// TODO: docs
-	type UserData : Debug + 'static;
+	type DynState : Debug + 'static;
 	
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::UserData>) -> ArtCan::Bin;
+	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::DynState>) -> ArtCan::Bin;
 }
 
 
@@ -420,19 +420,19 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	// TODO: consider whether mutable access is actually a good option
 	// TODO: consider may be to even allow invalidation
 	pub fn my_user_data(&mut self) -> &mut T {
-		self.cache.get_user_data_cast(self.user.borrow()).unwrap()
+		self.cache.get_dyn_state_cast(self.user.borrow()).unwrap()
 	}
 	
 	pub fn get_my_user_data(&mut self) -> Option<&mut T> {
-		self.cache.get_user_data_cast(self.user.borrow())
+		self.cache.get_dyn_state_cast(self.user.borrow())
 	}
 	// TODO: docs
 	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>
-	) -> Option<&mut B::UserData> where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+	) -> Option<&mut B::DynState> where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
-		self.cache.get_user_data(promise)
+		self.cache.get_dyn_state(promise)
 	}
 }
 
@@ -553,8 +553,8 @@ pub struct ArtifactCache<ArtCan, BCan, #[cfg(feature = "diagnostics")] T: ?Sized
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<BuilderEntry<BCan>, ArtCan>,
 	
-	/// Maps Builder-Capsules to their UserData value
-	user_data: HashMap<BuilderId, Box<dyn Any>>,
+	/// Maps Builder-Capsules to their DynState value
+	dyn_state: HashMap<BuilderId, Box<dyn Any>>,
 	
 	/// Tracks the direct promise dependants of each promise
 	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
@@ -585,7 +585,7 @@ cfg_if! {
 			pub fn new() -> Self {
 				Self {
 					cache: HashMap::new(),
-					user_data: HashMap::new(),
+					dyn_state: HashMap::new(),
 					dependants: HashMap::new(),
 					
 					doctor: DefDoctor::default(),
@@ -602,7 +602,7 @@ cfg_if! {
 			pub fn new_with_doctor(doctor: T) -> Self {
 				Self {
 					cache: HashMap::new(),
-					user_data: HashMap::new(),
+					dyn_state: HashMap::new(),
 					dependants: HashMap::new(),
 					
 					doctor,
@@ -661,7 +661,7 @@ cfg_if! {
 			pub fn new() -> Self {
 				Self {
 					cache: HashMap::new(),
-					user_data: HashMap::new(),
+					dyn_state: HashMap::new(),
 					dependants: HashMap::new(),
 				}
 			}
@@ -673,14 +673,14 @@ cfg_if! {
 ///
 /// Must only be used with the correct `T`, or panics.
 ///
-fn cast_user_data<T: 'static>(v: Option<Box<dyn Any>>)
+fn cast_dyn_state<T: 'static>(v: Option<Box<dyn Any>>)
 		-> Option<Box<T>> {
 	
 	v.map(
 		|b| {
 			// Ensure value type
 			b.downcast()
-				.expect("Cached Builder UserData is of invalid type")
+				.expect("Cached Builder DynState is of invalid type")
 		}
 	)
 }
@@ -817,41 +817,41 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	}
 	
 	
-	/// Get and cast the user data of given builder id.
+	/// Get and cast the dynamic static of given builder id.
 	///
-	/// `T` must be the type of the respective user data of `bid`, or panics.
+	/// `T` must be the type of the respective dynamic state of `bid`, or panics.
 	///
-	fn get_user_data_cast<T: 'static>(&mut self, bid: &BuilderId) -> Option<&mut T> {
-		self.user_data.get_mut(bid)
+	fn get_dyn_state_cast<T: 'static>(&mut self, bid: &BuilderId) -> Option<&mut T> {
+		self.dyn_state.get_mut(bid)
 		.map(
 			|b| {
-				// Ensure data type
+				// Ensure state type
 				b.downcast_mut()
-					.expect("Cached Builder UserData is of invalid type")
+					.expect("Cached Builder DynState is of invalid type")
 			}
 		)
 	}
 	
 	// TODO: docs
-	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
+	pub fn get_dyn_state<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self, promise: &ArtifactPromise<B, BCan>
-	) -> Option<&mut B::UserData>
+	) -> Option<&mut B::DynState>
 		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
 		
-		self.get_user_data_cast(&promise.id)
+		self.get_dyn_state_cast(&promise.id)
 	}
 	
 	// TODO: docs
-	pub fn set_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
+	pub fn set_dyn_state<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>,
-		user_data: B::UserData
-	) -> Option<Box<B::UserData>>
+		user_data: B::DynState
+	) -> Option<Box<B::DynState>>
 		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
-		cast_user_data(
-			self.user_data.insert(promise.id, Box::new(user_data))
+		cast_dyn_state(
+			self.dyn_state.insert(promise.id, Box::new(user_data))
 		)
 	}
 	
@@ -859,28 +859,28 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	// pub fn set_user_data_and_invalidate_on_change(...)
 	
 	// TODO: docs
-	pub fn remove_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>)
-			-> Option<Box<B::UserData>>
+	pub fn remove_dyn_state<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>)
+			-> Option<Box<B::DynState>>
 			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
-		cast_user_data(
-			self.user_data.remove(&promise.id)
+		cast_dyn_state(
+			self.dyn_state.remove(&promise.id)
 		)
 	}
 	
 	// TODO: docs
-	pub fn clear_user_data(&mut self) {
+	pub fn clear_dyn_state(&mut self) {
 		
-		self.user_data.clear();
+		self.dyn_state.clear();
 	}
 	
-	// TODO: consider whether user data shall survive invalidation or not
+	// TODO: consider whether dynamic state shall survive invalidation or not
 	
 	/// Clears the entire cache including all kept promise and artifact `Rc`s.
 	///
 	pub fn clear(&mut self) {
 		self.cache.clear();
-		self.user_data.clear();
+		self.dyn_state.clear();
 		self.dependants.clear();
 		
 		#[cfg(feature = "diagnostics")]

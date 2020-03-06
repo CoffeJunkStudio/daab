@@ -43,7 +43,7 @@ struct BuilderBuilder {
 
 impl BuilderWithData<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for BuilderBuilder {
 	type Artifact = BuilderLeaf;
-	type UserData = ();
+	type DynState = ();
 	
 	fn build(&self, _cache: &mut ArtifactResolver<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>) -> Ap<Self::Artifact> {
 		Ap::new(
@@ -61,7 +61,7 @@ struct SuperBuilder {
 
 impl BuilderWithData<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for SuperBuilder {
 	type Artifact = BuilderBuilder;
-	type UserData = ();
+	type DynState = ();
 	
 	fn build(&self, _cache: &mut ArtifactResolver<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>) -> Ap<Self::Artifact> {
 		Ap::new(
