@@ -34,7 +34,6 @@ use std::fmt::Debug;
 
 use crate::Can;
 use crate::ArtifactPromise;
-use crate::BuilderWithData;
 use crate::BuilderEntry;
 
 

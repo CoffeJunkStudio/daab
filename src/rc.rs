@@ -48,7 +48,7 @@ pub trait BuilderRc: Debug {
 	fn build(&self, resolver: &mut ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact>;
 }
 
-impl<B: BuilderRc> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B {
+impl<B: BuilderRc> Builder<Rc<dyn Any>, Rc<dyn Any>> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 	

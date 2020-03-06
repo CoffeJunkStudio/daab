@@ -41,7 +41,7 @@ struct BuilderBuilder {
 	
 }
 
-impl BuilderWithData<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for BuilderBuilder {
+impl Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for BuilderBuilder {
 	type Artifact = BuilderLeaf;
 	type DynState = ();
 	
@@ -59,7 +59,7 @@ struct SuperBuilder {
 	
 }
 
-impl BuilderWithData<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for SuperBuilder {
+impl Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for SuperBuilder {
 	type Artifact = BuilderBuilder;
 	type DynState = ();
 	
