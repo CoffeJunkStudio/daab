@@ -4,7 +4,7 @@
 use crate::*;
 
 
-pub type ArtifactPromiseRc<B> = ArtifactPromise<Rc<B>>;
+pub type ArtifactPromiseRc<B> = ArtifactPromise<B, Rc<dyn Any>>;
 
 pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<dyn Any>, T>;
 
@@ -28,15 +28,32 @@ pub trait SimpleBuilder: Debug {
 	fn build(&self, resolver: &mut ArtifactResolverRc) -> Self::Artifact;
 }
 
-
 // Generic impl for legacy builder
-impl<B: SimpleBuilder> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B {
+impl<B: SimpleBuilder> BuilderRc for B {
 	type Artifact = B::Artifact;
 	
 	type UserData = ();
 	
 	fn build(&self, cache: &mut ArtifactResolverRc) -> Rc<Self::Artifact> {
 		Rc::new(self.build(cache))
+	}
+}
+
+
+pub trait BuilderRc: Debug {
+	type Artifact : Debug + 'static;
+	
+	type UserData : Debug + 'static;
+	
+	fn build(&self, resolver: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact>;
+}
+
+impl<B: BuilderRc> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B {
+	type Artifact = B::Artifact;
+	type UserData = B::UserData;
+	
+	fn build(&self, cache: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
+		self.build(cache)
 	}
 }
 

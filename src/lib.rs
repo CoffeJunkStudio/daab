@@ -304,26 +304,22 @@ pub trait BuilderWithData<ArtCan, BCan>: Debug
 ///
 /// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
 ///
-#[derive(Debug, Clone)]
-pub struct ArtifactPromise<BBin> {
-	builder: BBin,
+pub struct ArtifactPromise<B, BCan: Can<B>> {
+	builder: BCan::Bin,
 	id: BuilderId,
 }
 
-impl<BBin: Debug> ArtifactPromise<BBin> {
+impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 	/// Crates a new promise for the given builder.
 	///
-	pub fn new<B, BCan, ArtCan>(builder: B) -> Self
+	pub fn new(builder: B) -> Self
 			where
-				B: BuilderWithData<ArtCan, BCan>,
-				BCan: CanWithSize<B, Bin=BBin>,
-				ArtCan: Can<B::Artifact>,
-				BBin: AsRef<B> {
+				BCan: CanWithSize<B>, {
 		
 		let bin = BCan::into_bin(builder);
 		let id = BuilderId(BCan::bin_as_ptr(&bin));
 		
-		Self {
+		ArtifactPromise {
 			builder: bin,
 			id,
 		}
@@ -332,30 +328,46 @@ impl<BBin: Debug> ArtifactPromise<BBin> {
 	//pub into_can(self) -> ArtifactPromise
 }
 
-impl<Bin> Borrow<BuilderId> for ArtifactPromise<Bin> {
+impl<B, BCan: Can<B>> Clone for ArtifactPromise<B, BCan> where BCan::Bin: Clone {
+	fn clone(&self) -> Self {
+		
+		ArtifactPromise {
+			builder: self.builder.clone(),
+			id: self.id,
+		}
+	}
+}
+
+impl<B, BCan: Can<B>> Borrow<BuilderId> for ArtifactPromise<B, BCan> {
 	fn borrow(&self) -> &BuilderId {
 		&self.id
 	}
 }
 
-impl<Bin> Hash for ArtifactPromise<Bin> {
+impl<B, BCan: Can<B>> Hash for ArtifactPromise<B, BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 	}
 }
 
-impl<Bin> PartialEq for ArtifactPromise<Bin> {
+impl<B, BCan: Can<B>> PartialEq for ArtifactPromise<B, BCan> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id.eq(&other.id)
 	}
 }
 
-impl<Bin> Eq for ArtifactPromise<Bin> {
+impl<B, BCan: Can<B>> Eq for ArtifactPromise<B, BCan> {
 }
 
-impl<C: CanBase> fmt::Pointer for ArtifactPromise<C> {
+impl<B, BCan: Can<B>> fmt::Pointer for ArtifactPromise<B, BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", self.builder.as_ptr())
+		writeln!(f, "{:p}", BCan::bin_as_ptr(&self.builder))
+	}
+}
+
+impl<B, BCan: Can<B>> fmt::Debug for ArtifactPromise<B, BCan> where BCan::Bin: fmt::Debug {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id)
 	}
 }
 
@@ -387,12 +399,13 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	///
 	pub fn resolve<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
-		promise: &ArtifactPromise<BCan::Bin>
+		promise: &ArtifactPromise<B, BCan>
 	) -> ArtCan::Bin
 			where
 				ArtCan: Can<B::Artifact>,
 				BCan: Can<B>,
-				BCan::Bin: Clone {
+				BCan::Bin: Clone,
+				BCan::Bin: AsRef<B> {
 		
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -416,7 +429,7 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	// TODO: docs
 	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
-		promise: &ArtifactPromise<BCan::Bin>
+		promise: &ArtifactPromise<B, BCan>
 	) -> Option<&mut B::UserData> where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
 		self.cache.get_user_data(promise)
@@ -458,8 +471,8 @@ struct BuilderEntry<BCan> {
 }
 
 impl<BCan> BuilderEntry<BCan> {
-	fn new<ArtCan, B: BuilderWithData<ArtCan, BCan> + 'static>(value: ArtifactPromise<BCan::Bin>) -> Self
-			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+	fn new<B: 'static>(value: ArtifactPromise<B, BCan>) -> Self
+			where BCan: Can<B> {
 		
 		BuilderEntry {
 			builder: BCan::from_bin(value.builder),
@@ -681,12 +694,13 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
 			diag_builder: &BuilderHandle<BCan>,
-			promise: &ArtifactPromise<BCan::Bin>) -> ArtCan::Bin
+			promise: &ArtifactPromise<B, BCan>) -> ArtCan::Bin
 		
 			where
 				ArtCan: Can<B::Artifact>,
 				BCan: Can<B>,
-				BCan::Bin: Clone {
+				BCan::Bin: Clone,
+				BCan::Bin: AsRef<B> {
 		
 		
 		let deps = self.get_dependants(&promise);
@@ -702,7 +716,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	
 	/// Returns the vector of dependants of promise
 	///
-	fn get_dependants<Bin>(&mut self, promise: &ArtifactPromise<Bin>) -> &mut HashSet<BuilderId> {
+	fn get_dependants<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>) -> &mut HashSet<BuilderId>
+			where ArtCan: Can<B::Artifact>, BCan: Can<B> {
 		if !self.dependants.contains_key(promise.borrow()) {
 			self.dependants.insert(*promise.borrow(), HashSet::new());
 		}
@@ -714,7 +729,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	///
 	pub fn lookup<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&self,
-		builder: &ArtifactPromise<BCan::Bin>
+		builder: &ArtifactPromise<B, BCan>
 	) -> Option<ArtCan::Bin>
 		where
 			ArtCan: Can<B::Artifact>,
@@ -761,12 +776,13 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	///
 	pub fn get<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
-		promise: &ArtifactPromise<BCan::Bin>
+		promise: &ArtifactPromise<B, BCan>
 	) -> ArtCan::Bin
 		where
 			ArtCan: Can<B::Artifact>,
 			BCan: Can<B>,
-			BCan::Bin: Clone {
+			BCan::Bin: Clone,
+			BCan::Bin: AsRef<B> {
 		
 		if self.lookup(promise).is_some() {
 			// No if-let because of borrow-checker error
@@ -818,7 +834,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	
 	// TODO: docs
 	pub fn get_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
-		&mut self, promise: &ArtifactPromise<BCan::Bin>
+		&mut self, promise: &ArtifactPromise<B, BCan>
 	) -> Option<&mut B::UserData>
 		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
@@ -829,7 +845,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	// TODO: docs
 	pub fn set_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(
 		&mut self,
-		promise: &ArtifactPromise<BCan::Bin>,
+		promise: &ArtifactPromise<B, BCan>,
 		user_data: B::UserData
 	) -> Option<Box<B::UserData>>
 		where BCan: Can<B>, ArtCan: Can<B::Artifact> {
@@ -843,7 +859,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	// pub fn set_user_data_and_invalidate_on_change(...)
 	
 	// TODO: docs
-	pub fn remove_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<BCan::Bin>)
+	pub fn remove_user_data<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>)
 			-> Option<Box<B::UserData>>
 			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
 		
@@ -890,7 +906,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	/// its building. The dependencies are automatically tracked via the
 	/// `ArtifactResolver`.
 	///
-	pub fn invalidate<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: ArtifactPromise<BCan::Bin>)
+	pub fn invalidate<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: ArtifactPromise<B, BCan>)
 			where
 				BCan: Can<B>,
 				ArtCan: Can<B::Artifact> {
@@ -911,8 +927,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 #[cfg(test)]
 mod test;
 
-//#[cfg(test)]
-//mod multi_level_test;
+#[cfg(test)]
+mod multi_level_test;
 
 
 

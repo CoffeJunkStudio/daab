@@ -135,11 +135,9 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 	/// Constructs a new artifact handle with the given value.
 	///
 	pub fn new<T: Any + Debug>(value: ArtCan::Bin) -> Self
-		where ArtCan: Can<T>,
-			ArtCan::Bin: AsRef<T>
-	{
+		where ArtCan: Can<T> {
 		
-		let dbg_text = format!("{:#?}", value.as_ref());
+		let dbg_text = format!("{:#?}", value);
 		
 		ArtifactHandle {
 			value: ArtCan::from_bin(value),
@@ -192,13 +190,13 @@ pub struct BuilderHandle<BCan> {
 impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<ArtCan, T: BuilderWithData<ArtCan, BCan> + 'static>(value: ArtifactPromise<BCan::Bin>) -> Self
-			where BCan: Can<T>, ArtCan: Can<T::Artifact> {
+	pub fn new<B: 'static>(value: ArtifactPromise<B, BCan>) -> Self
+			where BCan: Can<B> {
 		let dbg_text = format!("{:#?}", &value.builder);
 		
 		BuilderHandle {
 			value: BuilderEntry::new(value),
-			type_name: std::any::type_name::<T>(),
+			type_name: std::any::type_name::<B>(),
 			dbg_text,
 		}
 	}

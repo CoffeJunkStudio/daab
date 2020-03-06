@@ -14,16 +14,12 @@ pub trait CanBase: Debug {
 /// A can for `T`. Supposed to be akind to `dyn Any`.
 // For Artifacts
 pub trait Can<T: ?Sized>: CanBase {
-	type Bin: Debug + AsRef<T>;
+	type Bin: Debug;
 	
 	fn downcast_can(&self) -> Option<Self::Bin>;
 	fn downcast_can_ref(&self) -> Option<&T>;
 	fn from_bin(b: Self::Bin) -> Self;
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
-}
-
-pub trait CanDeref<T>: Can<T> where Self::Bin: Deref<Target=T> {
-	
 }
 
 pub trait CanWithSize<T>: Can<T> + Sized {
@@ -100,8 +96,9 @@ impl<T: Debug + Send + Sync + 'static> CanWithSize<T> for Arc<dyn Any + Send + S
 }
 
 
-/*
+
 use crate::ArtifactPromise as Ap;
+use crate::BuilderEntry;
 
 impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
 	fn as_ptr(&self) -> *const dyn std::any::Any {
@@ -109,25 +106,36 @@ impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
 	}
 }
 
-impl<BCan: CanBase + 'static, T: 'static> Can<T> for BuilderEntry<BCan> where BCan: Can<T> {
-	type Bin = Ap<BCan::Bin>;
+impl<BCan: CanBase + 'static, B: 'static> Can<B> for BuilderEntry<BCan>
+		where BCan: Can<B> {
 	
-	fn downcast_can_ref(&self) -> Option<&Self::Bin> {
-		self.downcast_ref()
+	type Bin = Ap<B, BCan>;
+	
+	fn downcast_can(&self) -> Option<Self::Bin> {
+		self.builder.downcast_can().map( |bin| {
+			Ap {
+				builder: bin,
+				id: self.id,
+			}
+		})
+	}
+	fn downcast_can_ref(&self) -> Option<&B> {
+		self.builder.downcast_can_ref()
 	}
 	fn from_bin(b: Self::Bin) -> Self {
-		b
+		BuilderEntry::new(b)
 	}
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
 		b
 	}
 }
 
-impl<T: Send + Sync + 'static> CanWithSize<T> for Ap<dyn Any + Send + Sync> {
-	fn into_bin(t: T) -> Self::Bin {
-		Arc::new(t)
+impl<BCan: CanBase + 'static, B: 'static> CanWithSize<B> for BuilderEntry<BCan>
+		where BCan: CanWithSize<B> {
+	fn into_bin(t: B) -> Self::Bin {
+		Ap::new(t)
 	}
 }
-*/
+
 
 
