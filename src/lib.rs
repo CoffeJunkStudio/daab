@@ -80,10 +80,10 @@
 //!         }
 //!     }
 //! }
-//! impl SimpleBuilder for BuilderLeaf {
+//! impl rc::SimpleBuilder for BuilderLeaf {
 //!     type Artifact = Leaf;
 //!     
-//!     fn build(&self, _resolver: &mut ArtifactResolverRc) -> Self::Artifact {
+//!     fn build(&self, _resolver: &mut rc::ArtifactResolverRc) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -101,11 +101,11 @@
 //! // Composed builder, depending on BuilderLeaf
 //! #[derive(Debug)]
 //! struct BuilderNode {
-//!     builder_leaf: ArtifactPromiseRc<BuilderLeaf>, // Dependency builder
+//!     builder_leaf: rc::ArtifactPromiseRc<BuilderLeaf>, // Dependency builder
 //!     // ...
 //! }
 //! impl BuilderNode {
-//!     pub fn new(builder_leaf: ArtifactPromiseRc<BuilderLeaf>) -> Self {
+//!     pub fn new(builder_leaf: rc::ArtifactPromiseRc<BuilderLeaf>) -> Self {
 //!         Self {
 //!             builder_leaf,
 //!             // ...
@@ -117,7 +117,7 @@
 //!     type Artifact = Node;
 //!     type UserData = u8;
 //!     
-//!     fn build(&self, resolver: &mut ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
+//!     fn build(&self, resolver: &mut rc::ArtifactResolverRc<Self::UserData>) -> Rc<Self::Artifact> {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!         
@@ -130,7 +130,7 @@
 //! }
 //! 
 //! // The cache to storing already created artifacts
-//! let mut cache = ArtifactCacheRc::new();
+//! let mut cache = rc::ArtifactCacheRc::new();
 //!
 //! // Constructing builders
 //! let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
@@ -237,6 +237,14 @@ use std::marker::PhantomData;
 
 use cfg_if::cfg_if;
 
+pub mod rc;
+
+pub mod canning;
+
+use canning::CanBase;
+use canning::Can;
+use canning::CanWithSize;
+
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
 
@@ -259,16 +267,7 @@ cfg_if! {
 /// in order to resolve depending builders (aka `ArtifactPromise`s) into their
 /// respective artifacts.
 ///
-pub trait SimpleBuilder: Debug {
-	/// The artifact type as produced by this builder.
-	///
-	type Artifact : Debug;
-	
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
-	/// dependencies.
-	///
-	fn build(&self, resolver: &mut ArtifactResolverRc) -> Self::Artifact;
-}
+
 
 
 
@@ -277,7 +276,7 @@ pub trait BuilderWithData<ArtCan, BCan>: Debug
 	
 	/// The artifact type as produced by this builder.
 	///
-	type Artifact : Debug;
+	type Artifact : Debug + 'static;
 	
 	// TODO: docs
 	type UserData : Debug + 'static;
@@ -288,139 +287,9 @@ pub trait BuilderWithData<ArtCan, BCan>: Debug
 	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::UserData>) -> ArtCan::Bin;
 }
 
-// Generic impl for legacy builder
-impl<B: SimpleBuilder> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B where B::Artifact: 'static {
-	type Artifact = B::Artifact;
-	
-	type UserData = ();
-	
-	fn build(&self, cache: &mut ArtifactResolverRc) -> Rc<Self::Artifact> {
-		Rc::new(self.build(cache))
-	}
-}
 
 
 
-pub trait CanBase: Debug {
-	fn as_ptr(&self) -> *const dyn Any;
-}
-
-/// A can for `T`. Supposed to be akind to `dyn Any`.
-// For Artifacts
-pub trait Can<T: ?Sized>: CanBase {
-	type Bin: Debug;
-	
-	fn downcast_can(&self) -> Option<Self::Bin>;
-	fn downcast_can_ref(&self) -> Option<&T>;
-	fn from_bin(b: Self::Bin) -> Self;
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
-}
-
-pub trait CanDeref<T>: Can<T> where Self::Bin: Deref<Target=T> {
-	
-}
-
-pub trait CanWithSize<T>: Can<T> + Sized {
-	fn into_bin(t: T) -> Self::Bin;
-	fn from_inner(t: T) -> Self {
-		Self::from_bin(Self::into_bin(t))
-	}
-}
-
-
-impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
-	type Bin = Rc<T>;
-	
-	fn downcast_can(&self) -> Option<Self::Bin> {
-		self.clone().downcast().ok()
-	}
-	fn downcast_can_ref(&self) -> Option<&T> {
-		self.downcast_ref()
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
-	}
-}
-
-impl<T: Debug + 'static> CanWithSize<T> for Rc<dyn Any> {
-	fn into_bin(t: T) -> Self::Bin {
-		Rc::new(t)
-	}
-}
-
-impl CanBase for Rc<dyn Any> {
-	fn as_ptr(&self) -> *const dyn Any {
-		self
-	}
-}
-
-
-// TODO: impl for AP, Arc, maybe T/Box
-
-use std::sync::Arc;
-
-impl CanBase for Arc<dyn Any + Send + Sync> {
-	fn as_ptr(&self) -> *const dyn std::any::Any {
-		self
-	}
-}
-
-impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
-	type Bin = Arc<T>;
-	
-	fn downcast_can(&self) -> Option<Self::Bin> {
-		self.clone().downcast().ok()
-	}
-	fn downcast_can_ref(&self) -> Option<&T> {
-		self.downcast_ref()
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
-	}
-}
-
-impl<T: Debug + Send + Sync + 'static> CanWithSize<T> for Arc<dyn Any + Send + Sync> {
-	fn into_bin(t: T) -> Self::Bin {
-		Arc::new(t)
-	}
-}
-
-
-/*
-use ArtifactPromise as Ap;
-
-impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
-	fn as_ptr(&self) -> *const dyn std::any::Any {
-		self
-	}
-}
-
-impl<BCan: CanBase + 'static, T: 'static> Can<T> for BuilderEntry<BCan> where BCan: Can<T> {
-	type Bin = Ap<BCan::Bin>;
-	
-	fn downcast_can_ref(&self) -> Option<&Self::Bin> {
-		self.downcast_ref()
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b
-	}
-}
-
-impl<T: Send + Sync + 'static> CanWithSize<T> for Ap<dyn Any + Send + Sync> {
-	fn into_bin(t: T) -> Self::Bin {
-		Arc::new(t)
-	}
-}
-*/
 
 /// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
 ///
@@ -446,10 +315,10 @@ impl<BBin: Debug> ArtifactPromise<BBin> {
 	///
 	pub fn new<B, BCan, ArtCan>(builder: B) -> Self
 			where
-				B: BuilderWithData<ArtCan, BCan> + 'static,
+				B: BuilderWithData<ArtCan, BCan>,
 				BCan: CanWithSize<B, Bin=BBin>,
-				BBin: Deref<Target=B>,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				BBin: AsRef<B> {
 		
 		let bin = BCan::into_bin(builder);
 		let id = BuilderId(BCan::bin_as_ptr(&bin));
@@ -491,10 +360,6 @@ impl<C: CanBase> fmt::Pointer for ArtifactPromise<C> {
 }
 
 
-pub type ArtifactPromiseRc<B> = ArtifactPromise<Rc<B>>;
-
-pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<dyn Any>, T>;
-
 
 /// Resolves any `ArtifactPromise` to the artifact of the inner builder.
 ///
@@ -507,9 +372,9 @@ pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<d
 /// This dependency information is used for correct invalidation of dependants
 /// on cache invalidation via `ArtifactCache::invalidate()`.
 ///
-pub struct ArtifactResolver<'a, ArtEnt, BCan, T = ()> {
+pub struct ArtifactResolver<'a, ArtCan, BCan, T = ()> {
 	user: &'a BuilderEntry<BCan>,
-	cache: &'a mut ArtifactCache<ArtEnt, BCan>,
+	cache: &'a mut ArtifactCache<ArtCan, BCan>,
 	#[cfg(feature = "diagnostics")]
 	diag_builder: &'a BuilderHandle<BCan>,
 	_b: PhantomData<T>,
@@ -525,11 +390,8 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 		promise: &ArtifactPromise<BCan::Bin>
 	) -> ArtCan::Bin
 			where
-				B::Artifact: 'static,
 				ArtCan: Can<B::Artifact>,
-				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B>,
-				BCan::Bin: AsRef<B>,
 				BCan::Bin: Clone {
 		
 		cfg_if! {
@@ -641,12 +503,6 @@ impl<BCan: CanBase> fmt::Pointer for BuilderEntry<BCan> {
 	}
 }
 
-
-#[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>>;
-
-#[cfg(feature = "diagnostics")]
-pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>, Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>, T>;
 
 
 /// Structure for caching and looking up artifacts.
@@ -828,11 +684,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<BCan::Bin>) -> ArtCan::Bin
 		
 			where
-				B::Artifact: 'static,
 				ArtCan: Can<B::Artifact>,
-				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B>,
-				BCan::Bin: AsRef<B>,
 				BCan::Bin: Clone {
 		
 		
@@ -911,11 +764,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		promise: &ArtifactPromise<BCan::Bin>
 	) -> ArtCan::Bin
 		where
-			B::Artifact: 'static,
 			ArtCan: Can<B::Artifact>,
-			ArtCan::Bin: AsRef<B::Artifact>,
 			BCan: Can<B>,
-			BCan::Bin: AsRef<B>,
 			BCan::Bin: Clone {
 		
 		if self.lookup(promise).is_some() {

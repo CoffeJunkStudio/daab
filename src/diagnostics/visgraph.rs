@@ -57,7 +57,7 @@ impl Default for VisgraphDocOptions {
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use daab::ArtifactCacheRc;
+/// use daab::rc::ArtifactCacheRc;
 /// use daab::diagnostics::{VisgraphDoc, VisgraphDocOptions};
 ///
 /// let mut cache = ArtifactCacheRc::new_with_doctor(

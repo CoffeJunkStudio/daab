@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 use pretty_assertions::{assert_eq, assert_ne};
 
+use crate::rc::*;
 
 // Dummy counter to differentiate instances
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -386,6 +387,61 @@ built #0.2  BuilderSimpleNode => SimpleNode
 				show_artifact_values: false,
 				show_addresses: false,
 				tynm_m_n: Some((0,0)),
+			},
+			data
+		)
+	);
+	
+	
+	// Test data
+	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	
+	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
+	
+	// Ensure same builder results in same artifact
+	assert_eq!(cache.get(&node2), cache.get(&node2));
+	
+	// Ensure different builder result in different artifacts
+	assert_ne!(cache.get(&node1), cache.get(&node2));
+	
+	// Enusre that different artifacts may link the same dependent artifact
+	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+	
+	// Get the vector back, dissolves cache & doctor
+	data = cache.into_doctor().into_inner();
+	
+	let string = String::from_utf8(data).unwrap();
+	// Print the resulting string, very usable in case it does not match
+	println!("{}", string);
+	
+	assert_eq!(pattern, &string);
+}
+
+#[test]
+#[cfg(feature = "diagnostics")]
+fn test_text_doc_long() {
+	
+	// Expected value as Regular Expression due to variable addresses and counters
+	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
+built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
+built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
+built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
+";
+
+	// Textual output storage
+	let mut data = Vec::new();
+	
+	let mut cache = ArtifactCache::new_with_doctor(
+		diagnostics::TextualDoc::new(
+			diagnostics::TextualDocOptions {
+				show_builder_values: false,
+				show_artifact_values: false,
+				show_addresses: false,
+				// TODO use when newer version in avaiable
+				//tynm_m_n: Some((std::usize::MAX,std::usize::MAX)),
+				tynm_m_n: Some((100,100)),
 			},
 			data
 		)

@@ -93,7 +93,7 @@ impl Default for TextualDocOptions {
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use daab::ArtifactCacheRc;
+/// use daab::rc::ArtifactCacheRc;
 /// use daab::diagnostics::{TextualDoc, TextualDocOptions};
 /// use std::io::stdout;
 ///
