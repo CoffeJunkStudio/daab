@@ -26,15 +26,16 @@
 //!
 
 
+use crate::CanBase;
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 
-use super::ArtifactPromise;
-use super::BuilderWithData;
-use super::SpecWrapper;
-use super::AnyWrapper;
+use crate::Can;
+use crate::ArtifactPromise;
+use crate::BuilderWithData;
+use crate::BuilderEntry;
 
 
 mod visgraph;
@@ -64,12 +65,12 @@ pub use textual::TextualDoc;
 ///[`ArtifactCache`]: ../struct.ArtifactCache.html
 ///[`ArtifactCache::new_with_doctor()`]: ../struct.ArtifactCache.html#method.new_with_doctor
 ///
-pub trait Doctor<ArtEnt> {
+pub trait Doctor<ArtCan, BCan> {
 	/// One `Builder` resolves another `Builder`.
 	///
 	/// This methods means that `builder` appearently depends on `used`.
 	///
-	fn resolve(&mut self, _builder: &BuilderHandle, _used: &BuilderHandle) {
+	fn resolve(&mut self, _builder: &BuilderHandle<BCan>, _used: &BuilderHandle<BCan>) {
 		// NOOP
 	}
 	
@@ -80,7 +81,7 @@ pub trait Doctor<ArtEnt> {
 	/// artifact is actually constructed, i.e. first time it is resolved
 	/// or when it is resolved after a reset or invalidation.
 	///
-	fn build(&mut self, _builder: &BuilderHandle, _artifact: &ArtifactHandle<ArtEnt>) {
+	fn build(&mut self, _builder: &BuilderHandle<BCan>, _artifact: &ArtifactHandle<ArtCan>) {
 		// NOOP
 	}
 	
@@ -103,7 +104,7 @@ pub trait Doctor<ArtEnt> {
 	/// **Notice:** This invalidation might result in clearing the entire cache,
 	/// but `clear` will not be called in such a case.
 	///
-	fn invalidate(&mut self, _builder: &BuilderHandle) {
+	fn invalidate(&mut self, _builder: &BuilderHandle<BCan>) {
 		// NOOP
 	}
 }
@@ -119,9 +120,9 @@ pub trait Doctor<ArtEnt> {
 /// pointer thus the implementation of `Hash` and `Eq`.
 ///
 #[derive(Clone, Debug)]
-pub struct ArtifactHandle<ArtEnt> {
+pub struct ArtifactHandle<ArtCan> {
 	/// The actual artifact value.
-	pub value: ArtEnt,
+	pub value: ArtCan,
 	
 	/// The type name of the artifact as of `std::any::type_name`.
 	pub type_name: &'static str,
@@ -130,40 +131,41 @@ pub struct ArtifactHandle<ArtEnt> {
 	pub dbg_text: String,
 }
 
-impl<ArtEnt> ArtifactHandle<ArtEnt> {
+impl<ArtCan> ArtifactHandle<ArtCan> {
 	/// Constructs a new artifact handle with the given value.
 	///
-	pub fn new<T: Any + Debug>(value: T) -> Self
-		where T: SpecWrapper<AnyW = ArtEnt>,
-			ArtEnt: AnyWrapper<T> {
+	pub fn new<T: Any + Debug>(value: ArtCan::Bin) -> Self
+		where ArtCan: Can<T>,
+			ArtCan::Bin: AsRef<T>
+	{
 		
-		let dbg_text = format!("{:#?}", &value);
+		let dbg_text = format!("{:#?}", value.as_ref());
 		
 		ArtifactHandle {
-			value: value.into_any(),
+			value: ArtCan::from_bin(value),
 			type_name: std::any::type_name::<T>(),
 			dbg_text,
 		}
 	}
 }
 
-/*
-impl<ArtEnt> Hash for ArtifactHandle<ArtEnt> {
+
+impl<ArtCan> Hash for ArtifactHandle<ArtCan> where ArtCan: CanBase {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		(self.value.as_ref() as *const dyn Any).hash(state);
+		(self.value.as_ptr()).hash(state);
 	}
 }
 
-impl<ArtEnt> PartialEq for ArtifactHandle<ArtEnt> {
+impl<ArtCan> PartialEq for ArtifactHandle<ArtCan> where ArtCan: CanBase {
 	fn eq(&self, other: &Self) -> bool {
-		(self.value.as_ref() as *const dyn Any)
-			.eq(&(other.value.as_ref() as *const dyn Any))
+		(self.value.as_ptr())
+			.eq(&other.value.as_ptr())
 	}
 }
 
-impl<ArtEnt> Eq for ArtifactHandle<ArtEnt> {
+impl<ArtCan: CanBase> Eq for ArtifactHandle<ArtCan> {
 }
-*/
+
 
 
 /// Encapsulates a generic builder with some debugging information.
@@ -176,9 +178,9 @@ impl<ArtEnt> Eq for ArtifactHandle<ArtEnt> {
 /// pointer thus the implementation of `Hash` and `Eq`.
 ///
 #[derive(Clone, Debug)]
-pub struct BuilderHandle {
+pub struct BuilderHandle<BCan> {
 	/// The actual builder as promise.
-	pub value: ArtifactPromise<dyn Any>,
+	value: BuilderEntry<BCan>,
 	
 	/// The type name of the builder as of `std::any::type_name`.
 	pub type_name: &'static str,
@@ -187,33 +189,34 @@ pub struct BuilderHandle {
 	pub dbg_text: String,
 }
 
-impl BuilderHandle {
+impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<T: BuilderWithData + 'static>(value: ArtifactPromise<T>) -> Self {
+	pub fn new<ArtCan, T: BuilderWithData<ArtCan, BCan> + 'static>(value: ArtifactPromise<BCan::Bin>) -> Self
+			where BCan: Can<T>, ArtCan: Can<T::Artifact> {
 		let dbg_text = format!("{:#?}", &value.builder);
 		
 		BuilderHandle {
-			value: value.into_any(),
+			value: BuilderEntry::new(value),
 			type_name: std::any::type_name::<T>(),
 			dbg_text,
 		}
 	}
 }
 
-impl Hash for BuilderHandle {
+impl<BCan> Hash for BuilderHandle<BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.value.hash(state);
 	}
 }
 
-impl PartialEq for BuilderHandle {
+impl<BCan> PartialEq for BuilderHandle<BCan> {
 	fn eq(&self, other: &Self) -> bool {
 		self.value.eq(&other.value)
 	}
 }
 
-impl Eq for BuilderHandle {
+impl<BCan> Eq for BuilderHandle<BCan> {
 }
 
 
@@ -226,7 +229,7 @@ impl Eq for BuilderHandle {
 ///
 pub struct NoopDoctor;
 
-impl<ArtEnt> Doctor<ArtEnt> for NoopDoctor {
+impl<ArtCan, BCan> Doctor<ArtCan, BCan> for NoopDoctor {
 	// Use default impl
 }
 

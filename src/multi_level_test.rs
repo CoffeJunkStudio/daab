@@ -3,6 +3,8 @@ use super::*;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 
+type Ap<B> = super::ArtifactPromiseRc<B>;
+
 
 // Dummy counter to differentiate instances
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -19,7 +21,7 @@ struct BuilderLeaf {
 	// empty
 }
 
-impl Builder for BuilderLeaf {
+impl SimpleBuilder for BuilderLeaf {
 	type Artifact = Leaf;
 	
 	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
@@ -36,11 +38,11 @@ struct BuilderBuilder {
 	
 }
 
-impl BuilderWithData for BuilderBuilder {
-	type Artifact = Ap<BuilderLeaf>;
+impl BuilderWithData<Ap<Any>, Rc<Any>> for BuilderBuilder {
+	type Artifact = BuilderLeaf;
 	type UserData = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolverW<Self::Artifact>) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolver<Ap<Any>, Rc<Any>>) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderLeaf{}
 		)
@@ -54,11 +56,11 @@ struct SuperBuilder {
 	
 }
 
-impl BuilderWithData for SuperBuilder {
-	type Artifact = Ap<BuilderBuilder>;
+impl BuilderWithData<Rc<Any>, Ap<Any>> for SuperBuilder {
+	type Artifact = BuilderBuilder;
 	type UserData = ();
 	
-	fn build(&self, _cache: &mut ArtifactResolverW<Self::Artifact>) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolver<Ap<Any>, Rc<Any>>) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderBuilder{}
 		)

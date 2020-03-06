@@ -1,5 +1,6 @@
 
 
+use crate::CanBase;
 use super::Doctor;
 use super::BuilderHandle;
 use super::ArtifactHandle;
@@ -120,7 +121,7 @@ impl<W: Write> VisgraphDoc<W> {
 	}
 	
 	/// Strigify given builder entry.
-	fn builder_str<'a>(&self, builder: &'a BuilderHandle) -> &'a str {
+	fn builder_str<'a, BCan>(&self, builder: &'a BuilderHandle<BCan>) -> &'a str {
 		if self.opts.show_builder_values {
 			&builder.dbg_text
 		} else {
@@ -152,27 +153,27 @@ impl<W: Write> Drop for VisgraphDoc<W> {
 	}
 }
 
-impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for VisgraphDoc<W> {
-	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
+impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
+	fn resolve(&mut self, builder: &BuilderHandle<BCan>, used: &BuilderHandle<BCan>) {
 	
 		let s = self.builder_str(builder);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			builder.value.builder,
+			builder.value.id,
 			s
 		).unwrap();
 		
 		let s = self.builder_str(used);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			used.value.builder,
+			used.value.id,
 			s
 		).unwrap();
 		
 		writeln!(self.output(),
 			r#"  "{:p}" -> "{:p}""#,
-			builder.value.builder,
-			used.value.builder
+			builder.value.id,
+			used.value.id
 		).unwrap();
 		
 		self.output().flush().unwrap();
@@ -180,13 +181,13 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for VisgraphDoc<W> {
 	}
 	
 	
-	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle<ArtEnt>) {
+	fn build(&mut self, builder: &BuilderHandle<BCan>, artifact: &ArtifactHandle<ArtCan>) {
 		let count = self.count;
 		
 		let s = self.builder_str(builder);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			builder.value.builder,
+			builder.value.id,
 			s
 		).unwrap();
 		
@@ -200,17 +201,17 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for VisgraphDoc<W> {
 			r##"  "{0}.{1}-{2:p}" [label = "#{0}.{1} {3}{4}", shape = box]"##,
 			count.0,
 			count.1,
-			artifact.value,
+			artifact.value.as_ptr(),
 			artifact.type_name,
 			s
 		).unwrap();
 			
 		writeln!(self.output(),
 			r#"  "{:p}" -> "{}.{}-{:p}" [arrowhead = "none"]"#,
-			builder.value.builder,
+			builder.value.id,
 			count.0,
 			count.1,
-			artifact.value
+			artifact.value.as_ptr()
 		).unwrap();
 		
 		self.output().flush().unwrap();
@@ -226,7 +227,7 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for VisgraphDoc<W> {
 		self.count.1 = 0;
 	}
 	
-	fn invalidate(&mut self, _builder: &BuilderHandle) {
+	fn invalidate(&mut self, _builder: &BuilderHandle<BCan>) {
 		// Generations inc
 		self.count.0 += 1;
 		self.count.1 = 0;

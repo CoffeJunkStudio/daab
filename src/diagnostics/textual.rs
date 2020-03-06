@@ -3,6 +3,7 @@
 use super::Doctor;
 use super::BuilderHandle;
 use super::ArtifactHandle;
+use crate::CanBase;
 
 use std::io::Write;
 use cfg_if::cfg_if;
@@ -168,7 +169,7 @@ impl<W: Write> TextualDoc<W> {
 	}
 	
 	/// Strigify given builder entry.
-	fn builder_str<'a>(&self, builder: &'a BuilderHandle) -> String {
+	fn builder_str<'a, BCan>(&self, builder: &'a BuilderHandle<BCan>) -> String {
 		if self.opts.show_builder_values {
 			builder.dbg_text.clone()
 		} else {
@@ -189,8 +190,8 @@ impl<W: Write> TextualDoc<W> {
 	}
 }
 
-impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
-	fn resolve(&mut self, builder: &BuilderHandle, used: &BuilderHandle) {
+impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for TextualDoc<W> {
+	fn resolve(&mut self, builder: &BuilderHandle<BCan>, used: &BuilderHandle<BCan>) {
 	
 		let bs = self.builder_str(builder);
 		let us = self.builder_str(used);
@@ -198,9 +199,9 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 		if self.opts.show_addresses {
 			writeln!(self.output(),
 				r#"resolves [{:p}] {} -> [{:p}] {}"#,
-				builder.value.builder,
+				builder.value.id,
 				bs,
-				used.value.builder,
+				used.value.id,
 				us,
 			).unwrap();
 		} else {
@@ -213,7 +214,7 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 	}
 	
 	
-	fn build(&mut self, builder: &BuilderHandle, artifact: &ArtifactHandle<ArtEnt>) {
+	fn build(&mut self, builder: &BuilderHandle<BCan>, artifact: &ArtifactHandle<ArtCan>) {
 		let count = self.count;
 		
 		let bs = self.builder_str(builder);
@@ -222,9 +223,9 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 				r#"built #{}.{} [{:p}] {} => [{:p}] "#,
 				count.0,
 				count.1,
-				builder.value.builder,
+				builder.value.id,
 				bs,
-				artifact.value,
+				artifact.value.as_ptr(),
 			).unwrap();
 		} else {
 			write!(self.output(),
@@ -267,7 +268,7 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 		self.count.1 = 0;
 	}
 	
-	fn invalidate(&mut self, builder: &BuilderHandle) {
+	fn invalidate(&mut self, builder: &BuilderHandle<BCan>) {
 		let count = self.count;
 		
 		write!(self.output(),
@@ -279,7 +280,7 @@ impl<W: Write, ArtEnt: std::fmt::Pointer> Doctor<ArtEnt> for TextualDoc<W> {
 		if self.opts.show_addresses {
 			write!(self.output(),
 				"[{:p}] {}",
-				builder.value.builder,
+				builder.value.id,
 				bs,
 			).unwrap();
 		} else {

@@ -294,13 +294,13 @@ fn test_vis_doc() {
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
-  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 alloc::rc::Rc<daab::test::Leaf> :
+  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 daab::test::Leaf :
 Leaf \{
     id: [0-9]+,
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.0-0x[0-9a-f]+" \[arrowhead = "none"\]
   "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 alloc::rc::Rc<daab::test::SimpleNode> :
+  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 daab::test::SimpleNode :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -312,7 +312,7 @@ SimpleNode \{
   "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
   "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 alloc::rc::Rc<daab::test::SimpleNode> :
+  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 daab::test::SimpleNode :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -342,7 +342,7 @@ SimpleNode \{
 	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node1).leaf);
+	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
 	
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner().into_inner();
@@ -363,17 +363,17 @@ fn test_text_doc() {
 	// Expected value as Regular Expression due to variable addresses and counters
 	#[cfg(not(feature = "tynm"))]
 	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.0  daab::test::BuilderLeaf => alloc::rc::Rc<daab::test::Leaf>
-built #0.1  daab::test::BuilderSimpleNode => alloc::rc::Rc<daab::test::SimpleNode>
+built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
+built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.2  daab::test::BuilderSimpleNode => alloc::rc::Rc<daab::test::SimpleNode>
+built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 ";
 	#[cfg(feature = "tynm")]
 	let pattern = r"resolves BuilderSimpleNode -> BuilderLeaf
-built #0.0  BuilderLeaf => Rc<Leaf>
-built #0.1  BuilderSimpleNode => Rc<SimpleNode>
+built #0.0  BuilderLeaf => Leaf
+built #0.1  BuilderSimpleNode => SimpleNode
 resolves BuilderSimpleNode -> BuilderLeaf
-built #0.2  BuilderSimpleNode => Rc<SimpleNode>
+built #0.2  BuilderSimpleNode => SimpleNode
 ";
 
 	// Textual output storage
@@ -405,7 +405,7 @@ built #0.2  BuilderSimpleNode => Rc<SimpleNode>
 	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node1).leaf);
+	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
 	
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
@@ -456,7 +456,7 @@ fn test_invalidate() {
 	
 	let artifact1 = cache.get(&leaf1);
 	
-	cache.invalidate(&leaf1);
+	cache.invalidate(leaf1.clone());
 	
 	let artifact2 = cache.get(&leaf1);
 	
@@ -497,7 +497,7 @@ fn test_complex_invalidate() {
 	let artifact_root = cache.get(&noden3);
 	
 	// Only invalidate one intermediate node
-	cache.invalidate(&noden1);
+	cache.invalidate(noden1.clone());
 	
 	let artifact_leaf_2 = cache.get(&leaf1);
 	let artifact_node_2 = cache.get(&noden1);

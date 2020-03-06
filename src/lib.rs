@@ -158,7 +158,7 @@
 //! assert_eq!(cache.get_user_data(&node_builder_1), Some(&mut 127));
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //! // Invalidate node, and ensure it made use of the user data
-//! cache.invalidate(&node_builder_1);
+//! cache.invalidate(node_builder_1.clone());
 //! assert_eq!(cache.get(&node_builder_1).value, 127);
 //!
 //! // User data of node 2 remains unchanged
@@ -242,7 +242,6 @@ pub mod diagnostics;
 
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
-		use std::ops::Deref;
 		use std::ops::DerefMut;
 		use diagnostics::Doctor;
 		use diagnostics::ArtifactHandle;
@@ -278,7 +277,7 @@ pub trait BuilderWithData<ArtCan, BCan>: Debug
 	
 	/// The artifact type as produced by this builder.
 	///
-	type Artifact;
+	type Artifact : Debug;
 	
 	// TODO: docs
 	type UserData : Debug + 'static;
@@ -302,7 +301,7 @@ impl<B: SimpleBuilder> BuilderWithData<Rc<dyn Any>, Rc<dyn Any>> for B where B::
 
 
 
-pub trait CanBase: fmt::Pointer + Debug {
+pub trait CanBase: Debug {
 	fn as_ptr(&self) -> *const dyn Any;
 }
 
@@ -512,7 +511,7 @@ pub struct ArtifactResolver<'a, ArtEnt, BCan, T = ()> {
 	user: &'a BuilderEntry<BCan>,
 	cache: &'a mut ArtifactCache<ArtEnt, BCan>,
 	#[cfg(feature = "diagnostics")]
-	diag_builder: &'a BuilderHandle,
+	diag_builder: &'a BuilderHandle<BCan>,
 	_b: PhantomData<T>,
 }
 
@@ -526,7 +525,9 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 		promise: &ArtifactPromise<BCan::Bin>
 	) -> ArtCan::Bin
 			where
+				B::Artifact: 'static,
 				ArtCan: Can<B::Artifact>,
+				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B>,
 				BCan::Bin: AsRef<B>,
 				BCan::Bin: Clone {
@@ -577,6 +578,12 @@ impl<BCan, B: BuilderWithData<BCan> + 'static> From<&Rc<B>> for BuilderId {
 	}
 }
 */
+
+impl fmt::Pointer for BuilderId {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		fmt::Pointer::fmt(&self.0, fmt)
+	}
+}
 
 
 /// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
@@ -639,7 +646,7 @@ impl<BCan: CanBase> fmt::Pointer for BuilderEntry<BCan> {
 pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>>;
 
 #[cfg(feature = "diagnostics")]
-pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, T>;
+pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>, Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>, T>;
 
 
 /// Structure for caching and looking up artifacts.
@@ -673,9 +680,9 @@ pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any
 /// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
 /// to `ArtifactCache<dyn Doctor>`.
 ///
-pub struct ArtifactCache<ArtEnt, BCan, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtEnt>> {
+pub struct ArtifactCache<ArtCan, BCan, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtCan, BCan>> {
 	/// Maps Builder-Capsules to their Artifact value
-	cache: HashMap<BuilderEntry<BCan>, ArtEnt>,
+	cache: HashMap<BuilderEntry<BCan>, ArtCan>,
 	
 	/// Maps Builder-Capsules to their UserData value
 	user_data: HashMap<BuilderId, Box<dyn Any>>,
@@ -690,20 +697,20 @@ pub struct ArtifactCache<ArtEnt, BCan, #[cfg(feature = "diagnostics")] T: ?Sized
 
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
-		impl<ArtEnt, BCan> Default for ArtifactCache<ArtEnt, BCan, DefDoctor> {
+		impl<ArtCan, BCan> Default for ArtifactCache<ArtCan, BCan, DefDoctor> {
 			fn default() -> Self {
 				ArtifactCache::new()
 			}
 		}
 		
-		impl<ArtEnt: Debug, BCan: Debug, T: Debug> Debug for ArtifactCache<ArtEnt, BCan, T> {
+		impl<ArtCan: Debug, BCan: Debug, T: Debug> Debug for ArtifactCache<ArtCan, BCan, T> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
 					self.cache, self.dependants, self.doctor)
 			}
 		}
 
-		impl<ArtEnt, BCan> ArtifactCache<ArtEnt, BCan, DefDoctor> {
+		impl<ArtCan, BCan> ArtifactCache<ArtCan, BCan, DefDoctor> {
 			/// Creates a new empty cache with a dummy doctor.
 			///
 			pub fn new() -> Self {
@@ -717,7 +724,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> ArtifactCache<ArtEnt, BCan, T> {
+		impl<ArtCan, BCan, T: Doctor<ArtCan, BCan> + 'static> ArtifactCache<ArtCan, BCan, T> {
 	
 			/// Creates new empty cache with given doctor for inspection.
 			///
@@ -750,15 +757,15 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> Deref for ArtifactCache<ArtEnt, BCan, T> {
-			type Target = ArtifactCache<ArtEnt>;
+		impl<ArtCan, BCan, T: Doctor<ArtCan, BCan> + 'static> Deref for ArtifactCache<ArtCan, BCan, T> {
+			type Target = ArtifactCache<ArtCan, BCan>;
 		
 			fn deref(&self) -> &Self::Target {
 				self
 			}
 		}
 
-		impl<ArtEnt, BCan, T: Doctor<ArtEnt> + 'static> DerefMut for ArtifactCache<ArtEnt, BCan, T> {
+		impl<ArtCan, BCan, T: Doctor<ArtCan, BCan> + 'static> DerefMut for ArtifactCache<ArtCan, BCan, T> {
 			fn deref_mut(&mut self) -> &mut Self::Target {
 				self
 			}
@@ -766,20 +773,20 @@ cfg_if! {
 		
 		
 	} else {
-		impl<ArtEnt, BCan> Default for ArtifactCache<ArtEnt, BCan> {
+		impl<ArtCan, BCan> Default for ArtifactCache<ArtCan, BCan> {
 			fn default() -> Self {
 				ArtifactCache::new()
 			}
 		}
 		
-		impl<ArtEnt: Debug, BCan: Debug> Debug for ArtifactCache<ArtEnt, BCan> {
+		impl<ArtCan: Debug, BCan: Debug> Debug for ArtifactCache<ArtCan, BCan> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?} }}",
 					self.cache, self.dependants)
 			}
 		}
 
-		impl<ArtEnt, BCan> ArtifactCache<ArtEnt, BCan> {
+		impl<ArtCan, BCan> ArtifactCache<ArtCan, BCan> {
 			/// Creates a new empty cache.
 			///
 			pub fn new() -> Self {
@@ -817,11 +824,13 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	fn do_resolve<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
-			diag_builder: &BuilderHandle,
+			diag_builder: &BuilderHandle<BCan>,
 			promise: &ArtifactPromise<BCan::Bin>) -> ArtCan::Bin
 		
 			where
+				B::Artifact: 'static,
 				ArtCan: Can<B::Artifact>,
+				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B>,
 				BCan::Bin: AsRef<B>,
 				BCan::Bin: Clone {
@@ -902,7 +911,9 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		promise: &ArtifactPromise<BCan::Bin>
 	) -> ArtCan::Bin
 		where
+			B::Artifact: 'static,
 			ArtCan: Can<B::Artifact>,
+			ArtCan::Bin: AsRef<B::Artifact>,
 			BCan: Can<B>,
 			BCan::Bin: AsRef<B>,
 			BCan::Bin: Clone {
@@ -931,7 +942,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			
 			
 			#[cfg(feature = "diagnostics")]
-			let value = art_can.downcast_can_ref().unwrap();
+			let value = art_can.downcast_can().unwrap();
 			#[cfg(feature = "diagnostics")]
 			self.doctor.build(&diag_builder, &ArtifactHandle::new(value));
 			
@@ -1029,13 +1040,15 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	/// its building. The dependencies are automatically tracked via the
 	/// `ArtifactResolver`.
 	///
-	pub fn invalidate<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<BCan::Bin>)
-			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+	pub fn invalidate<B: BuilderWithData<ArtCan, BCan> + 'static>(&mut self, promise: ArtifactPromise<BCan::Bin>)
+			where
+				BCan: Can<B>,
+				ArtCan: Can<B::Artifact> {
 		
 		self.invalidate_any(promise.id);
 		
 		#[cfg(feature = "diagnostics")]
-		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
+		self.doctor.invalidate(&BuilderHandle::new(promise));
 	}
 }
 
