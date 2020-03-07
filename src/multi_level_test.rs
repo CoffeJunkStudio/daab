@@ -3,10 +3,8 @@ use super::*;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 
-use crate::rc::*;
 
-
-type Ap<B> = ArtifactPromiseRc<B>;
+type Ap<B> = rc::ArtifactPromise<B>;
 
 
 // Dummy counter to differentiate instances
@@ -24,10 +22,10 @@ struct BuilderLeaf {
 	// empty
 }
 
-impl SimpleBuilder for BuilderLeaf {
+impl rc::SimpleBuilder for BuilderLeaf {
 	type Artifact = Leaf;
 	
-	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, _cache: &mut rc::ArtifactResolver) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -41,11 +39,11 @@ struct BuilderBuilder {
 	
 }
 
-impl SuperBuilderRc for BuilderBuilder {
+impl rc::SuperBuilder for BuilderBuilder {
 	type Artifact = BuilderLeaf;
 	type DynState = ();
 	
-	fn build(&self, _cache: &mut SuperArtifactResolverRc) -> Ap<Self::Artifact> {
+	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderLeaf{}
 		)
@@ -59,11 +57,11 @@ struct SuperBuilder {
 	
 }
 
-impl SuperBuilderRc for SuperBuilder {
+impl rc::SuperBuilder for SuperBuilder {
 	type Artifact = BuilderBuilder;
 	type DynState = ();
 	
-	fn build(&self, _cache: &mut SuperArtifactResolverRc) -> Ap<Self::Artifact> {
+	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Ap<Self::Artifact> {
 		Ap::new(
 			BuilderBuilder{}
 		)
@@ -75,7 +73,7 @@ impl SuperBuilderRc for SuperBuilder {
 // Base line test
 #[test]
 fn test_builder_leaf() {
-	let mut cache = ArtifactCache::new();
+	let mut cache = rc::ArtifactCache::new();
 	
 	let leaf1 = ArtifactPromise::new(BuilderLeaf{});
 	let leaf2 = ArtifactPromise::new(BuilderLeaf{});

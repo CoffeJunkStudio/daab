@@ -83,7 +83,7 @@
 //! impl rc::SimpleBuilder for BuilderLeaf {
 //!     type Artifact = Leaf;
 //!     
-//!     fn build(&self, _resolver: &mut rc::ArtifactResolverRc) -> Self::Artifact {
+//!     fn build(&self, _resolver: &mut rc::ArtifactResolver) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -101,11 +101,11 @@
 //! // Composed builder, depending on BuilderLeaf
 //! #[derive(Debug)]
 //! struct BuilderNode {
-//!     builder_leaf: rc::ArtifactPromiseRc<BuilderLeaf>, // Dependency builder
+//!     builder_leaf: rc::ArtifactPromise<BuilderLeaf>, // Dependency builder
 //!     // ...
 //! }
 //! impl BuilderNode {
-//!     pub fn new(builder_leaf: rc::ArtifactPromiseRc<BuilderLeaf>) -> Self {
+//!     pub fn new(builder_leaf: rc::ArtifactPromise<BuilderLeaf>) -> Self {
 //!         Self {
 //!             builder_leaf,
 //!             // ...
@@ -113,11 +113,11 @@
 //!     }
 //! }
 //! use std::any::Any;
-//! impl Builder<Rc<dyn Any>, Rc<dyn Any>> for BuilderNode {
+//! impl rc::Builder for BuilderNode {
 //!     type Artifact = Node;
 //!     type DynState = u8;
 //!     
-//!     fn build(&self, resolver: &mut rc::ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact> {
+//!     fn build(&self, resolver: &mut rc::ArtifactResolver<Self::DynState>) -> Rc<Self::Artifact> {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!         
@@ -130,10 +130,10 @@
 //! }
 //! 
 //! // The cache to storing already created artifacts
-//! let mut cache = rc::ArtifactCacheRc::new();
+//! let mut cache = rc::ArtifactCache::new();
 //!
 //! // Constructing builders
-//! let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
+//! let leaf_builder = rc::ArtifactPromise::new(BuilderLeaf::new());
 //!
 //! let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
 //! let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
@@ -242,7 +242,7 @@ pub mod canning;
 
 use canning::CanBase;
 use canning::Can;
-use canning::CanWithSize;
+use canning::CanSized;
 
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
@@ -314,7 +314,7 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 	///
 	pub fn new(builder: B) -> Self
 			where
-				BCan: CanWithSize<B>, {
+				BCan: CanSized<B>, {
 		
 		let bin = BCan::into_bin(builder);
 		let id = BuilderId(BCan::bin_as_ptr(&bin));

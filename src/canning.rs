@@ -7,7 +7,7 @@ use std::any::Any;
 
 
 
-pub trait CanBase: Debug {
+pub trait CanBase {
 	fn as_ptr(&self) -> *const dyn Any;
 }
 
@@ -22,7 +22,7 @@ pub trait Can<T: ?Sized>: CanBase {
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
 }
 
-pub trait CanWithSize<T>: Can<T> + Sized {
+pub trait CanSized<T>: Can<T> + Sized {
 	fn into_bin(t: T) -> Self::Bin;
 	fn from_inner(t: T) -> Self {
 		Self::from_bin(Self::into_bin(t))
@@ -49,7 +49,7 @@ impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
 	}
 }
 
-impl<T: Debug + 'static> CanWithSize<T> for Rc<dyn Any> {
+impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	fn into_bin(t: T) -> Self::Bin {
 		Rc::new(t)
 	}
@@ -89,7 +89,7 @@ impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	}
 }
 
-impl<T: Debug + Send + Sync + 'static> CanWithSize<T> for Arc<dyn Any + Send + Sync> {
+impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync> {
 	fn into_bin(t: T) -> Self::Bin {
 		Arc::new(t)
 	}
@@ -106,7 +106,7 @@ impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
 	}
 }
 
-impl<BCan: CanBase + 'static, B: 'static> Can<B> for BuilderEntry<BCan>
+impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 		where BCan: Can<B> {
 	
 	type Bin = Ap<B, BCan>;
@@ -130,8 +130,8 @@ impl<BCan: CanBase + 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 	}
 }
 
-impl<BCan: CanBase + 'static, B: 'static> CanWithSize<B> for BuilderEntry<BCan>
-		where BCan: CanWithSize<B> {
+impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
+		where BCan: CanSized<B> {
 	fn into_bin(t: B) -> Self::Bin {
 		Ap::new(t)
 	}

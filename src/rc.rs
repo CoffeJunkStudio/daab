@@ -1,27 +1,37 @@
 
 
 
-use crate::*;
+use std::fmt::Debug;
+use std::any::Any;
+
+#[cfg(feature = "diagnostics")]
+use crate::Doctor;
+
+use crate::BuilderEntry;
 
 
-pub type ArtifactPromiseRc<B> = ArtifactPromise<B, Rc<dyn Any>>;
+type BinType<T> = std::rc::Rc<T>;
+type CanType = BinType<dyn Any>;
 
-pub type ArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, Rc<dyn Any>, Rc<dyn Any>, T>;
 
-pub type SuperArtifactResolverRc<'a, T = ()> = ArtifactResolver<'a, BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>, T>;
+pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
+
+pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, CanType, T>;
+
+pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, BuilderEntry<CanType>, CanType, T>;
 
 
 #[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCacheRc = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>>;
+pub type ArtifactCache = crate::ArtifactCache<CanType, CanType>;
 
 #[cfg(feature = "diagnostics")]
-pub type ArtifactCacheRc<T = dyn Doctor<Rc<dyn Any>, Rc<dyn Any>>> = ArtifactCache<Rc<dyn Any>, Rc<dyn Any>, T>;
+pub type ArtifactCache<T = dyn Doctor<CanType, CanType>> = crate::ArtifactCache<CanType, CanType, T>;
 
 #[cfg(not(feature = "diagnostics"))]
-pub type SuperArtifactCacheRc = ArtifactCache<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>;
+pub type SuperArtifactCache = crate::ArtifactCache<BuilderEntry<CanType>, CanType>;
 
 #[cfg(feature = "diagnostics")]
-pub type SuperArtifactCacheRc<T = dyn Doctor<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>>> = ArtifactCache<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>, T>;
+pub type SuperArtifactCache<T = dyn Doctor<BuilderEntry<CanType>, CanType>> = crate::ArtifactCache<BuilderEntry<CanType>, CanType, T>;
 
 
 pub trait SimpleBuilder: Debug {
@@ -32,51 +42,51 @@ pub trait SimpleBuilder: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolverRc) -> Self::Artifact;
+	fn build(&self, resolver: &mut ArtifactResolver) -> Self::Artifact;
 }
 
 // Generic impl for legacy builder
-impl<B: SimpleBuilder> BuilderRc for B {
+impl<B: SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
 	
 	type DynState = ();
 	
-	fn build(&self, cache: &mut ArtifactResolverRc) -> Rc<Self::Artifact> {
-		Rc::new(self.build(cache))
+	fn build(&self, cache: &mut ArtifactResolver) -> BinType<Self::Artifact> {
+		BinType::new(self.build(cache))
 	}
 }
 
 
-pub trait BuilderRc: Debug {
+pub trait Builder: Debug {
 	type Artifact : Debug + 'static;
 	
 	type DynState : Debug + 'static;
 	
-	fn build(&self, resolver: &mut ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact>;
+	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact>;
 }
 
-impl<B: BuilderRc> Builder<Rc<dyn Any>, Rc<dyn Any>> for B {
+impl<B: Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 	
-	fn build(&self, cache: &mut ArtifactResolverRc<Self::DynState>) -> Rc<Self::Artifact> {
+	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact> {
 		self.build(cache)
 	}
 }
 
-pub trait SuperBuilderRc: Debug {
+pub trait SuperBuilder: Debug {
 	type Artifact : Debug + 'static;
 	
 	type DynState : Debug + 'static;
 	
-	fn build(&self, resolver: &mut SuperArtifactResolverRc<Self::DynState>) -> ArtifactPromiseRc<Self::Artifact>;
+	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact>;
 }
 
-impl<B: SuperBuilderRc> Builder<BuilderEntry<Rc<dyn Any>>, Rc<dyn Any>> for B {
+impl<B: SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 	
-	fn build(&self, cache: &mut SuperArtifactResolverRc<Self::DynState>) -> ArtifactPromiseRc<Self::Artifact> {
+	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact> {
 		self.build(cache)
 	}
 }

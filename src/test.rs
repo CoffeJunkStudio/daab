@@ -1,4 +1,5 @@
-use super::*;
+
+
 
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
@@ -6,6 +7,9 @@ use std::sync::atomic::AtomicU32;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::rc::*;
+
+#[cfg(feature = "diagnostics")]
+use crate::diagnostics;
 
 // Dummy counter to differentiate instances
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -32,7 +36,7 @@ impl BuilderLeaf {
 impl SimpleBuilder for BuilderLeaf {
 	type Artifact = Leaf;
 	
-	fn build(&self, _cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -48,11 +52,11 @@ struct SimpleNode {
 
 #[derive(Debug)]
 struct BuilderSimpleNode {
-	leaf: ArtifactPromiseRc<BuilderLeaf>,
+	leaf: ArtifactPromise<BuilderLeaf>,
 }
 
 impl BuilderSimpleNode {
-	pub fn new(leaf: ArtifactPromiseRc<BuilderLeaf>) -> Self {
+	pub fn new(leaf: ArtifactPromise<BuilderLeaf>) -> Self {
 		Self {
 			leaf,
 		}
@@ -62,7 +66,7 @@ impl BuilderSimpleNode {
 impl SimpleBuilder for BuilderSimpleNode {
 	type Artifact = SimpleNode;
 	
-	fn build(&self, cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
 		let leaf = cache.resolve(&self.leaf);
 		
 		SimpleNode{
@@ -83,15 +87,15 @@ enum LeafOrNodes {
 
 #[derive(Debug)]
 enum BuilderLeafOrNodes {
-	Leaf(ArtifactPromiseRc<BuilderLeaf>),
+	Leaf(ArtifactPromise<BuilderLeaf>),
 	Nodes {
-		left: ArtifactPromiseRc<BuilderComplexNode>,
-		right: ArtifactPromiseRc<BuilderComplexNode>
+		left: ArtifactPromise<BuilderComplexNode>,
+		right: ArtifactPromise<BuilderComplexNode>
 	},
 }
 
 impl BuilderLeafOrNodes {
-	fn build(&self, cache: &mut ArtifactResolverRc) -> LeafOrNodes {
+	fn build(&self, cache: &mut ArtifactResolver) -> LeafOrNodes {
 		match self {
 			Self::Leaf(l) => {
 				LeafOrNodes::Leaf(cache.resolve(l))
@@ -144,13 +148,13 @@ struct BuilderComplexNode {
 }
 
 impl BuilderComplexNode {
-	pub fn new_leaf(leaf: ArtifactPromiseRc<BuilderLeaf>) -> Self {
+	pub fn new_leaf(leaf: ArtifactPromise<BuilderLeaf>) -> Self {
 		Self {
 			inner: BuilderLeafOrNodes::Leaf(leaf),
 		}
 	}
 	
-	pub fn new_nodes(left: ArtifactPromiseRc<BuilderComplexNode>, right: ArtifactPromiseRc<BuilderComplexNode>) -> Self {
+	pub fn new_nodes(left: ArtifactPromise<BuilderComplexNode>, right: ArtifactPromise<BuilderComplexNode>) -> Self {
 		Self {
 			inner: BuilderLeafOrNodes::Nodes{left, right},
 		}
@@ -160,7 +164,7 @@ impl BuilderComplexNode {
 impl SimpleBuilder for BuilderComplexNode {
 	type Artifact = ComplexNode;
 	
-	fn build(&self, cache: &mut ArtifactResolverRc) -> Self::Artifact {
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
 		ComplexNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			inner: self.inner.build(cache),
@@ -170,7 +174,7 @@ impl SimpleBuilder for BuilderComplexNode {
 
 #[test]
 fn test_leaf_broken() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
@@ -187,10 +191,10 @@ fn test_leaf_broken() {
 
 #[test]
 fn test_leaf() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 		
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
@@ -204,14 +208,14 @@ fn test_leaf() {
 
 #[test]
 fn test_node() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf2.clone()));
-	let node3 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
 	
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node1), cache.get(&node1));
@@ -226,18 +230,18 @@ fn test_node() {
 
 #[test]
 fn test_complex() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let nodef1 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf1.clone()));
-	let nodef2 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	let nodef3 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 	
-	let noden1 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
-	let noden2 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
-	let noden3 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
+	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
+	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
+	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
 	
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&noden3), cache.get(&noden3));
@@ -258,9 +262,9 @@ fn test_complex() {
 
 #[test]
 fn test_clear() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
 	let artifact1 = cache.get(&leaf1);
 	
@@ -331,10 +335,10 @@ SimpleNode \{
 	let mut cache = ArtifactCache::new_with_doctor(visgraph_doc(data));
 	
 	// Test data
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
 	
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node2), cache.get(&node2));
@@ -394,10 +398,10 @@ built #0.2  BuilderSimpleNode => SimpleNode
 	
 	
 	// Test data
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
 	
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node2), cache.get(&node2));
@@ -449,10 +453,10 @@ built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 	
 	
 	// Test data
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
 	
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node2), cache.get(&node2));
@@ -475,18 +479,18 @@ built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 
 #[test]
 fn test_complex_clear() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let nodef1 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf1.clone()));
-	let nodef2 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	let nodef3 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 	
-	let noden1 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
-	let noden2 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
-	let noden3 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
+	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
+	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
+	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
 	
 	let artifact_leaf = cache.get(&leaf1);
 	let artifact_node = cache.get(&noden1);
@@ -506,9 +510,9 @@ fn test_complex_clear() {
 
 #[test]
 fn test_invalidate() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
 	let artifact1 = cache.get(&leaf1);
 	
@@ -523,30 +527,30 @@ fn test_invalidate() {
 
 #[test]
 fn test_into() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	let lart = cache.get(&leaf1);
 	
-	let node1 = ArtifactPromiseRc::new(BuilderSimpleNode::new(leaf1));
+	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1));
 	
 	assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
 }
 
 #[test]
 fn test_complex_invalidate() {
-	let mut cache = ArtifactCacheRc::new();
+	let mut cache = ArtifactCache::new();
 	
-	let leaf1 = ArtifactPromiseRc::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromiseRc::new(BuilderLeaf::new());
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 	
-	let nodef1 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf1.clone()));
-	let nodef2 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	let nodef3 = ArtifactPromiseRc::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 	
-	let noden1 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
-	let noden2 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
-	let noden3 = ArtifactPromiseRc::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
+	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
+	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
+	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
 	
 	let artifact_leaf = cache.get(&leaf1);
 	let artifact_node = cache.get(&noden1);
