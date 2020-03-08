@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 use pretty_assertions::{assert_eq, assert_ne};
 
-use crate::rc::*;
+use super::*;
 
 #[cfg(feature = "diagnostics")]
 use crate::diagnostics;
@@ -92,6 +92,12 @@ enum BuilderLeafOrNodes {
 		right: ArtifactPromise<BuilderComplexNode>
 	},
 }
+
+// Fixes in the Arc case:
+// error[E0275]: overflow evaluating the requirement
+// `std::sync::Arc<(dyn std::any::Any + std::marker::Send + std::marker::Sync + 'static)>: canning::Can<test_arc::BuilderComplexNode>`
+unsafe impl Send for BuilderLeafOrNodes {}
+unsafe impl Sync for BuilderLeafOrNodes {}
 
 impl BuilderLeafOrNodes {
 	fn build(&self, cache: &mut ArtifactResolver) -> LeafOrNodes {
@@ -287,24 +293,18 @@ fn visgraph_doc(buf: Vec<u8>) -> diagnostics::VisgraphDoc<std::io::Cursor<Vec<u8
 	)
 }
 
-#[test]
-#[cfg(feature = "diagnostics")]
-fn test_vis_doc() {
-	
-	// Expected value as Regular Expression due to variable addresses and counters
-	let regex = regex::Regex::new(
-		r##"strict digraph \{ graph \[labeljust = l\];
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
+const VIS_DOC_PATTERN: &str = r##"strict digraph \{ graph \[labeljust = l\];
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderSimpleNode"\]
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
-  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 daab::test::Leaf :
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderLeaf"\]
+  "0\.0-0x[0-9a-f]+" \[label = "#0\.0 daab::.+::Leaf :
 Leaf \{
     id: [0-9]+,
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.0-0x[0-9a-f]+" \[arrowhead = "none"\]
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 daab::test::SimpleNode :
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderSimpleNode"\]
+  "0\.1-0x[0-9a-f]+" \[label = "#0\.1 daab::.+::SimpleNode :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -312,11 +312,11 @@ SimpleNode \{
     \},
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.1-0x[0-9a-f]+" \[arrowhead = "none"\]
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderLeaf"\]
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderSimpleNode"\]
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderLeaf"\]
   "0x[0-9a-f]+" -> "0x[0-9a-f]+"
-  "0x[0-9a-f]+" \[label = "daab::test::BuilderSimpleNode"\]
-  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 daab::test::SimpleNode :
+  "0x[0-9a-f]+" \[label = "daab::.+::BuilderSimpleNode"\]
+  "0\.2-0x[0-9a-f]+" \[label = "#0\.2 daab::.+::SimpleNode :
 SimpleNode \{
     id: [0-9]+,
     leaf: Leaf \{
@@ -324,7 +324,14 @@ SimpleNode \{
     \},
 \}", shape = box\]
   "0x[0-9a-f]+" -> "0.2-0x[0-9a-f]+" \[arrowhead = "none"\]
-\}"##).unwrap();
+\}"##;
+
+#[test]
+#[cfg(feature = "diagnostics")]
+fn test_vis_doc() {
+	
+	// Expected value as Regular Expression due to variable addresses and counters
+	let regex = regex::Regex::new(VIS_DOC_PATTERN).unwrap();
 
 
 	// Visgraph output storage
@@ -358,6 +365,19 @@ SimpleNode \{
 	assert!(regex.is_match(&string));
 }
 
+const TEXT_DOC_PATTERN_STD: &str = r"resolves daab::.+::BuilderSimpleNode -> daab::.+::BuilderLeaf
+built #0.0  daab::.+::BuilderLeaf => daab::.+::Leaf
+built #0.1  daab::.+::BuilderSimpleNode => daab::.+::SimpleNode
+resolves daab::.+::BuilderSimpleNode -> daab::.+::BuilderLeaf
+built #0.2  daab::.+::BuilderSimpleNode => daab::.+::SimpleNode
+";
+
+const TEXT_DOC_PATTERN_TYNM: &str = r"resolves BuilderSimpleNode -> BuilderLeaf
+built #0.0  BuilderLeaf => Leaf
+built #0.1  BuilderSimpleNode => SimpleNode
+resolves BuilderSimpleNode -> BuilderLeaf
+built #0.2  BuilderSimpleNode => SimpleNode
+";
 
 
 #[test]
@@ -366,19 +386,9 @@ fn test_text_doc() {
 	
 	// Expected value as Regular Expression due to variable addresses and counters
 	#[cfg(not(feature = "tynm"))]
-	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
-built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
-resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
-";
+	let regex = regex::Regex::new(TEXT_DOC_PATTERN_STD).unwrap();
 	#[cfg(feature = "tynm")]
-	let pattern = r"resolves BuilderSimpleNode -> BuilderLeaf
-built #0.0  BuilderLeaf => Leaf
-built #0.1  BuilderSimpleNode => SimpleNode
-resolves BuilderSimpleNode -> BuilderLeaf
-built #0.2  BuilderSimpleNode => SimpleNode
-";
+	let regex = regex::Regex::new(TEXT_DOC_PATTERN_TYNM).unwrap();
 
 	// Textual output storage
 	let mut data = Vec::new();
@@ -418,7 +428,7 @@ built #0.2  BuilderSimpleNode => SimpleNode
 	// Print the resulting string, very usable in case it does not match
 	println!("{}", string);
 	
-	assert_eq!(pattern, &string);
+	assert!(regex.is_match(&string));
 }
 
 #[test]
@@ -426,12 +436,7 @@ built #0.2  BuilderSimpleNode => SimpleNode
 fn test_text_doc_long() {
 	
 	// Expected value as Regular Expression due to variable addresses and counters
-	let pattern = r"resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.0  daab::test::BuilderLeaf => daab::test::Leaf
-built #0.1  daab::test::BuilderSimpleNode => daab::test::SimpleNode
-resolves daab::test::BuilderSimpleNode -> daab::test::BuilderLeaf
-built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
-";
+	let regex = regex::Regex::new(TEXT_DOC_PATTERN_STD).unwrap();
 
 	// Textual output storage
 	let mut data = Vec::new();
@@ -473,7 +478,7 @@ built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 	// Print the resulting string, very usable in case it does not match
 	println!("{}", string);
 	
-	assert_eq!(pattern, &string);
+	assert!(regex.is_match(&string));
 }
 
 #[test]

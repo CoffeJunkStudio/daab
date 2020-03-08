@@ -32,6 +32,12 @@ pub trait CanSized<T>: Can<T> + Sized {
 
 use std::rc::Rc;
 
+impl CanBase for Rc<dyn Any> {
+	fn as_ptr(&self) -> *const dyn Any {
+		self
+	}
+}
+
 impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
 	type Bin = Rc<T>;
 	
@@ -55,19 +61,13 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	}
 }
 
-impl CanBase for Rc<dyn Any> {
-	fn as_ptr(&self) -> *const dyn Any {
-		self
-	}
-}
-
 
 // TODO: impl for AP, Arc, maybe T/Box
 
 use std::sync::Arc;
 
 impl CanBase for Arc<dyn Any + Send + Sync> {
-	fn as_ptr(&self) -> *const dyn std::any::Any {
+	fn as_ptr(&self) -> *const dyn Any {
 		self
 	}
 }
@@ -101,7 +101,7 @@ use crate::ArtifactPromise as Ap;
 use crate::BuilderEntry;
 
 impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
-	fn as_ptr(&self) -> *const dyn std::any::Any {
+	fn as_ptr(&self) -> *const dyn Any {
 		self
 	}
 }

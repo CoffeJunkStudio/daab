@@ -223,7 +223,6 @@
 #![warn(missing_docs)]
 
 
-use std::rc::Rc;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::any::Any;
@@ -237,6 +236,7 @@ use std::marker::PhantomData;
 use cfg_if::cfg_if;
 
 pub mod rc;
+pub mod arc;
 
 pub mod canning;
 
@@ -267,10 +267,6 @@ cfg_if! {
 /// in order to resolve depending builders (aka `ArtifactPromise`s) into their
 /// respective artifacts.
 ///
-
-
-
-
 pub trait Builder<ArtCan, BCan>: Debug
 		where ArtCan: Can<Self::Artifact> {
 	
@@ -317,7 +313,7 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 				BCan: CanSized<B>, {
 		
 		let bin = BCan::into_bin(builder);
-		let id = BuilderId(BCan::bin_as_ptr(&bin));
+		let id = BuilderId::new(BCan::bin_as_ptr(&bin));
 		
 		ArtifactPromise {
 			builder: bin,
@@ -446,13 +442,14 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct BuilderId(*const dyn Any);
 
-/*
-impl<BCan, B: Builder<BCan> + 'static> From<&Rc<B>> for BuilderId {
-	fn from(rc: &Rc<B>) -> Self {
-		BuilderId(rc.as_ref() as &dyn Any as *const dyn Any)
+unsafe impl Send for BuilderId {}
+unsafe impl Sync for BuilderId {}
+
+impl BuilderId {
+	fn new(ptr: *const dyn Any) -> Self {
+		BuilderId(ptr)
 	}
 }
-*/
 
 impl fmt::Pointer for BuilderId {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {

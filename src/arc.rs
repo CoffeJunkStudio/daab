@@ -10,8 +10,8 @@ use crate::Doctor;
 use crate::BuilderEntry;
 
 
-pub type BinType<T> = std::rc::Rc<T>;
-pub type CanType = BinType<dyn Any>;
+pub type BinType<T> = std::sync::Arc<T>;
+pub type CanType = BinType<dyn Any + Send + Sync>;
 
 
 pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
@@ -37,7 +37,7 @@ pub type SuperArtifactCache<T = dyn Doctor<BuilderEntry<CanType>, CanType>> = cr
 pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
 	///
-	type Artifact : Debug + 'static;
+	type Artifact : Debug + Send + Sync + 'static;
 	
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
@@ -58,7 +58,7 @@ impl<B: SimpleBuilder> Builder for B {
 
 
 pub trait Builder: Debug {
-	type Artifact : Debug + 'static;
+	type Artifact : Debug + Send + Sync + 'static;
 	
 	type DynState : Debug + 'static;
 	
@@ -74,8 +74,8 @@ impl<B: Builder> crate::Builder<CanType, CanType> for B {
 	}
 }
 
-pub trait SuperBuilder: Debug {
-	type Artifact : Debug + 'static;
+pub trait SuperBuilder: Debug + Send + Sync {
+	type Artifact : Debug + Send + Sync + 'static;
 	
 	type DynState : Debug + 'static;
 	
