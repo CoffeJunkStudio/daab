@@ -243,6 +243,7 @@ pub mod canning;
 use canning::CanBase;
 use canning::Can;
 use canning::CanSized;
+use canning::CanTransparent;
 
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
@@ -744,19 +745,69 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	
 	/// Store given artifact for given builder.
 	///
-	fn insert(&mut self, builder: BuilderEntry<BCan>, artifact: ArtCan) -> &ArtCan {
+	pub fn lookup_ref<B: Builder<ArtCan, BCan> + 'static>(
+		&self,
+		builder: &ArtifactPromise<B, BCan>
+	) -> Option<&B::Artifact>
+		where
+			ArtCan: CanTransparent<B::Artifact>,
+			ArtCan::Bin: AsRef<B::Artifact>,
+			BCan: Can<B> {
 		
-		let id = builder.id;
+		// Get the artifact from the hash map ensuring integrity
+		self.cache.get(&builder.id).map(
+			|ent| {
+				// Ensure value type
+				ent.downcast_can_ref()
+					.expect("Cached Builder Artifact is of invalid type")
+			}
+		)
+	}
+	
+	fn build<B: Builder<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>) -> &ArtCan
+		where
+			ArtCan: Can<B::Artifact>,
+			BCan: Can<B>,
+			BCan::Bin: Clone,
+			BCan::Bin: AsRef<B> {
+		
+		let ent = BuilderEntry::new(promise.clone());
+		
+		#[cfg(feature = "diagnostics")]
+		let diag_builder = BuilderHandle::new(promise.clone());
+		
+		let art_bin = promise.builder.as_ref().build(
+			&mut ArtifactResolver {
+				user: &ent,
+				cache: self,
+				#[cfg(feature = "diagnostics")]
+				diag_builder: &diag_builder,
+				_b: PhantomData,
+			},
+		);
+		
+		let art_can = ArtCan::from_bin(art_bin);
+		
+		// Update doctor if 
+		cfg_if!(
+			if #[cfg(feature = "diagnostics")] {
+				let value = art_can.downcast_can().unwrap();
+				self.doctor.build(&diag_builder, &ArtifactHandle::new(value));
+			}
+		);
+		
+		// keep id
+		let id = promise.id;
 		
 		// Insert artifact
 		self.cache.insert(
-			builder,
-			artifact,
+			ent,
+			art_can,
 		);
 		
-		let c = self.cache.get(&id).unwrap();
+		// Just unwrap, since we just inserted it
+		self.cache.get(&id).unwrap()
 		
-		c
 	}
 	
 	/// Gets the artifact of the given builder.
@@ -781,35 +832,32 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			BCan::Bin: Clone,
 			BCan::Bin: AsRef<B> {
 		
-		if self.lookup(promise).is_some() {
-			// No if-let because of borrow-checker error
-			self.lookup(promise).unwrap()
+		if let Some(art) = self.lookup(promise) {
+			art
 			
 		} else {
-			let ent = BuilderEntry::new(promise.clone());
+			self.build(promise).downcast_can()
+				.expect("Cached Builder Artifact is of invalid type")
+		}
+	}
+	
+	pub fn get_ref<B: Builder<ArtCan, BCan> + 'static>(
+		&mut self,
+		promise: &ArtifactPromise<B, BCan>
+	) -> &B::Artifact
+		where
+			ArtCan: CanTransparent<B::Artifact>,
+			ArtCan::Bin: AsRef<B::Artifact>,
+			BCan: Can<B>,
+			BCan::Bin: Clone,
+			BCan::Bin: AsRef<B> {
+		
+		if self.lookup_ref(promise).is_some() {
+			self.lookup_ref(promise).unwrap()
 			
-			#[cfg(feature = "diagnostics")]
-			let diag_builder = BuilderHandle::new(promise.clone());
-			
-			let art_bin = promise.builder.as_ref().build(
-				&mut ArtifactResolver {
-					user: &ent,
-					cache: self,
-					#[cfg(feature = "diagnostics")]
-					diag_builder: &diag_builder,
-					_b: PhantomData,
-				},
-			);
-			
-			let art_can = ArtCan::from_bin(art_bin);
-			
-			
-			#[cfg(feature = "diagnostics")]
-			let value = art_can.downcast_can().unwrap();
-			#[cfg(feature = "diagnostics")]
-			self.doctor.build(&diag_builder, &ArtifactHandle::new(value));
-			
-			self.insert(ent,  art_can).downcast_can().unwrap()
+		} else {
+			self.build(promise).downcast_can_ref()
+				.expect("Cached Builder Artifact is of invalid type")
 		}
 	}
 	

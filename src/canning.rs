@@ -17,11 +17,15 @@ pub trait Can<T: ?Sized>: CanBase {
 	type Bin: Debug;
 	
 	fn downcast_can(&self) -> Option<Self::Bin>;
-	fn downcast_can_ref(&self) -> Option<&T>;
 	fn from_bin(b: Self::Bin) -> Self;
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
 }
 
+pub trait CanTransparent<T>: Can<T> + Sized where Self::Bin: AsRef<T> {
+	
+	fn downcast_can_ref(&self) -> Option<&T>;
+	
+}
 pub trait CanSized<T>: Can<T> + Sized {
 	fn into_bin(t: T) -> Self::Bin;
 	fn from_inner(t: T) -> Self {
@@ -44,8 +48,39 @@ impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
 	fn downcast_can(&self) -> Option<Self::Bin> {
 		self.clone().downcast().ok()
 	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
+	}
+	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
+		b.deref()
+	}
+}
+
+impl<T: Debug + 'static> CanTransparent<T> for Rc<dyn Any> {
 	fn downcast_can_ref(&self) -> Option<&T> {
 		self.downcast_ref()
+	}
+}
+
+impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
+	fn into_bin(t: T) -> Self::Bin {
+		Rc::new(t)
+	}
+}
+
+
+impl CanBase for Box<dyn Any> {
+	fn as_ptr(&self) -> *const dyn Any {
+		self
+	}
+}
+
+impl<T: Debug + Clone + 'static> Can<T> for Box<dyn Any> {
+	type Bin = Box<T>;
+	
+	fn downcast_can(&self) -> Option<Self::Bin> {
+		self.downcast_ref()
+			.map(|r: &T| Box::new(r.clone()))
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
@@ -55,9 +90,15 @@ impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
 	}
 }
 
-impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
+impl<T: Debug + Clone + 'static> CanTransparent<T> for Box<dyn Any> {
+	fn downcast_can_ref(&self) -> Option<&T> {
+		self.downcast_ref()
+	}
+}
+
+impl<T: Debug + Clone + 'static> CanSized<T> for Box<dyn Any> {
 	fn into_bin(t: T) -> Self::Bin {
-		Rc::new(t)
+		Box::new(t)
 	}
 }
 
@@ -78,14 +119,17 @@ impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	fn downcast_can(&self) -> Option<Self::Bin> {
 		self.clone().downcast().ok()
 	}
-	fn downcast_can_ref(&self) -> Option<&T> {
-		self.downcast_ref()
-	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
 	}
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
 		b.deref()
+	}
+}
+
+impl<T: Debug + Send + Sync + 'static> CanTransparent<T> for Arc<dyn Any + Send + Sync> {
+	fn downcast_can_ref(&self) -> Option<&T> {
+		self.downcast_ref()
 	}
 }
 
@@ -118,9 +162,6 @@ impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 				id: self.id,
 			}
 		})
-	}
-	fn downcast_can_ref(&self) -> Option<&B> {
-		self.builder.downcast_can_ref()
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		BuilderEntry::new(b)
