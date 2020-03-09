@@ -275,7 +275,11 @@ pub trait Builder<ArtCan, BCan>: Debug
 	///
 	type Artifact : Debug + 'static;
 	
-	// TODO: docs
+	/// Type of the dynamic state of this builder.
+	/// 
+	/// The dynamic state can be used to store mutable data for the builder
+	/// or to modify the builder for outside.
+	/// 
 	type DynState : Debug + 'static;
 	
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
@@ -321,13 +325,10 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 			id,
 		}
 	}
-	
-	//pub into_can(self) -> ArtifactPromise
 }
 
 impl<B, BCan: Can<B>> Clone for ArtifactPromise<B, BCan> where BCan::Bin: Clone {
 	fn clone(&self) -> Self {
-		
 		ArtifactPromise {
 			builder: self.builder.clone(),
 			id: self.id,
@@ -416,14 +417,28 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	
 	// TODO: consider whether mutable access is actually a good option
 	// TODO: consider may be to even allow invalidation
+	
+	
+	/// Returns the dynamic state of this builder.
+	/// 
+	/// ## Panic
+	/// 
+	/// This function panics if no dynamic state has been set for this builder.
+	///
 	pub fn my_user_data(&mut self) -> &mut T {
 		self.cache.get_dyn_state_cast(self.user.borrow()).unwrap()
 	}
 	
+	/// Gets the dynamic state of the given builder.
+	///
 	pub fn get_my_user_data(&mut self) -> Option<&mut T> {
 		self.cache.get_dyn_state_cast(self.user.borrow())
 	}
-	// TODO: docs
+	
+	/// Get and cast the dynamic static of given builder id.
+	///
+	/// `T` must be the type of the respective dynamic state of `bid`, or panics.
+	///
 	pub fn get_user_data<B: Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>
@@ -443,6 +458,12 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct BuilderId(*const dyn Any);
 
+// Requires Send&Sync for Arc. This safe because the pointer is never
+// dereference and only used for Hash and Eq.
+//
+// The unsafe could be eliminated by storing just an integer casted from the
+// pointer, but currently (1.40) it does not seem posible to cast an dyn ptr
+// to any int.
 unsafe impl Send for BuilderId {}
 unsafe impl Sync for BuilderId {}
 
@@ -743,7 +764,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		)
 	}
 	
-	/// Store given artifact for given builder.
+	/// Get and cast the stored artifact if it exists.
 	///
 	pub fn lookup_ref<B: Builder<ArtCan, BCan> + 'static>(
 		&self,
@@ -764,6 +785,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		)
 	}
 	
+	/// Build and insert the artifact for `promise`.
+	/// 
 	fn build<B: Builder<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>) -> &ArtCan
 		where
 			ArtCan: Can<B::Artifact>,
@@ -841,6 +864,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		}
 	}
 	
+	/// Gets a reference of the artifact of the given builder.
+	///
 	pub fn get_ref<B: Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>
@@ -877,7 +902,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		)
 	}
 	
-	// TODO: docs
+	/// Gets the dynamic state of the given builder.
+	///
 	pub fn get_dyn_state<B: Builder<ArtCan, BCan> + 'static>(
 		&mut self, promise: &ArtifactPromise<B, BCan>
 	) -> Option<&mut B::DynState>
@@ -887,7 +913,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		self.get_dyn_state_cast(&promise.id)
 	}
 	
-	// TODO: docs
+	/// Sets the dynamic state of the given builder.
+	///
 	pub fn set_dyn_state<B: Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>,
@@ -903,7 +930,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	// TODO: add convenience function such as:
 	// pub fn set_user_data_and_invalidate_on_change(...)
 	
-	// TODO: docs
+	/// Deletes the dynamic state of the given builder.
+	///
 	pub fn remove_dyn_state<B: Builder<ArtCan, BCan> + 'static>(&mut self, promise: &ArtifactPromise<B, BCan>)
 			-> Option<Box<B::DynState>>
 			where BCan: Can<B>, ArtCan: Can<B::Artifact> {
@@ -913,15 +941,15 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		)
 	}
 	
-	// TODO: docs
+	/// Deletes all dynamic states of this cache.
+	/// 
 	pub fn clear_dyn_state(&mut self) {
 		
 		self.dyn_state.clear();
 	}
 	
-	// TODO: consider whether dynamic state shall survive invalidation or not
-	
-	/// Clears the entire cache including all kept promise and artifact `Rc`s.
+	/// Clears the entire cache including all kept promise, artifacts and
+	/// dynamic states.
 	///
 	pub fn clear(&mut self) {
 		self.cache.clear();
