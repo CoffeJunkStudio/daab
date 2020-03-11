@@ -293,6 +293,7 @@ fn visgraph_doc(buf: Vec<u8>) -> diagnostics::VisgraphDoc<std::io::Cursor<Vec<u8
 	)
 }
 
+#[allow(dead_code)]
 const VIS_DOC_PATTERN: &str = r##"strict digraph \{ graph \[labeljust = l\];
   "0x[0-9a-f]+" \[label = "daab::.+::BuilderSimpleNode"\]
   "0x[0-9a-f]+" \[label = "daab::.+::BuilderLeaf"\]
@@ -365,6 +366,7 @@ fn test_vis_doc() {
 	assert!(regex.is_match(&string));
 }
 
+#[allow(dead_code)]
 const TEXT_DOC_PATTERN_STD: &str = r"resolves daab::.+::BuilderSimpleNode -> daab::.+::BuilderLeaf
 built #0.0  daab::.+::BuilderLeaf => daab::.+::Leaf
 built #0.1  daab::.+::BuilderSimpleNode => daab::.+::SimpleNode
@@ -372,6 +374,7 @@ resolves daab::.+::BuilderSimpleNode -> daab::.+::BuilderLeaf
 built #0.2  daab::.+::BuilderSimpleNode => daab::.+::SimpleNode
 ";
 
+#[allow(dead_code)]
 const TEXT_DOC_PATTERN_TYNM: &str = r"resolves BuilderSimpleNode -> BuilderLeaf
 built #0.0  BuilderLeaf => Leaf
 built #0.1  BuilderSimpleNode => SimpleNode

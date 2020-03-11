@@ -171,6 +171,66 @@ impl SimpleBuilder for BuilderComplexNode {
 	}
 }
 
+#[derive(Debug)]
+struct BuilderLeafBox {
+	// empty
+}
+
+impl BuilderLeafBox {
+	pub fn new() -> Self {
+		Self {
+			// empty
+		}
+	}
+}
+
+impl crate::boxed::Builder for BuilderLeafBox {
+	type Artifact = Leaf;
+	type DynState = ();
+	
+	fn build(&self, _cache: &mut crate::boxed::ArtifactResolver) -> Box<Self::Artifact> {
+		Box::new(
+			Leaf{
+				id: COUNTER.fetch_add(1, Ordering::SeqCst),
+			}
+		)
+	}
+}
+
+#[test]
+fn test_boxed_ref() {
+	let mut cache = crate::boxed::ArtifactCache::new();
+	
+	let leaf1 = ArtifactPromise::new(BuilderLeafBox::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
+		
+	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
+	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
+	
+	// Ensure same builder results in same artifact
+	assert_eq!(cache.get_ref(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
+	
+	// Ensure different builder result in different artifacts
+	assert_ne!(cache.get_ref(&leaf1) as *const Leaf, cache.get_ref(&leaf2) as *const Leaf);
+}
+
+#[test]
+fn test_boxed_mut() {
+	let mut cache = crate::boxed::ArtifactCache::new();
+	
+	let leaf1 = ArtifactPromise::new(BuilderLeafBox::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
+		
+	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
+	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
+	
+	// Ensure same builder results in same artifact
+	assert_eq!(cache.get_mut(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
+	
+	// Ensure different builder result in different artifacts
+	assert_ne!(cache.get_mut(&leaf1) as *mut Leaf, cache.get_mut(&leaf2) as *mut Leaf);
+}
+
 #[test]
 fn test_leaf_broken() {
 	let mut cache = ArtifactCache::new();

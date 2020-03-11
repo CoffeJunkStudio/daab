@@ -144,6 +144,10 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 			dbg_text,
 		}
 	}
+	
+	pub fn into_inner(self) -> ArtCan {
+		self.value
+	}
 }
 
 

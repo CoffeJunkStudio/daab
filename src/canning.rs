@@ -52,7 +52,7 @@ pub trait Can<T: ?Sized>: CanBase {
 	/// Because `Can`s are supposed to be alike `Any` allowing various `T`s to
 	/// be casted to the same `Can`, this operation inherently may fail.
 	/// 
-	fn downcast_can(&self) -> Option<Self::Bin>;
+	fn downcast_can(self) -> Option<Self::Bin>;
 	
 	/// Creates Self form a `Bin`.
 	/// 
@@ -68,12 +68,25 @@ pub trait Can<T: ?Sized>: CanBase {
 /// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
 /// this `Can` to `T`.
 /// 
-pub trait CanTransparent<T>: Can<T> + Sized where Self::Bin: AsRef<T> {
+pub trait CanTransparent<T>: Can<T> + Sized {
 	
 	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
 	/// `Bin` and cloning.
 	///
 	fn downcast_can_ref(&self) -> Option<&T>;
+
+}
+
+/// Mutable transparent variant of `Can`.
+/// 
+/// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
+/// this `Can` to `T`.
+/// 
+pub trait CanTransparentMut<T>: Can<T> + Sized {
+	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
+	/// `Bin` and cloning.
+	///
+	fn downcast_can_mut(&mut self) -> Option<&mut T>;
 	
 }
 
@@ -102,8 +115,8 @@ impl CanBase for Rc<dyn Any> {
 impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
 	type Bin = Rc<T>;
 	
-	fn downcast_can(&self) -> Option<Self::Bin> {
-		self.clone().downcast().ok()
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
@@ -132,12 +145,12 @@ impl CanBase for Box<dyn Any> {
 	}
 }
 
-impl<T: Debug + Clone + 'static> Can<T> for Box<dyn Any> {
+impl<T: Debug + 'static> Can<T> for Box<dyn Any> {
 	type Bin = Box<T>;
 	
-	fn downcast_can(&self) -> Option<Self::Bin> {
-		self.downcast_ref()
-			.map(|r: &T| Box::new(r.clone()))
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
+		//	.map(|r: &T| Box::new(r.clone()))
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
@@ -147,13 +160,19 @@ impl<T: Debug + Clone + 'static> Can<T> for Box<dyn Any> {
 	}
 }
 
-impl<T: Debug + Clone + 'static> CanTransparent<T> for Box<dyn Any> {
+impl<T: Debug + 'static> CanTransparent<T> for Box<dyn Any> {
 	fn downcast_can_ref(&self) -> Option<&T> {
 		self.downcast_ref()
 	}
 }
 
-impl<T: Debug + Clone + 'static> CanSized<T> for Box<dyn Any> {
+impl<T: Debug + 'static> CanTransparentMut<T> for Box<dyn Any> {
+	fn downcast_can_mut(&mut self) -> Option<&mut T> {
+		self.downcast_mut()
+	}
+}
+
+impl<T: Debug + 'static> CanSized<T> for Box<dyn Any> {
 	fn into_bin(t: T) -> Self::Bin {
 		Box::new(t)
 	}
@@ -173,8 +192,8 @@ impl CanBase for Arc<dyn Any + Send + Sync> {
 impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	type Bin = Arc<T>;
 	
-	fn downcast_can(&self) -> Option<Self::Bin> {
-		self.clone().downcast().ok()
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
@@ -212,11 +231,13 @@ impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 	
 	type Bin = Ap<B, BCan>;
 	
-	fn downcast_can(&self) -> Option<Self::Bin> {
+	fn downcast_can(self) -> Option<Self::Bin> {
+		let id = self.id;
+		
 		self.builder.downcast_can().map( |bin| {
 			Ap {
 				builder: bin,
-				id: self.id,
+				id: id,
 			}
 		})
 	}
