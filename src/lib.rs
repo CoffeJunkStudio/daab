@@ -123,7 +123,7 @@
 //!         
 //!         Rc::new(Node {
 //!             leaf,
-//!             value: resolver.get_my_user_data().copied().unwrap_or(42),
+//!             value: resolver.get_my_state().copied().unwrap_or(42),
 //!             // ...
 //!         })
 //!     }
@@ -452,13 +452,13 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	/// 
 	/// This function panics if no dynamic state has been set for this builder.
 	///
-	pub fn my_user_data(&mut self) -> &mut T {
+	pub fn my_state(&mut self) -> &mut T {
 		self.cache.get_dyn_state_cast(self.user.borrow()).unwrap()
 	}
 	
 	/// Gets the dynamic state of the given builder.
 	///
-	pub fn get_my_user_data(&mut self) -> Option<&mut T> {
+	pub fn get_my_state(&mut self) -> Option<&mut T> {
 		self.cache.get_dyn_state_cast(self.user.borrow())
 	}
 	
@@ -466,10 +466,14 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 	///
 	/// `T` must be the type of the respective dynamic state of `bid`, or panics.
 	///
-	pub fn get_user_data<B: Builder<ArtCan, BCan> + 'static>(
+	pub fn get_dyn_state<B: Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &ArtifactPromise<B, BCan>
-	) -> Option<&mut B::DynState> where BCan: Can<B>, ArtCan: Can<B::Artifact> {
+	) -> Option<&mut B::DynState>
+			where
+				BCan: Can<B>,
+				ArtCan: Can<B::Artifact> {
+		
 		
 		self.cache.get_dyn_state(promise)
 	}
