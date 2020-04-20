@@ -204,6 +204,31 @@ fn test_node() {
 	
 }
 
+// Tests whether it is valid to get a ArtifactCache by &mut
+fn ref_function(cache: &mut ArtifactCache, l: Rc<Leaf>, ap: ArtifactPromise<BuilderLeaf>) {
+	assert_eq!(cache.get(&ap), l);
+}
+
+
+#[test]
+fn test_ref_function() {
+	let mut cache = ArtifactCache::new();
+	
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	
+	// Ensure same builder results in same artifact
+	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
+	
+	// Ensure different builder result in different artifacts
+	assert_ne!(cache.get(&leaf1), cache.get(&leaf2));
+	
+	// Ensure sub routies get the same instances
+	let parent = cache.get(&leaf1);
+	ref_function(&mut cache, parent, leaf1);
+}
+
+
 #[test]
 fn test_complex() {
 	let mut cache = ArtifactCache::new();
