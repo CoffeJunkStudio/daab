@@ -575,7 +575,7 @@ fn test_invalidate() {
 	
 	let artifact1 = cache.get(&leaf1);
 	
-	cache.invalidate(leaf1.clone());
+	cache.invalidate(&leaf1);
 	
 	let artifact2 = cache.get(&leaf1);
 	
@@ -616,7 +616,7 @@ fn test_complex_invalidate() {
 	let artifact_root = cache.get(&noden3);
 	
 	// Only invalidate one intermediate node
-	cache.invalidate(noden1.clone());
+	cache.invalidate(&noden1);
 	
 	let artifact_leaf_2 = cache.get(&leaf1);
 	let artifact_node_2 = cache.get(&noden1);

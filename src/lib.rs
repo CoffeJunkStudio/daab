@@ -158,7 +158,7 @@
 //! assert_eq!(cache.get_dyn_state(&node_builder_1), Some(&mut 127));
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //! // Invalidate node, and ensure it made use of the state
-//! cache.invalidate(node_builder_1.clone());
+//! cache.invalidate(&node_builder_1);
 //! assert_eq!(cache.get(&node_builder_1).value, 127);
 //!
 //! // State of node 2 remains unchanged
@@ -1107,17 +1107,18 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 	///
 	pub fn invalidate<B: Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: ArtifactPromise<B, BCan>
+			promise: &ArtifactPromise<B, BCan>
 		)
 			where
 				BCan: Can<B>,
+				BCan::Bin: Clone,
 				ArtCan: Can<B::Artifact> {
 		
 		
 		self.invalidate_any(promise.id);
 		
 		#[cfg(feature = "diagnostics")]
-		self.doctor.invalidate(&BuilderHandle::new(promise));
+		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
 	}
 }
 
