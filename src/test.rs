@@ -187,13 +187,11 @@ impl BuilderLeafBox {
 impl crate::boxed::Builder for BuilderLeafBox {
 	type Artifact = Leaf;
 	type DynState = ();
-	
-	fn build(&self, _cache: &mut crate::boxed::ArtifactResolver) -> Box<Self::Artifact> {
-		Box::new(
-			Leaf{
-				id: COUNTER.fetch_add(1, Ordering::SeqCst),
-			}
-		)
+
+	fn build(&self, _cache: &mut crate::boxed::ArtifactResolver) -> Self::Artifact {
+		Leaf{
+			id: COUNTER.fetch_add(1, Ordering::SeqCst),
+		}
 	}
 }
 

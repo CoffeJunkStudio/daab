@@ -1,7 +1,9 @@
 
 //!
-//! Alias module for using `Rc` to wrap `ArtifactPromise` and artifacts.
-//! 
+//! Alias module for using `Box` to wrap artifacts and `Rc` to wrap
+//! `ArtifactPromise`.
+//!
+
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -11,16 +13,17 @@ use crate::Doctor;
 
 pub use crate::rc::CanType as RcCanType;
 
+
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
-/// 
-/// This is just an alias for `Rc<T>`.
+///
+/// This is just an alias for `Box<T>`.
 ///
 pub type BinType<T> = Box<T>;
 
 /// Can for wrappers of this module.
-/// 
-/// This is just an alias for `Rc<dyn Any>`.
-/// 
+///
+/// This is just an alias for `Box<dyn Any>`.
+///
 pub type CanType = BinType<dyn Any>;
 
 
@@ -32,30 +35,29 @@ pub type ArtifactPromise<B> = crate::rc::ArtifactPromise<B>;
 
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
 /// builders `build` function.
-/// 
-/// This resolver uses `Rc` for storing builders and artifacts.
-/// 
+///
+/// This resolver uses `Rc` for storing builders and and `Box` for artifacts.
+///
 pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, RcCanType, T>;
 
-/// Allows to resolve any `ArtifactPromis` into its artifact. 
-/// 
-/// This cache uses `Rc` for storing builders and artifacts.
-/// 
-#[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCache = crate::ArtifactCache<CanType, RcCanType>;
 
-/// Allows to resolve any `ArtifactPromis` into its artifact. 
-/// 
-/// This cache uses `Rc` for storing builders and artifacts.
-/// 
-#[cfg(feature = "diagnostics")]
-pub type ArtifactCache<T = dyn Doctor<CanType, CanType>> = crate::ArtifactCache<CanType, RcCanType, T>;
+cfg_if::cfg_if!{
+	if #[cfg(feature = "diagnostics")] {
+		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		///
+		/// This cache uses `Rc` for storing builders and `Box` for artifacts.
+		///
+		pub type ArtifactCache<T = dyn Doctor<CanType, RcCanType>> =
+			crate::ArtifactCache<CanType, RcCanType, T>;
+	} else {
+		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		///
+		/// This cache uses `Rc` for storing builders and `Box` for artifacts.
+		///
+		pub type ArtifactCache = crate::ArtifactCache<CanType, RcCanType>;
+	}
+}
 
-
-/// A simplified builder interface, intended for implementing builders.
-///
-/// For this trait exists a generic `impl Builder`.
-///
 pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
 	///
@@ -79,29 +81,29 @@ impl<B: SimpleBuilder> Builder for B {
 }
 
 
-/// A Builder using `Rc` for `ArtifactPromise` and artifacts.
+/// A Builder using `Rc` for `ArtifactPromise` and `Box` for artifacts.
 ///
 pub trait Builder: Debug {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
-	
+
 	/// Type of the dynamic state of this builder.
-	/// 
+	///
 	type DynState : Debug + 'static;
-	
+
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact>;
+	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
-	
+
 	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact> {
-		self.build(cache)
+		BinType::new(self.build(cache))
 	}
 }
 

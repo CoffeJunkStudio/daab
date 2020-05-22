@@ -48,19 +48,24 @@ pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, Can
 pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, BuilderEntry<CanType>, CanType, T>;
 
 
-/// Allows to resolve any `ArtifactPromis` into its artifact. 
-/// 
-/// This cache uses `Arc` for storing builders and artifacts.
-/// 
-#[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCache = crate::ArtifactCache<CanType, CanType>;
+cfg_if::cfg_if!{
+	if #[cfg(feature = "diagnostics")] {
+		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		///
+		/// This cache uses `Arc` for storing builders and artifacts.
+		///
+		pub type ArtifactCache<T = dyn Doctor<CanType, CanType>> =
+			crate::ArtifactCache<CanType, CanType, T>;
 
-/// Allows to resolve any `ArtifactPromis` into its artifact. 
-/// 
-/// This cache uses `Arc` for storing builders and artifacts.
-/// 
-#[cfg(feature = "diagnostics")]
-pub type ArtifactCache<T = dyn Doctor<CanType, CanType>> = crate::ArtifactCache<CanType, CanType, T>;
+	} else {
+		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		///
+		/// This cache uses `Arc` for storing builders and artifacts.
+		///
+		pub type ArtifactCache = crate::ArtifactCache<CanType, CanType>;
+	}
+}
+
 
 
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder.
