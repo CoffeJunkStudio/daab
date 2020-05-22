@@ -440,8 +440,28 @@ impl<'a, ArtCan: Debug, BCan: Clone + Debug, T: 'static> ArtifactResolver<'a, Ar
 			}
 		}
 	}
-	
-	
+
+	/// Resolves the given `ArtifactPromise` into a clone of its artifact by
+	/// using `resolve_ref()` and `clone().
+	///
+	pub fn resolve_cloned<B: Builder<ArtCan, BCan> + 'static>(
+			&mut self,
+			builder: &ArtifactPromise<B, BCan>
+		) -> B::Artifact
+			where
+				ArtCan: CanTransparent<B::Artifact>,
+				ArtCan::Bin: AsRef<B::Artifact>,
+				BCan: Can<B>,
+				BCan::Bin: Clone,
+				BCan::Bin: AsRef<B>,
+				B::Artifact: Clone {
+
+
+		// Get the artifact by ref and clone it
+		self.resolve_ref(builder).clone()
+	}
+
+
 	// TODO: consider whether mutable access is actually a good option
 	// TODO: consider may be to even allow invalidation
 	
@@ -866,7 +886,23 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			}
 		)
 	}
-	
+
+	/// Get and cast a clone of the stored artifact if it exists.
+	///
+	pub fn lookup_cloned<B: Builder<ArtCan, BCan> + 'static>(
+			&self,
+			builder: &ArtifactPromise<B, BCan>
+		) -> Option<B::Artifact>
+			where
+				ArtCan: CanTransparent<B::Artifact>,
+				BCan: Can<B>,
+				B::Artifact: Clone {
+
+
+		// Get the artifact from the hash map ensuring integrity
+		self.lookup_ref(builder).cloned()
+	}
+
 	/// Build and insert the artifact for `promise`.
 	/// 
 	fn build<B: Builder<ArtCan, BCan> + 'static>(
@@ -1001,8 +1037,24 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 				.expect("Cached Builder Artifact is of invalid type")
 		}
 	}
-	
-	
+
+	/// Get a clone of the artifact of the given builder.
+	///
+	pub fn get_cloned<B: Builder<ArtCan, BCan> + 'static>(
+			&mut self,
+			promise: &ArtifactPromise<B, BCan>
+		) -> B::Artifact
+			where
+				ArtCan: CanTransparent<B::Artifact>,
+				BCan: Can<B>,
+				BCan::Bin: Clone,
+				BCan::Bin: AsRef<B>,
+				B::Artifact: Clone {
+
+		self.get_ref(promise).clone()
+	}
+
+
 	/// Get and cast the dynamic static of given builder id.
 	///
 	/// `T` must be the type of the respective dynamic state of `bid`, or panics.
