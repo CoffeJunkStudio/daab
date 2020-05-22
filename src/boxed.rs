@@ -4,6 +4,7 @@
 //! `ArtifactPromise`.
 //!
 
+pub mod wrapped;
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -55,28 +56,6 @@ cfg_if::cfg_if!{
 		/// This cache uses `Rc` for storing builders and `Box` for artifacts.
 		///
 		pub type ArtifactCache = crate::ArtifactCache<CanType, RcCanType>;
-	}
-}
-
-pub trait SimpleBuilder: Debug {
-	/// The artifact type as produced by this builder.
-	///
-	type Artifact : Debug + 'static;
-
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
-	/// dependencies.
-	///
-	fn build(&self, resolver: &mut ArtifactResolver) -> Self::Artifact;
-}
-
-// Generic impl for legacy builder
-impl<B: SimpleBuilder> Builder for B {
-	type Artifact = B::Artifact;
-
-	type DynState = ();
-
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
-		self.build(cache)
 	}
 }
 
