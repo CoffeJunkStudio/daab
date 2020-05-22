@@ -87,15 +87,15 @@ fn main() {
 	let dyn_st = cache.get_dyn_state(&foo_builder);
 	dbg!(dyn_st);
 
-	println!("Requesting BarArtifact ref...");
+	println!("Requesting BarArtifact...");
 	cache.get_ref(&bar_builder);
-	println!("Requesting BarArtifact clone...");
-	cache.get_cloned(&bar_builder);
+	println!("Requesting BarArtifact...");
+	cache.get_ref(&bar_builder);
 	println!("Invalidating BarArtifact...");
 	cache.invalidate(&bar_builder);
-	println!("Requesting BarArtifact clone...");
-	cache.get_cloned(&bar_builder);
-	println!("Requesting BarArtifact ref...");
+	println!("Requesting BarArtifact...");
+	cache.get_ref(&bar_builder);
+	println!("Requesting BarArtifact...");
 	cache.get_ref(&bar_builder);
 }
 
