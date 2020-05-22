@@ -62,7 +62,7 @@ pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
-	
+
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
@@ -72,11 +72,11 @@ pub trait SimpleBuilder: Debug {
 // Generic impl for legacy builder
 impl<B: SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
-	
+
 	type DynState = ();
-	
-	fn build(&self, cache: &mut ArtifactResolver) -> BinType<Self::Artifact> {
-		BinType::new(self.build(cache))
+
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+		self.build(cache)
 	}
 }
 
