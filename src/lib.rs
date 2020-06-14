@@ -327,6 +327,15 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 			id,
 		}
 	}
+
+	/// Returns the id of this artifact promise
+	/// This Id has the following property:
+	/// The ids of two artifact promises are the same if and only if
+	/// they point to the same builder.
+	pub fn id(&self) -> usize {
+		let BuilderId(ptr) = self.id;
+		ptr as *const std::ffi::c_void as usize
+	}
 }
 
 impl<B, BCan: Can<B>> Clone for ArtifactPromise<B, BCan> where BCan::Bin: Clone {
