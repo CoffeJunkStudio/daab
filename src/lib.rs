@@ -309,7 +309,7 @@ pub trait Builder<ArtCan, BCan>: Debug
 ///
 pub struct ArtifactPromise<B, BCan: Can<B>> {
 	builder: BCan::Bin,
-	id: BuilderId,
+	_dummy: (),
 }
 
 impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
@@ -318,13 +318,12 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 	pub fn new(builder: B) -> Self
 			where
 				BCan: CanSized<B>, {
-		
+
 		let bin = BCan::into_bin(builder);
-		let id = BuilderId::new(BCan::bin_as_ptr(&bin));
-		
+
 		ArtifactPromise {
 			builder: bin,
-			id,
+			_dummy: (),
 		}
 	}
 
@@ -333,7 +332,7 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 	/// The ids of two artifact promises are the same if and only if
 	/// they point to the same builder.
 	pub fn id(&self) -> BuilderId {
-		self.id
+		BuilderId(BCan::bin_as_ptr(&self.builder))
 	}
 }
 
@@ -341,26 +340,21 @@ impl<B, BCan: Can<B>> Clone for ArtifactPromise<B, BCan> where BCan::Bin: Clone 
 	fn clone(&self) -> Self {
 		ArtifactPromise {
 			builder: self.builder.clone(),
-			id: self.id,
+			_dummy: (),
 		}
 	}
 }
 
-impl<B, BCan: Can<B>> Borrow<BuilderId> for ArtifactPromise<B, BCan> {
-	fn borrow(&self) -> &BuilderId {
-		&self.id
-	}
-}
 
 impl<B, BCan: Can<B>> Hash for ArtifactPromise<B, BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
+		self.id().hash(state);
 	}
 }
 
 impl<B, BCan: Can<B>> PartialEq for ArtifactPromise<B, BCan> {
 	fn eq(&self, other: &Self) -> bool {
-		self.id.eq(&other.id)
+		self.id().eq(&other.id())
 	}
 }
 
@@ -375,7 +369,7 @@ impl<B, BCan: Can<B>> fmt::Pointer for ArtifactPromise<B, BCan> {
 
 impl<B, BCan: Can<B>> fmt::Debug for ArtifactPromise<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id)
+		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
 }
 
@@ -551,10 +545,12 @@ pub struct BuilderEntry<BCan> {
 impl<BCan> BuilderEntry<BCan> {
 	fn new<B: 'static>(value: ArtifactPromise<B, BCan>) -> Self
 			where BCan: Can<B> {
-		
+
+		let id = value.id();
+
 		BuilderEntry {
 			builder: BCan::from_bin(value.builder),
-			id: value.id,
+			id,
 		}
 	}
 }
@@ -774,7 +770,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		
 		
 		let deps = self.get_dependants(&promise);
-		if !deps.contains(user.borrow()) {
+		if !deps.contains(&user.id) {
 			deps.insert(*user.borrow());
 		}
 		
@@ -803,7 +799,7 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		
 		
 		let deps = self.get_dependants(&promise);
-		if !deps.contains(user.borrow()) {
+		if !deps.contains(&user.id) {
 			deps.insert(*user.borrow());
 		}
 		
@@ -822,13 +818,13 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: Can<B::Artifact>,
 				BCan: Can<B> {
-		
-		
-		if !self.dependants.contains_key(promise.borrow()) {
-			self.dependants.insert(*promise.borrow(), HashSet::new());
+
+
+		if !self.dependants.contains_key(&promise.id()) {
+			self.dependants.insert(promise.id(), HashSet::new());
 		}
-		
-		self.dependants.get_mut(promise.borrow()).unwrap()
+
+		self.dependants.get_mut(&promise.id()).unwrap()
 	}
 	
 	/// Get and cast the stored artifact if it exists.
@@ -841,10 +837,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 				ArtCan: Can<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> {
-		
-		
+
+
 		// Get the artifact from the hash map ensuring integrity
-		self.cache.get(&builder.id).map(
+		self.cache.get(&builder.id()).map(
 			|ent| {
 				// Ensure value type
 				ent.clone().downcast_can()
@@ -862,10 +858,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanTransparent<B::Artifact>,
 				BCan: Can<B> {
-		
-		
+
+
 		// Get the artifact from the hash map ensuring integrity
-		self.cache.get(&builder.id).map(
+		self.cache.get(&builder.id()).map(
 			|ent| {
 				// Ensure value type
 				ent.downcast_can_ref()
@@ -883,10 +879,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanTransparentMut<B::Artifact>,
 				BCan: Can<B> {
-		
-		
+
+
 		// Get the artifact from the hash map ensuring integrity
-		self.cache.get_mut(&builder.id).map(
+		self.cache.get_mut(&builder.id()).map(
 			|ent| {
 				// Ensure value type
 				ent.downcast_can_mut()
@@ -956,8 +952,8 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 		
 		
 		// keep id
-		let id = promise.id;
-		
+		let id = promise.id();
+
 		// Insert artifact
 		self.cache.insert(
 			ent,
@@ -1087,9 +1083,9 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				BCan: Can<B>,
 				ArtCan: Can<B::Artifact> {
-		
-		
-		self.get_dyn_state_cast(&promise.id)
+
+
+		self.get_dyn_state_cast(&promise.id())
 	}
 	
 	/// Sets the dynamic state of the given builder.
@@ -1102,10 +1098,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				BCan: Can<B>,
 				ArtCan: Can<B::Artifact> {
-		
-		
+
+
 		cast_dyn_state(
-			self.dyn_state.insert(promise.id, Box::new(user_data))
+			self.dyn_state.insert(promise.id(), Box::new(user_data))
 		)
 	}
 	
@@ -1121,10 +1117,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				BCan: Can<B>,
 				ArtCan: Can<B::Artifact> {
-		
-		
+
+
 		cast_dyn_state(
-			self.dyn_state.remove(&promise.id)
+			self.dyn_state.remove(&promise.id())
 		)
 	}
 	
@@ -1173,10 +1169,10 @@ impl<ArtCan: Debug, BCan: Debug> ArtifactCache<ArtCan, BCan> {
 				BCan: Can<B>,
 				BCan::Bin: Clone,
 				ArtCan: Can<B::Artifact> {
-		
-		
-		self.invalidate_any(promise.id);
-		
+
+
+		self.invalidate_any(promise.id());
+
 		#[cfg(feature = "diagnostics")]
 		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
 	}

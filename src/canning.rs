@@ -232,12 +232,10 @@ impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 	type Bin = Ap<B, BCan>;
 	
 	fn downcast_can(self) -> Option<Self::Bin> {
-		let id = self.id;
-		
 		self.builder.downcast_can().map( |bin| {
 			Ap {
 				builder: bin,
-				id: id,
+				_dummy: (),
 			}
 		})
 	}

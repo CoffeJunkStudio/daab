@@ -203,8 +203,8 @@ fn test_boxed_ref() {
 	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
 		
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
-	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
-	
+	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
+
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get_ref(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
 	
@@ -220,8 +220,8 @@ fn test_boxed_mut() {
 	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
 		
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
-	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
-	
+	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
+
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get_mut(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
 	
@@ -237,8 +237,8 @@ fn test_leaf_broken() {
 	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 		
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
-	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
-	
+	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
+
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
 	
@@ -254,8 +254,8 @@ fn test_leaf() {
 	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
 		
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
-	println!("Ptr: {:?}; {:?}", leaf1.id, leaf2.id);
-	
+	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
+
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
 	
