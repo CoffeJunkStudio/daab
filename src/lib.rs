@@ -334,7 +334,7 @@ impl<B, BCan: Can<B>> ArtifactPromise<B, BCan> {
 	/// The ids of two artifact promises are the same if and only if
 	/// they point to the same builder.
 	pub fn id(&self) -> BuilderId {
-		BuilderId(BCan::bin_as_ptr(&self.builder))
+		BuilderId::new(BCan::bin_as_ptr(&self.builder))
 	}
 }
 
@@ -518,7 +518,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 /// the respective `Builder`.
 ///
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct BuilderId(*const dyn Any);
+pub struct BuilderId(*const ());
 
 // Requires Send&Sync for Arc. This safe because the pointer is never
 // dereference and only used for Hash and Eq.
@@ -531,7 +531,7 @@ unsafe impl Sync for BuilderId {}
 
 impl BuilderId {
 	fn new(ptr: *const dyn Any) -> Self {
-		BuilderId(ptr)
+		BuilderId(ptr as *const ())
 	}
 }
 
@@ -541,11 +541,13 @@ impl fmt::Pointer for BuilderId {
 	}
 }
 
+/*
 impl Borrow<BuilderIdRaw> for BuilderId {
 	fn borrow(&self) -> &BuilderIdRaw {
 		&self.0
 	}
 }
+*/
 
 type BuilderIdRaw = *const dyn Any;
 
