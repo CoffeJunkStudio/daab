@@ -382,6 +382,12 @@ impl<B, BCan: Can<B>> fmt::Debug for ArtifactPromise<B, BCan> where BCan::Bin: f
 	}
 }
 
+impl<B, BCan: CanSized<B>> From<B> for ArtifactPromise<B, BCan> where BCan::Bin: fmt::Debug {
+	fn from(builder: B) -> Self {
+		ArtifactPromise::new(builder)
+	}
+}
+
 
 
 /// Resolves any `ArtifactPromise` to the artifact of the inner builder.
