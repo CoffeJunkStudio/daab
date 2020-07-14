@@ -43,6 +43,14 @@ pub trait Can<T: ?Sized>: CanBase {
 	/// A specific wrapper for `T` which can be casted from `Self`.
 	///
 	type Bin: Debug;
+}
+
+pub trait CanOwned<T: ?Sized>: Can<T> {
+
+	/// Creates Self form a `Bin`.
+	///
+	/// This is a upcast and can not fail.
+	fn from_bin(b: Self::Bin) -> Self;
 
 	/// Tries to downcast the opaque `Can` to an specific `Bin`.
 	///
@@ -50,11 +58,6 @@ pub trait Can<T: ?Sized>: CanBase {
 	/// be casted to the same `Can`, this operation inherently may fail.
 	///
 	fn downcast_can(self) -> Option<Self::Bin>;
-
-	/// Creates Self form a `Bin`.
-	///
-	/// This is a upcast and can not fail.
-	fn from_bin(b: Self::Bin) -> Self;
 
 	/// Gets the pointer to
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
@@ -87,7 +90,7 @@ pub trait CanStrong: CanBase {
 /// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
 /// this `Can` to `T`.
 ///
-pub trait CanRef<T>: Can<T> + Sized {
+pub trait CanRef<T: ?Sized>: Can<T> {
 
 	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
 	/// `Bin` and cloning.
@@ -101,7 +104,7 @@ pub trait CanRef<T>: Can<T> + Sized {
 /// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
 /// this `Can` to `T`.
 ///
-pub trait CanRefMut<T>: Can<T> + Sized {
+pub trait CanRefMut<T: ?Sized>: Can<T> {
 	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
 	/// `Bin` and cloning.
 	///
@@ -111,7 +114,7 @@ pub trait CanRefMut<T>: Can<T> + Sized {
 
 /// Sized variant of `Can`.
 ///
-pub trait CanSized<T>: Can<T> + Sized {
+pub trait CanSized<T>: CanOwned<T> {
 	/// Create a `Bin` for `T`.
 	///
 	fn into_bin(t: T) -> Self::Bin;
@@ -128,7 +131,7 @@ use std::rc::Weak as WeakRc;
 
 impl CanBase for Rc<dyn Any> {
 	fn as_ptr(&self) -> *const dyn Any {
-		self
+		self.deref()
 	}
 }
 
@@ -144,9 +147,11 @@ impl CanStrong for Rc<dyn Any> {
 	}
 }
 
-impl<T: Debug + 'static> Can<T> for Rc<dyn Any> {
+impl<T: ?Sized + Debug + 'static> Can<T> for Rc<dyn Any> {
 	type Bin = Rc<T>;
+}
 
+impl<T: Debug + 'static> CanOwned<T> for Rc<dyn Any> {
 	fn downcast_can(self) -> Option<Self::Bin> {
 		self.downcast().ok()
 	}
@@ -173,13 +178,15 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 
 impl CanBase for Box<dyn Any> {
 	fn as_ptr(&self) -> *const dyn Any {
-		self
+		self.deref()
 	}
 }
 
-impl<T: Debug + 'static> Can<T> for Box<dyn Any> {
+impl<T: ?Sized + Debug + 'static> Can<T> for Box<dyn Any> {
 	type Bin = Box<T>;
+}
 
+impl<T: Debug + 'static> CanOwned<T> for Box<dyn Any> {
 	fn downcast_can(self) -> Option<Self::Bin> {
 		self.downcast().ok()
 		//	.map(|r: &T| Box::new(r.clone()))
@@ -218,7 +225,7 @@ use std::sync::Weak as WeakArc;
 
 impl CanBase for Arc<dyn Any + Send + Sync> {
 	fn as_ptr(&self) -> *const dyn Any {
-		self
+		self.deref()
 	}
 }
 
@@ -236,7 +243,9 @@ impl CanStrong for Arc<dyn Any + Send + Sync> {
 
 impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	type Bin = Arc<T>;
+}
 
+impl<T: Debug + Send + Sync + 'static> CanOwned<T> for Arc<dyn Any + Send + Sync> {
 	fn downcast_can(self) -> Option<Self::Bin> {
 		self.downcast().ok()
 	}
@@ -267,7 +276,7 @@ use crate::BuilderEntry;
 
 impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
 	fn as_ptr(&self) -> *const dyn Any {
-		self
+		self.deref()
 	}
 }
 
@@ -275,11 +284,16 @@ impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 		where BCan: Can<B> {
 
 	type Bin = Ap<B, BCan>;
+}
+
+impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
+		where BCan: CanOwned<B> + Clone {
 
 	fn downcast_can(self) -> Option<Self::Bin> {
-		self.builder.downcast_can().map( |bin| {
+		self.builder.clone().downcast_can().map( |bin| {
 			Ap {
 				builder: bin,
+				builder_canned: self.builder,
 				_dummy: (),
 			}
 		})
@@ -288,12 +302,12 @@ impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
 		BuilderEntry::new(b)
 	}
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b
+		b.deref()
 	}
 }
 
 impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
-		where BCan: CanSized<B> {
+		where BCan: CanSized<B> + Clone, BCan::Bin: Clone {
 	fn into_bin(t: B) -> Self::Bin {
 		Ap::new(t)
 	}

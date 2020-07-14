@@ -33,6 +33,7 @@ use std::hash::Hasher;
 use std::fmt::Debug;
 
 use crate::Can;
+use crate::CanOwned;
 use crate::ArtifactPromise;
 use crate::BuilderEntry;
 
@@ -72,7 +73,7 @@ pub trait Doctor<ArtCan, BCan> {
 	fn resolve(&mut self, _builder: &BuilderHandle<BCan>, _used: &BuilderHandle<BCan>) {
 		// NOOP
 	}
-	
+
 	/// One `Builder` builds its artifact.
 	///
 	/// This method is called each time `builder` is invoked to build
@@ -83,13 +84,13 @@ pub trait Doctor<ArtCan, BCan> {
 	fn build(&mut self, _builder: &BuilderHandle<BCan>, _artifact: &ArtifactHandle<ArtCan>) {
 		// NOOP
 	}
-	
+
 	/// The entire cache is cleared via `ArtifactCache::clear()`.
 	///
 	fn clear(&mut self) {
 		// NOOP
 	}
-	
+
 	/// The given `Builder` is invalidate.
 	///
 	/// This method is only called if invalidation is call directly with
@@ -122,10 +123,10 @@ pub trait Doctor<ArtCan, BCan> {
 pub struct ArtifactHandle<ArtCan> {
 	/// The actual artifact value.
 	pub value: ArtCan,
-	
+
 	/// The type name of the artifact as of `std::any::type_name`.
 	pub type_name: &'static str,
-	
+
 	/// The value of the artifact as of `std::fmt::Debug`.
 	pub dbg_text: String,
 }
@@ -134,17 +135,17 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 	/// Constructs a new artifact handle with the given value.
 	///
 	pub fn new<T: Any + Debug>(value: ArtCan::Bin) -> Self
-		where ArtCan: Can<T> {
-		
+		where ArtCan: CanOwned<T> {
+
 		let dbg_text = format!("{:#?}", value);
-		
+
 		ArtifactHandle {
 			value: ArtCan::from_bin(value),
 			type_name: std::any::type_name::<T>(),
 			dbg_text,
 		}
 	}
-	
+
 	pub fn into_inner(self) -> ArtCan {
 		self.value
 	}
@@ -182,10 +183,10 @@ impl<ArtCan: CanBase> Eq for ArtifactHandle<ArtCan> {
 pub struct BuilderHandle<BCan> {
 	/// The actual builder as promise.
 	value: BuilderEntry<BCan>,
-	
+
 	/// The type name of the builder as of `std::any::type_name`.
 	pub type_name: &'static str,
-	
+
 	/// The value of the builder as of `std::fmt::Debug`.
 	pub dbg_text: String,
 }
@@ -193,10 +194,10 @@ pub struct BuilderHandle<BCan> {
 impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<B: 'static>(value: ArtifactPromise<B, BCan>) -> Self
+	pub fn new<B: ?Sized + 'static>(value: ArtifactPromise<B, BCan>) -> Self
 			where BCan: Can<B> {
 		let dbg_text = format!("{:#?}", &value.builder);
-		
+
 		BuilderHandle {
 			value: BuilderEntry::new(value),
 			type_name: std::any::type_name::<B>(),
