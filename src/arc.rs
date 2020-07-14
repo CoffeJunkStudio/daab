@@ -103,11 +103,11 @@ pub trait SimpleBuilder: Debug {
 // Generic impl for legacy builder
 impl<B: SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
-	
+
 	type DynState = ();
-	
-	fn build(&self, cache: &mut ArtifactResolver) -> BinType<Self::Artifact> {
-		BinType::new(self.build(cache))
+
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+		self.build(cache)
 	}
 }
 
@@ -122,18 +122,18 @@ pub trait Builder: Debug {
 	/// Type of the dynamic state of this builder.
 	/// 
 	type DynState : Debug + 'static;
-	
+
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact>;
+	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
-	
-	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact> {
+
+	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact {
 		self.build(cache)
 	}
 }
@@ -152,18 +152,18 @@ pub trait SuperBuilder: Debug + Send + Sync {
 	/// Type of the dynamic state of this builder.
 	/// 
 	type DynState : Debug + 'static;
-	
+
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact>;
+	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
-	
-	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact> {
+
+	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact {
 		self.build(cache)
 	}
 }

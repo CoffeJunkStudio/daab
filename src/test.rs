@@ -629,3 +629,36 @@ fn test_complex_invalidate() {
 
 
 
+#[test]
+fn test_dyn_builder() {
+	let mut cache = ArtifactCache::new();
+
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+
+	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+
+	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
+	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
+	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
+
+	//let n_dyn: ArtifactPromise<dyn Builder> = noden1.into_dyn();
+
+	let artifact_leaf = cache.get(&leaf1);
+	let artifact_node = cache.get(&noden1);
+	let artifact_root = cache.get(&noden3);
+
+	cache.clear();
+
+	let artifact_root_2 = cache.get(&noden3);
+	let artifact_node_2 = cache.get(&noden1);
+	let artifact_leaf_2 = cache.get(&leaf1);
+
+	assert_ne!(artifact_leaf, artifact_leaf_2);
+	assert_ne!(artifact_node, artifact_node_2);
+	assert_ne!(artifact_root, artifact_root_2);
+
+}
+

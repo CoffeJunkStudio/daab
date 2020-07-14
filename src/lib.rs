@@ -117,15 +117,15 @@
 //!     type Artifact = Node;
 //!     type DynState = u8;
 //!
-//!     fn build(&self, resolver: &mut rc::ArtifactResolver<Self::DynState>) -> Rc<Self::Artifact> {
+//!     fn build(&self, resolver: &mut rc::ArtifactResolver<Self::DynState>) -> Self::Artifact {
 //!         // Resolve ArtifactPromise to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!
-//!         Rc::new(Node {
+//!         Node {
 //!             leaf,
 //!             value: resolver.get_my_state().copied().unwrap_or(42),
 //!             // ...
-//!         })
+//!         }
 //!     }
 //! }
 //!
@@ -273,7 +273,7 @@ cfg_if! {
 /// respective artifacts.
 ///
 pub trait Builder<ArtCan, BCan>: Debug
-		where ArtCan: Can<Self::Artifact>,
+		where
 			BCan: CanStrong {
 
 	/// The artifact type as produced by this builder.
@@ -290,7 +290,7 @@ pub trait Builder<ArtCan, BCan>: Debug
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::DynState>) -> ArtCan::Bin;
+	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact;
 }
 
 
@@ -518,7 +518,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			promise: &ArtifactPromise<B, BCan>
 		) -> ArtCan::Bin
 			where
-				ArtCan: CanOwned<B::Artifact>,
+				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -542,7 +542,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			promise: &ArtifactPromise<B, BCan>
 		) -> &B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRef<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -565,7 +565,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			builder: &ArtifactPromise<B, BCan>
 		) -> B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRef<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -893,7 +893,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> ArtCan::Bin
 			where
-				ArtCan: CanOwned<B::Artifact>,
+				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -922,7 +922,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> &B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRef<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -1045,7 +1045,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> &mut ArtCan
 			where
-				ArtCan: CanOwned<B::Artifact>,
+				ArtCan: CanSized<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B> {
@@ -1058,7 +1058,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		#[cfg(feature = "diagnostics")]
 		let diag_builder = BuilderHandle::new(promise.clone());
 
-		let art_bin = promise.builder.as_ref().build(
+		let art = promise.builder.as_ref().build(
 			&mut ArtifactResolver {
 				user: &ent,
 				cache: self,
@@ -1067,6 +1067,8 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 				_b: PhantomData,
 			},
 		);
+
+		let art_bin = ArtCan::into_bin(art);
 
 		cfg_if!(
 			if #[cfg(feature = "diagnostics")] {
@@ -1119,7 +1121,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> ArtCan::Bin
 			where
-				ArtCan: CanOwned<B::Artifact>,
+				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
@@ -1142,7 +1144,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> &B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRef<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B> {
@@ -1164,7 +1166,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> &mut B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRefMut<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRefMut<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B> {
@@ -1186,7 +1188,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &ArtifactPromise<B, BCan>
 		) -> B::Artifact
 			where
-				ArtCan: CanOwned<B::Artifact> + CanRef<B::Artifact>,
+				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B>,

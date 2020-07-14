@@ -231,8 +231,8 @@ impl<B: Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 
-	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact> {
-		BinType::new(self.build(cache))
+	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact {
+		self.build(cache)
 	}
 }
 

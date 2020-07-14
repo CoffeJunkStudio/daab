@@ -42,11 +42,9 @@ struct BuilderBuilder {
 impl rc::SuperBuilder for BuilderBuilder {
 	type Artifact = BuilderLeaf;
 	type DynState = ();
-	
-	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Ap<Self::Artifact> {
-		Ap::new(
-			BuilderLeaf{}
-		)
+
+	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Self::Artifact {
+		BuilderLeaf{}
 	}
 }
 
@@ -60,11 +58,9 @@ struct SuperBuilder {
 impl rc::SuperBuilder for SuperBuilder {
 	type Artifact = BuilderBuilder;
 	type DynState = ();
-	
-	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Ap<Self::Artifact> {
-		Ap::new(
-			BuilderBuilder{}
-		)
+
+	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Self::Artifact {
+		BuilderBuilder{}
 	}
 }
 

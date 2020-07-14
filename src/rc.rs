@@ -10,6 +10,7 @@ use std::any::Any;
 use crate::Doctor;
 
 use crate::BuilderEntry;
+use crate::Can;
 
 
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
@@ -105,9 +106,9 @@ impl<B: SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
 	
 	type DynState = ();
-	
-	fn build(&self, cache: &mut ArtifactResolver) -> BinType<Self::Artifact> {
-		BinType::new(self.build(cache))
+
+	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+		self.build(cache)
 	}
 }
 
@@ -126,14 +127,14 @@ pub trait Builder: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact>;
+	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
-	
-	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> BinType<Self::Artifact> {
+
+	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact where CanType: Can<Self::Artifact> {
 		self.build(cache)
 	}
 }
@@ -156,14 +157,14 @@ pub trait SuperBuilder: Debug {
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact>;
+	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
-	
-	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> ArtifactPromise<Self::Artifact> {
+
+	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact {
 		self.build(cache)
 	}
 }
