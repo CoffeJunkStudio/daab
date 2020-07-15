@@ -16,9 +16,10 @@ jobs:
     - name: Build
       run: |
         cargo build --verbose
-        cargo build --all-features --verbose
+        #cargo build --all-features --verbose
+        cargo build --features "diagnostics,tynm" --verbose
     - name: Run tests
       run: |
         cargo test --verbose
         cargo test --features diagnostics --verbose
-        cargo test --all-features --verbose
+        cargo test --features "diagnostics,tynm" --verbose
