@@ -244,6 +244,8 @@ pub mod boxed;
 
 pub mod canning;
 
+pub mod utils;
+
 use canning::CanBase;
 use canning::Can;
 use canning::CanOwned;
