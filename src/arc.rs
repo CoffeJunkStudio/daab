@@ -31,9 +31,10 @@ pub type CanType = BinType<dyn Any + Send + Sync>;
 ///
 pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
 
+pub type ArtifactPromiseUnsized<B> = crate::ArtifactPromiseUnsized<B, CanType>;
 
 pub type DynamicArtifactPromise<Artifact> =
-	crate::ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()> + Send + Sync, CanType>;
+	ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()> + Send + Sync>;
 
 
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
