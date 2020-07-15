@@ -576,6 +576,33 @@ fn test_complex_invalidate() {
 
 }
 
+#[test]
+fn test_dyn_builder_stable() {
+	let mut cache = ArtifactCache::new();
+
+	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+
+	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+
+	let noden1_rc = BuilderBinType::new(
+		BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone())
+	);
+	let noden1 = ArtifactPromise::new_binned(noden1_rc.clone());
+
+	let artifact_node = cache.get_cloned(&noden1);
+
+
+	let noden1_unsized: DynamicArtifactPromise<ComplexNode> = DynamicArtifactPromise::new_from_clones(noden1_rc.clone(), noden1_rc.clone()).unwrap();
+
+	assert_eq!(artifact_node, cache.get_cloned(&noden1_unsized));
+
+	// Try it again
+	assert_eq!(artifact_node, cache.get_cloned(&noden1_unsized));
+
+}
+
 #[cfg(feature = "unsized")]
 #[test]
 fn test_dyn_builder() {

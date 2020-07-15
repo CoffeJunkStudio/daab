@@ -482,20 +482,6 @@ impl<B: ?Sized, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::B
 			_dummy: (),
 		}
 	}
-
-	pub fn new_from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
-		if BCan::bin_as_ptr(&builder_bin) == BCan::as_ptr(&builder_can) {
-			Some(
-				ArtifactPromiseUnsized {
-					builder: builder_bin,
-					builder_canned: builder_can,
-					_dummy: (),
-				}
-			)
-		} else {
-			None
-		}
-	}
 }
 
 cfg_if! {
@@ -526,7 +512,25 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	/// The ids of two artifact promises are the same if and only if
 	/// they point to the same builder.
 	pub fn id(&self) -> BuilderId {
-		BuilderId::new(BCan::as_ptr(&self.builder_canned))
+		BuilderId::new(BCan::can_as_ptr(&self.builder_canned))
+	}
+
+	pub fn as_ptr(&self) -> *const () {
+		BCan::can_as_ptr(&self.builder_canned) as *const ()
+	}
+
+	pub fn new_from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
+		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
+			Some(
+				ArtifactPromiseUnsized {
+					builder: builder_bin,
+					builder_canned: builder_can,
+					_dummy: (),
+				}
+			)
+		} else {
+			None
+		}
 	}
 }
 
@@ -580,7 +584,7 @@ impl<B: ?Sized, BCan: Can<B>> Eq for ArtifactPromiseUnsized<B, BCan> {
 
 impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for ArtifactPromiseUnsized<B, BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", BCan::as_ptr(&self.builder_canned))
+		writeln!(f, "{:p}", BCan::can_as_ptr(&self.builder_canned))
 	}
 }
 
@@ -785,7 +789,7 @@ impl<BCan> BuilderEntry<BCan> {
 	fn new<B: ?Sized + 'static>(value: BCan) -> Self
 			where BCan: Can<B> {
 
-		let id = BuilderId::new(value.as_ptr());
+		let id = BuilderId::new(value.can_as_ptr());
 
 		BuilderEntry {
 			builder: value,
@@ -817,7 +821,7 @@ impl<BCan> Borrow<BuilderId> for BuilderEntry<BCan> {
 
 impl<BCan: CanBase> fmt::Pointer for BuilderEntry<BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", self.builder.as_ptr())
+		writeln!(f, "{:p}", self.builder.can_as_ptr())
 	}
 }
 

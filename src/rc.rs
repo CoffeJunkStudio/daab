@@ -25,6 +25,7 @@ pub type BinType<T> = std::rc::Rc<T>;
 /// 
 pub type CanType = BinType<dyn Any>;
 
+pub type BuilderBinType<T> = BinType<T>;
 
 /// Promise for the artifact of the builder `B`, usable at the `ArtifactCache`.
 ///

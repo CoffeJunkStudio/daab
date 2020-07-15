@@ -154,14 +154,14 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 
 impl<ArtCan> Hash for ArtifactHandle<ArtCan> where ArtCan: CanBase {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		(self.value.as_ptr()).hash(state);
+		(self.value.can_as_ptr()).hash(state);
 	}
 }
 
 impl<ArtCan> PartialEq for ArtifactHandle<ArtCan> where ArtCan: CanBase {
 	fn eq(&self, other: &Self) -> bool {
-		(self.value.as_ptr())
-			.eq(&other.value.as_ptr())
+		(self.value.can_as_ptr())
+			.eq(&other.value.can_as_ptr())
 	}
 }
 

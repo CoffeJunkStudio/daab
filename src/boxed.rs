@@ -27,6 +27,8 @@ pub type BinType<T> = Box<T>;
 ///
 pub type CanType = BinType<dyn Any>;
 
+pub type BuilderBinType<T> = crate::rc::BinType<T>;
+
 
 /// Promise for the artifact of the builder `B`, usable at the `ArtifactCache`.
 ///

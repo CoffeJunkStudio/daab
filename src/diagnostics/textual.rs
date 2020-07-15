@@ -225,7 +225,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for TextualDoc<W> {
 				count.1,
 				builder.value.id,
 				bs,
-				artifact.value.as_ptr(),
+				artifact.value.can_as_ptr(),
 			).unwrap();
 		} else {
 			write!(self.output(),

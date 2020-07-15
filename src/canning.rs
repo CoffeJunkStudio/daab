@@ -35,7 +35,7 @@ cfg_if! {
 pub trait CanBase: Sized {
 	/// Returns the pointer to the inner value.
 	///
-	fn as_ptr(&self) -> *const dyn Any;
+	fn can_as_ptr(&self) -> *const dyn Any;
 }
 
 /// Represents an opaque wrapper for `dyn Any` which can be casted to `T`.
@@ -50,6 +50,9 @@ pub trait Can<T: ?Sized>: CanBase {
 	/// A specific wrapper for `T` which can be casted from `Self`.
 	///
 	type Bin: Debug;
+
+	/// Gets the pointer to
+	fn bin_as_ptr(b: &Self::Bin) -> *const ();
 }
 
 cfg_if! {
@@ -76,8 +79,6 @@ pub trait CanOwned<T: ?Sized>: Can<T> {
 	///
 	fn downcast_can(self) -> Option<Self::Bin>;
 
-	/// Gets the pointer to
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any;
 }
 
 /// Can that has a weak representation.
@@ -148,7 +149,7 @@ use std::rc::Rc;
 use std::rc::Weak as WeakRc;
 
 impl CanBase for Rc<dyn Any> {
-	fn as_ptr(&self) -> *const dyn Any {
+	fn can_as_ptr(&self) -> *const dyn Any {
 		self.deref()
 	}
 }
@@ -167,6 +168,10 @@ impl CanStrong for Rc<dyn Any> {
 
 impl<T: ?Sized + Debug + 'static> Can<T> for Rc<dyn Any> {
 	type Bin = Rc<T>;
+
+	fn bin_as_ptr(b: &Self::Bin) -> *const () {
+		b.deref() as *const T as *const ()
+	}
 }
 
 cfg_if! {
@@ -196,10 +201,8 @@ impl<T: Debug + 'static> CanOwned<T> for Rc<dyn Any> {
 	fn from_bin(b: Self::Bin) -> Self {
 		b
 	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
-	}
 }
+
 
 impl<T: Debug + 'static> CanRef<T> for Rc<dyn Any> {
 	fn downcast_can_ref(&self) -> Option<&T> {
@@ -215,13 +218,17 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 
 
 impl CanBase for Box<dyn Any> {
-	fn as_ptr(&self) -> *const dyn Any {
+	fn can_as_ptr(&self) -> *const dyn Any {
 		self.deref()
 	}
 }
 
 impl<T: ?Sized + Debug + 'static> Can<T> for Box<dyn Any> {
 	type Bin = Box<T>;
+
+	fn bin_as_ptr(b: &Self::Bin) -> *const () {
+		b.deref() as *const T as *const ()
+	}
 }
 
 
@@ -247,9 +254,6 @@ impl<T: Debug + 'static> CanOwned<T> for Box<dyn Any> {
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
-	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
 	}
 }
 
@@ -278,7 +282,7 @@ use std::sync::Arc;
 use std::sync::Weak as WeakArc;
 
 impl CanBase for Arc<dyn Any + Send + Sync> {
-	fn as_ptr(&self) -> *const dyn Any {
+	fn can_as_ptr(&self) -> *const dyn Any {
 		self.deref()
 	}
 }
@@ -297,6 +301,10 @@ impl CanStrong for Arc<dyn Any + Send + Sync> {
 
 impl<T: ?Sized + Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	type Bin = Arc<T>;
+
+	fn bin_as_ptr(b: &Self::Bin) -> *const () {
+		b.deref() as *const T as *const ()
+	}
 }
 
 cfg_if! {
@@ -321,9 +329,6 @@ impl<T: Debug + Send + Sync + 'static> CanOwned<T> for Arc<dyn Any + Send + Sync
 	fn from_bin(b: Self::Bin) -> Self {
 		b
 	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
-	}
 }
 
 impl<T: Debug + Send + Sync + 'static> CanRef<T> for Arc<dyn Any + Send + Sync> {
@@ -344,7 +349,7 @@ use crate::ArtifactPromiseUnsized as Ap;
 use crate::BuilderEntry;
 
 impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
-	fn as_ptr(&self) -> *const dyn Any {
+	fn can_as_ptr(&self) -> *const dyn Any {
 		self.deref()
 	}
 }
@@ -353,6 +358,10 @@ impl<BCan: 'static, B: ?Sized + 'static> Can<B> for BuilderEntry<BCan>
 		where BCan: Can<B> {
 
 	type Bin = Ap<B, BCan>;
+
+	fn bin_as_ptr(b: &Self::Bin) -> *const () {
+		b.deref().as_ptr()
+	}
 }
 
 cfg_if! {
@@ -386,9 +395,6 @@ impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		BuilderEntry::new(b.builder_canned)
-	}
-	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
-		b.deref()
 	}
 }
 

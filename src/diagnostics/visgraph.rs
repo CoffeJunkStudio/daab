@@ -201,7 +201,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
 			r##"  "{0}.{1}-{2:p}" [label = "#{0}.{1} {3}{4}", shape = box]"##,
 			count.0,
 			count.1,
-			artifact.value.as_ptr(),
+			artifact.value.can_as_ptr(),
 			artifact.type_name,
 			s
 		).unwrap();
@@ -211,7 +211,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
 			builder.value.id,
 			count.0,
 			count.1,
-			artifact.value.as_ptr()
+			artifact.value.can_as_ptr()
 		).unwrap();
 		
 		self.output().flush().unwrap();
