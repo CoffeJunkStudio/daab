@@ -887,6 +887,8 @@ cfg_if! {
 			}
 		}
 
+		type ArtifactCacheOwned<ArtCan, BCan> = ArtifactCache<ArtCan, BCan, DefDoctor>;
+
 		impl<ArtCan: Debug, BCan: CanStrong + Debug, T: Debug> Debug for ArtifactCache<ArtCan, BCan, T> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
@@ -964,6 +966,8 @@ cfg_if! {
 				ArtifactCache::new()
 			}
 		}
+
+		type ArtifactCacheOwned<ArtCan, BCan> = ArtifactCache<ArtCan, BCan>;
 
 		impl<ArtCan: Debug, BCan: CanStrong + Debug> Debug for ArtifactCache<ArtCan, BCan> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
