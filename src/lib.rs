@@ -1,4 +1,7 @@
 
+
+#![cfg_attr(feature = "unsized", feature(unsize))]
+
 //!
 //! DAG Aware Artifact Builder
 //! ==========================
@@ -249,6 +252,12 @@ use canning::CanSized;
 use canning::CanRef;
 use canning::CanRefMut;
 
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		use canning::CanUnsized;
+	}
+}
+
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
 
@@ -294,7 +303,22 @@ pub trait Builder<ArtCan, BCan>: Debug
 }
 
 
+pub type ArtifactPromise<B, BCan> = ArtifactPromiseSized<B, BCan>;
 
+
+pub trait ArtifactPromiseTrait<B: ?Sized, BCan: Can<B>> {
+	fn id(&self) -> BuilderId;
+
+	fn accessor(&self) -> ArtifactPromiseAccessor<B>;
+
+	fn as_can(&self) -> BCan;
+}
+
+
+/// Opaque artifact promise accessor, used internally.
+pub struct ArtifactPromiseAccessor<'a, B: ?Sized> {
+	builder: &'a B,
+}
 
 
 /// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
@@ -350,6 +374,42 @@ impl<B, BCan: CanOwned<B>> ArtifactPromiseSized<B, BCan> {
 	}
 }
 
+impl<B, BCan: CanOwned<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSized<B, BCan>
+		where
+			BCan::Bin: AsRef<B> + Clone, {
+
+	fn id(&self) -> BuilderId {
+		self.id()
+	}
+
+	fn accessor(&self) -> ArtifactPromiseAccessor<B> {
+		ArtifactPromiseAccessor {
+			builder: self.builder.as_ref(),
+		}
+	}
+
+	fn as_can(&self) -> BCan {
+		BCan::from_bin(self.builder.clone())
+	}
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<B, BCan> ArtifactPromiseSized<B, BCan> where
+				BCan: CanOwned<B>,
+				BCan::Bin: Clone, {
+
+			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
+				where
+					B: 'static + std::marker::Unsize<UB>,
+					BCan: CanUnsized<B, UB> {
+
+				ArtifactPromiseUnsized::new_binned(self.builder).into_unsized()
+			}
+		}
+	}
+}
+
 impl<B, BCan: CanOwned<B>> Clone for ArtifactPromiseSized<B, BCan> where BCan::Bin: Clone {
 	fn clone(&self) -> Self {
 		ArtifactPromiseSized {
@@ -392,18 +452,12 @@ impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseSized<B, BCan> where BCan:
 	}
 }
 
-pub type ArtifactPromise<B, BCan> = ArtifactPromiseUnsized<B, BCan>;
-
-
-
 
 pub struct ArtifactPromiseUnsized<B: ?Sized, BCan: Can<B>> {
 	builder: BCan::Bin,
 	builder_canned: BCan,
 	_dummy: (),
 }
-
-
 
 impl<B, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Crates a new promise for the given builder.
@@ -430,6 +484,28 @@ impl<B: ?Sized, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::B
 	}
 }
 
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<B: ?Sized, BCan> ArtifactPromiseUnsized<B, BCan> where
+				BCan: Can<B>, {
+
+			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
+				where
+					B: 'static + std::marker::Unsize<UB>,
+					BCan: CanUnsized<B, UB> {
+
+				//let b: Rc<UB> = self.builder;
+
+				ArtifactPromiseUnsized {
+					builder: BCan::into_unsized(self.builder),
+					builder_canned: self.builder_canned,
+					_dummy: (),
+				}
+			}
+		}
+	}
+}
+
 impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	/// Returns the id of this artifact promise
 	/// This Id has the following property:
@@ -437,6 +513,27 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	/// they point to the same builder.
 	pub fn id(&self) -> BuilderId {
 		BuilderId::new(BCan::as_ptr(&self.builder_canned))
+	}
+}
+
+
+impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseUnsized<B, BCan>
+		where
+			BCan::Bin: AsRef<B>,
+			BCan: Clone, {
+
+	fn id(&self) -> BuilderId {
+		self.id()
+	}
+
+	fn accessor(&self) -> ArtifactPromiseAccessor<B> {
+		ArtifactPromiseAccessor {
+			builder: self.builder.as_ref(),
+		}
+	}
+
+	fn as_can(&self) -> BCan {
+		self.builder_canned.clone()
 	}
 }
 
@@ -513,16 +610,17 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 	/// looking up the cached value in the associated `ArtifactCache` or by
 	/// building it.
 	///
-	pub fn resolve<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn resolve<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> ArtCan::Bin
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan> {
 
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -537,16 +635,17 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 	/// by looking up the cached value in the associated `ArtifactCache` or by
 	/// building it.
 	///
-	pub fn resolve_ref<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn resolve_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -560,9 +659,9 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 	/// Resolves the given `ArtifactPromise` into a clone of its artifact by
 	/// using `resolve_ref()` and `clone().
 	///
-	pub fn resolve_cloned<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn resolve_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			builder: &ArtifactPromise<B, BCan>
+			builder: &AP
 		) -> B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
@@ -570,7 +669,8 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B>,
-				B::Artifact: Clone {
+				B::Artifact: Clone,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		// Get the artifact by ref and clone it
@@ -602,13 +702,14 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 	///
 	/// `T` must be the type of the respective dynamic state of `bid`, or panics.
 	///
-	pub fn get_dyn_state<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 		&mut self,
-		promise: &ArtifactPromise<B, BCan>
+		promise: &AP
 	) -> Option<&mut B::DynState>
 			where
 				BCan: Can<B>,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>, {
 
 
 		self.cache.get_dyn_state(promise)
@@ -667,13 +768,13 @@ pub struct BuilderEntry<BCan> {
 }
 
 impl<BCan> BuilderEntry<BCan> {
-	fn new<B: ?Sized + 'static>(value: ArtifactPromise<B, BCan>) -> Self
+	fn new<B: ?Sized + 'static>(value: BCan) -> Self
 			where BCan: Can<B> {
 
-		let id = value.id();
+		let id = BuilderId::new(value.as_ptr());
 
 		BuilderEntry {
-			builder: value.builder_canned,
+			builder: value,
 			id,
 		}
 	}
@@ -885,28 +986,29 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	/// Resolves the artifact of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
-	fn do_resolve<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn do_resolve<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
 			diag_builder: &BuilderHandle<BCan>,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> ArtCan::Bin
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
-		let deps = self.get_dependants(&promise);
+		let deps = self.get_dependants(promise);
 		if !deps.contains(&user.id) {
 			deps.insert(*user.borrow());
 		}
 
 		#[cfg(feature = "diagnostics")]
-		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
+		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise));
 
 		self.get(promise)
 	}
@@ -914,22 +1016,23 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	/// Resolves the artifact reference of `promise` and records dependency between `user`
 	/// and `promise`.
 	///
-	fn do_resolve_ref<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn do_resolve_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
 			diag_builder: &BuilderHandle<BCan>,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				ArtCan::Bin: AsRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,  {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>,  {
 
 
-		let deps = self.get_dependants(&promise);
+		let deps = self.get_dependants(promise);
 		if !deps.contains(&user.id) {
 			deps.insert(*user.borrow());
 		}
@@ -942,13 +1045,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Returns the vector of dependants of promise
 	///
-	fn get_dependants<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn get_dependants<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &mut HashSet<BuilderId>
 			where
 				ArtCan: Can<B::Artifact>,
-				BCan: Can<B> {
+				BCan: Can<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		if !self.dependants.contains_key(&promise.id()) {
@@ -960,14 +1064,15 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Get and cast the stored artifact if it exists.
 	///
-	pub fn lookup<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
-			builder: &ArtifactPromise<B, BCan>
+			builder: &AP
 		) -> Option<ArtCan::Bin>
 			where
 				ArtCan: CanOwned<B::Artifact>,
 				ArtCan: Clone,
-				BCan: Can<B> {
+				BCan: Can<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -982,13 +1087,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Get and cast the stored artifact if it exists.
 	///
-	pub fn lookup_ref<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
-			builder: &ArtifactPromise<B, BCan>
+			builder: &AP
 		) -> Option<&B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
-				BCan: Can<B> {
+				BCan: Can<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -1003,13 +1109,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Get and cast the stored artifact if it exists.
 	///
-	pub fn lookup_mut<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			builder: &ArtifactPromise<B, BCan>
+			builder: &AP
 		) -> Option<&mut B::Artifact>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				BCan: Can<B> {
+				BCan: Can<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -1024,14 +1131,15 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Get and cast a clone of the stored artifact if it exists.
 	///
-	pub fn lookup_cloned<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
-			builder: &ArtifactPromise<B, BCan>
+			builder: &AP
 		) -> Option<B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				BCan: Can<B>,
-				B::Artifact: Clone {
+				B::Artifact: Clone,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -1040,25 +1148,26 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Build and insert the artifact for `promise`.
 	///
-	fn build<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn build<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &mut ArtCan
 			where
 				ArtCan: CanSized<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		self.make_builder_known(promise);
 
-		let ent = BuilderEntry::new(promise.clone());
+		let ent = BuilderEntry::new(promise.as_can());
 
 		#[cfg(feature = "diagnostics")]
 		let diag_builder = BuilderHandle::new(promise.clone());
 
-		let art = promise.builder.as_ref().build(
+		let art = promise.accessor().builder.build(
 			&mut ArtifactResolver {
 				user: &ent,
 				cache: self,
@@ -1116,16 +1225,17 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	/// `garbage_collection()` method can be used to get rid of the cached
 	/// promise including the possibly still cached artifact and dyn state.
 	///
-	pub fn get<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> ArtCan::Bin
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		if let Some(art) = self.lookup(promise) {
@@ -1139,15 +1249,16 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Gets a reference of the artifact of the given builder.
 	///
-	pub fn get_ref<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		if self.lookup_ref(promise).is_some() {
@@ -1161,18 +1272,21 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Gets a mutable reference of the artifact of the given builder.
 	///
-	pub fn get_mut<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> &mut B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRefMut<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B> {
+				BCan::Bin: AsRef<B>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		if self.lookup_mut(promise).is_some() {
+			// Here, requires a second look up because due to the build in the
+			// else case, an `if let Some(_)` won't work due to lifetiem issues
 			self.lookup_mut(promise).unwrap()
 
 		} else {
@@ -1183,16 +1297,17 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Get a clone of the artifact of the given builder.
 	///
-	pub fn get_cloned<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> B::Artifact
 			where
 				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
 				BCan::Bin: AsRef<B>,
-				B::Artifact: Clone {
+				B::Artifact: Clone,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		self.get_ref(promise).clone()
 	}
@@ -1216,12 +1331,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Gets the dynamic state of the given builder.
 	///
-	pub fn get_dyn_state<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
-			&mut self, promise: &ArtifactPromise<B, BCan>
+	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+			&mut self, promise: &AP
 		) -> Option<&mut B::DynState>
 			where
 				BCan: Can<B>,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		self.get_dyn_state_cast(&promise.id())
@@ -1229,15 +1345,16 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Sets the dynamic state of the given builder.
 	///
-	pub fn set_dyn_state<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn set_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>,
+			promise: &AP,
 			user_data: B::DynState
 		) -> Option<Box<B::DynState>>
 			where
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		self.make_builder_known(promise);
 
@@ -1251,13 +1368,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Deletes the dynamic state of the given builder.
 	///
-	pub fn remove_dyn_state<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn remove_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		) -> Option<Box<B::DynState>>
 			where
 				BCan: Can<B>,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		let bid = promise.id();
 
@@ -1316,20 +1434,21 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	/// its building. The dependencies are automatically tracked via the
 	/// `ArtifactResolver`.
 	///
-	pub fn invalidate<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn invalidate<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		)
 			where
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		self.invalidate_any(&promise.id());
 
 		#[cfg(feature = "diagnostics")]
-		self.doctor.invalidate(&BuilderHandle::new(promise.clone()));
+		self.doctor.invalidate(&BuilderHandle::new(promise));
 
 		// Remove weak reference for those without dyn_state
 		self.cleanup_unused_weak_refs();
@@ -1379,19 +1498,20 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Enlist given builder as known builder, that is to keep its weak
 	/// reference while it is used in `cache` or `dyn_state`.
-	fn make_builder_known<B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn make_builder_known<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
-			promise: &ArtifactPromise<B, BCan>
+			promise: &AP
 		)
 			where
 				BCan: Can<B> + Clone,
 				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact> {
+				ArtCan: Can<B::Artifact>,
+				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		let bid = promise.id();
 
 		if !self.know_builders.contains_key(&bid) {
-			self.know_builders.insert(bid, promise.builder_canned.clone().downgrade());
+			self.know_builders.insert(bid, promise.as_can().clone().downgrade());
 		}
 	}
 

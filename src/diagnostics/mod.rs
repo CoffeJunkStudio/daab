@@ -34,7 +34,7 @@ use std::fmt::Debug;
 
 use crate::Can;
 use crate::CanOwned;
-use crate::ArtifactPromise;
+use crate::ArtifactPromiseTrait;
 use crate::BuilderEntry;
 
 
@@ -194,12 +194,14 @@ pub struct BuilderHandle<BCan> {
 impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<B: ?Sized + 'static>(value: ArtifactPromise<B, BCan>) -> Self
-			where BCan: Can<B> {
-		let dbg_text = format!("{:#?}", &value.builder);
+	pub fn new<AP, B: ?Sized + Debug + 'static>(value: &AP) -> Self
+			where BCan: Can<B> + Clone,
+				AP: ArtifactPromiseTrait<B, BCan> {
+
+		let dbg_text = format!("{:#?}", &value.accessor().builder);
 
 		BuilderHandle {
-			value: BuilderEntry::new(value),
+			value: BuilderEntry::new(value.as_can()),
 			type_name: std::any::type_name::<B>(),
 			dbg_text,
 		}

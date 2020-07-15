@@ -15,6 +15,13 @@
 use std::ops::Deref;
 use std::fmt::Debug;
 use std::any::Any;
+use cfg_if::cfg_if;
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		use std::marker::Unsize;
+	}
+}
 
 
 
@@ -43,6 +50,16 @@ pub trait Can<T: ?Sized>: CanBase {
 	/// A specific wrapper for `T` which can be casted from `Self`.
 	///
 	type Bin: Debug;
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		pub trait CanUnsized<T: ?Sized, UT: ?Sized>: Can<T> + Can<UT>
+				where T: Unsize<UT> {
+
+			fn into_unsized(bin: <Self as Can<T>>::Bin) -> <Self as Can<UT>>::Bin;
+		}
+	}
 }
 
 pub trait CanOwned<T: ?Sized>: Can<T> {
@@ -126,6 +143,7 @@ pub trait CanSized<T>: CanOwned<T> {
 }
 
 
+
 use std::rc::Rc;
 use std::rc::Weak as WeakRc;
 
@@ -149,6 +167,26 @@ impl CanStrong for Rc<dyn Any> {
 
 impl<T: ?Sized + Debug + 'static> Can<T> for Rc<dyn Any> {
 	type Bin = Rc<T>;
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<T, UT> CanUnsized<T, UT> for Rc<dyn Any>
+				where
+					T: ?Sized + Debug + 'static,
+					UT: ?Sized + Debug + 'static,
+					T: Unsize<UT> {
+
+			fn into_unsized(bin: <Self as Can<T>>::Bin) -> <Self as Can<UT>>::Bin {
+				/*
+				let input: Rc<T> = bin;
+				let output: Rc<UT> = input;
+				output
+				*/
+				bin
+			}
+		}
+	}
 }
 
 impl<T: Debug + 'static> CanOwned<T> for Rc<dyn Any> {
@@ -184,6 +222,22 @@ impl CanBase for Box<dyn Any> {
 
 impl<T: ?Sized + Debug + 'static> Can<T> for Box<dyn Any> {
 	type Bin = Box<T>;
+}
+
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<T, UT> CanUnsized<T, UT> for Box<dyn Any>
+				where
+					T: ?Sized + Debug + 'static,
+					UT: ?Sized + Debug + 'static,
+					T: Unsize<UT> {
+
+			fn into_unsized(bin: <Self as Can<T>>::Bin) -> <Self as Can<UT>>::Bin {
+				bin
+			}
+		}
+	}
 }
 
 impl<T: Debug + 'static> CanOwned<T> for Box<dyn Any> {
@@ -241,8 +295,23 @@ impl CanStrong for Arc<dyn Any + Send + Sync> {
 	}
 }
 
-impl<T: Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
+impl<T: ?Sized + Debug + Send + Sync + 'static> Can<T> for Arc<dyn Any + Send + Sync> {
 	type Bin = Arc<T>;
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<T, UT> CanUnsized<T, UT> for Arc<dyn Any + Send + Sync>
+				where
+					T: ?Sized + Debug + Send + Sync + 'static,
+					UT: ?Sized + Debug + Send + Sync + 'static,
+					T: Unsize<UT> {
+
+			fn into_unsized(bin: <Self as Can<T>>::Bin) -> <Self as Can<UT>>::Bin {
+				bin
+			}
+		}
+	}
 }
 
 impl<T: Debug + Send + Sync + 'static> CanOwned<T> for Arc<dyn Any + Send + Sync> {
@@ -271,7 +340,7 @@ impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync
 
 
 
-use crate::ArtifactPromise as Ap;
+use crate::ArtifactPromiseUnsized as Ap;
 use crate::BuilderEntry;
 
 impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
@@ -280,10 +349,27 @@ impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
 	}
 }
 
-impl<BCan: 'static, B: 'static> Can<B> for BuilderEntry<BCan>
+impl<BCan: 'static, B: ?Sized + 'static> Can<B> for BuilderEntry<BCan>
 		where BCan: Can<B> {
 
 	type Bin = Ap<B, BCan>;
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<B, UB> for BuilderEntry<BCan>
+				where
+					BCan: CanUnsized<B, UB>,
+					BCan: 'static,
+					B: 'static,
+					UB: 'static,
+					B: Unsize<UB> {
+
+			fn into_unsized(bin: <Self as Can<B>>::Bin) -> <Self as Can<UB>>::Bin {
+				bin.into_unsized()
+			}
+		}
+	}
 }
 
 impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
@@ -299,7 +385,7 @@ impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
 		})
 	}
 	fn from_bin(b: Self::Bin) -> Self {
-		BuilderEntry::new(b)
+		BuilderEntry::new(b.builder_canned)
 	}
 	fn bin_as_ptr(b: &Self::Bin) -> *const dyn Any {
 		b.deref()

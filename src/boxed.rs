@@ -34,6 +34,11 @@ pub type CanType = BinType<dyn Any>;
 ///
 pub type ArtifactPromise<B> = crate::rc::ArtifactPromise<B>;
 
+
+pub type DynamicArtifactPromise<Artifact> =
+	crate::ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()>, crate::rc::CanType>;
+
+
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
 /// builders `build` function.
 ///
@@ -118,74 +123,6 @@ impl<F,T> Builder for FunctionalBuilder<F>
 }
 
 
-/// A intermediate cached Builder to circumvent failing builders.
-///
-/// In resource loading, a resource might be come unavailable for sometime.
-/// This wrapper builder will cache the result of its inner builder and return
-/// the cached value instead, if the inner builder failed to produce a new
-/// artifact.
-///
-/// **Notice: It is likely a logical error to cache a artifact despite
-/// been invalidate, which is what this wrapper dose!**
-///
-/// Therefore, this wrapper should be used with care and only
-/// with builders, which actually do not have any dependencies (so they might
-/// only been manually invalidate) or having artifacts which are still usable
-/// after any (or all) dependency has been invalidated.
-///
-#[derive(Debug, Clone)]
-pub struct FallibleBuilder<B: Debug + 'static> {
-	inner: ArtifactPromise<B>,
-}
-
-impl<B, T> FallibleBuilder<B>
-	where B: Builder<Artifact=Option<T>> + Debug + 'static,
-		T: Clone + Debug + 'static {
-
-	/// Wrap given Builder and fill missing recreations with a previous value.
-	///
-	/// **Use with care**
-	///
-	pub fn new(cache: &mut ArtifactCache, inner: ArtifactPromise<B>,
-			default_value: Option<T>)
-			-> ArtifactPromise<Self> {
-
-		let me = ArtifactPromise::new(
-			FallibleBuilder {
-				inner,
-			}
-		);
-
-		cache.set_dyn_state(&me, default_value);
-
-		me
-	}
-}
-
-impl<B, T> Builder for FallibleBuilder<B>
-	where B: Builder<Artifact=Option<T>> + Debug + 'static,
-		T: Clone + Debug + 'static {
-
-	type Artifact = T;
-	type DynState = Option<T>;
-
-	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact {
-		let value = resolver.resolve_cloned(&self.inner);
-
-		if let Some(v) = value {
-			*resolver.my_state() = Some(v.clone());
-
-			// Return value
-			v
-
-		} else {
-			// Try to return cached value. Panics if very first build fails.
-			resolver.my_state().clone().unwrap()
-		}
-	}
-}
-
-
 /// Simplified builder without a dynamic state.
 pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
@@ -199,7 +136,7 @@ pub trait SimpleBuilder: Debug {
 }
 
 // Generic impl for legacy builder
-impl<B: SimpleBuilder> Builder for B {
+impl<B: ?Sized + SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
 
 	type DynState = ();
@@ -227,7 +164,7 @@ pub trait Builder: Debug {
 	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
-impl<B: Builder> crate::Builder<CanType, crate::rc::CanType> for B {
+impl<B: ?Sized + Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 
@@ -237,12 +174,12 @@ impl<B: Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 }
 
 
-/*
+
 #[cfg(test)]
-mod test {
-	include!("test_impl.rs");
+mod test_cloned {
+	include!("test_impl_cloned.rs");
 }
-*/
+
 
 
 

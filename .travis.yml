@@ -11,5 +11,8 @@ jobs:
 script:
   - cargo test
   - cargo test --features "diagnostics"
-  - cargo test --all-features
+  - cargo test --features "diagnostics,tynm"
+  - cargo +nightly test --features "unsized"
+  - cargo +nightly test --features "unsized,diagnostics"
+  - cargo +nightly test --features "unsized,diagnostics,tynm"
 

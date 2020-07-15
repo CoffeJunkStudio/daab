@@ -32,6 +32,11 @@ pub type CanType = BinType<dyn Any>;
 ///
 pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
 
+
+pub type DynamicArtifactPromise<Artifact> =
+	crate::ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()>, CanType>;
+
+
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
 /// builders `build` function.
 /// 
@@ -102,9 +107,9 @@ pub trait SimpleBuilder: Debug {
 }
 
 // Generic impl for legacy builder
-impl<B: SimpleBuilder> Builder for B {
+impl<B: ?Sized + SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
-	
+
 	type DynState = ();
 
 	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
@@ -130,7 +135,7 @@ pub trait Builder: Debug {
 	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
-impl<B: Builder> crate::Builder<CanType, CanType> for B {
+impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 
@@ -160,7 +165,7 @@ pub trait SuperBuilder: Debug {
 	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
-impl<B: SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
+impl<B: ?Sized + SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 
@@ -173,6 +178,11 @@ impl<B: SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for 
 #[cfg(test)]
 mod test {
 	include!("test_impl.rs");
+}
+
+#[cfg(test)]
+mod test_cloned {
+	include!("test_impl_cloned.rs");
 }
 
 

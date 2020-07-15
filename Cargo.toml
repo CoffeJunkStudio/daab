@@ -21,6 +21,7 @@ all-features = true
 [features]
 default = []
 diagnostics = []
+unsized = [] # Requires Nightly!
 
 
 [dependencies]

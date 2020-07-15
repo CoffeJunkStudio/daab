@@ -404,8 +404,8 @@ SimpleNode \{
 	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
-	
+	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner().into_inner();
 	
@@ -467,8 +467,8 @@ built #0.2  BuilderSimpleNode => SimpleNode
 	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
-	
+	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
 	
@@ -507,158 +507,123 @@ built #0.2  daab::test::BuilderSimpleNode => daab::test::SimpleNode
 			data
 		)
 	);
-	
-	
+
+
 	// Test data
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	
+
 	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
 	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	
+
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node2), cache.get(&node2));
-	
+
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get(&node1), cache.get(&node2));
-	
+
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
-	
+	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
-	
+
 	let string = String::from_utf8(data).unwrap();
 	// Print the resulting string, very usable in case it does not match
 	println!("{}", string);
-	
+
 	assert_eq!(pattern, &string);
 }
 
 #[test]
 fn test_complex_clear() {
 	let mut cache = ArtifactCache::new();
-	
+
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
-	
+
 	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
 	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	
+
 	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
 	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
 	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
-	
+
 	let artifact_leaf = cache.get(&leaf1);
 	let artifact_node = cache.get(&noden1);
 	let artifact_root = cache.get(&noden3);
-	
+
 	cache.clear();
-	
+
 	let artifact_root_2 = cache.get(&noden3);
 	let artifact_node_2 = cache.get(&noden1);
 	let artifact_leaf_2 = cache.get(&leaf1);
-	
+
 	assert_ne!(artifact_leaf, artifact_leaf_2);
 	assert_ne!(artifact_node, artifact_node_2);
 	assert_ne!(artifact_root, artifact_root_2);
-	
+
 }
 
 #[test]
 fn test_invalidate() {
 	let mut cache = ArtifactCache::new();
-	
+
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	
+
 	let artifact1 = cache.get(&leaf1);
-	
+
 	cache.invalidate(&leaf1);
-	
+
 	let artifact2 = cache.get(&leaf1);
-	
+
 	// Ensure artifacts differ after clear
 	assert_ne!(artifact1, artifact2);
-	
+
 }
 
 #[test]
 fn test_into() {
 	let mut cache = ArtifactCache::new();
-	
+
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	let lart = cache.get(&leaf1);
-	
+
 	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1));
-	
+
 	assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
 }
 
 #[test]
 fn test_complex_invalidate() {
 	let mut cache = ArtifactCache::new();
-	
+
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
-	
+
 	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
 	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	
+
 	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
 	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
 	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
-	
+
 	let artifact_leaf = cache.get(&leaf1);
 	let artifact_node = cache.get(&noden1);
 	let artifact_root = cache.get(&noden3);
-	
+
 	// Only invalidate one intermediate node
 	cache.invalidate(&noden1);
-	
+
 	let artifact_leaf_2 = cache.get(&leaf1);
 	let artifact_node_2 = cache.get(&noden1);
 	let artifact_root_2 = cache.get(&noden3);
-	
+
 	assert_eq!(artifact_leaf, artifact_leaf_2);
 	assert_ne!(artifact_node, artifact_node_2);
 	assert_ne!(artifact_root, artifact_root_2);
-	
-}
-
-
-
-
-#[test]
-fn test_dyn_builder() {
-	let mut cache = ArtifactCache::new();
-
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
-
-	let nodef1 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf1.clone()));
-	let nodef2 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-	let nodef3 = ArtifactPromise::new(BuilderComplexNode::new_leaf(leaf2.clone()));
-
-	let noden1 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone()));
-	let noden2 = ArtifactPromise::new(BuilderComplexNode::new_nodes(nodef3.clone(), noden1.clone()));
-	let noden3 = ArtifactPromise::new(BuilderComplexNode::new_nodes(noden2.clone(), noden2.clone()));
-
-	//let n_dyn: ArtifactPromise<dyn Builder> = noden1.into_dyn();
-
-	let artifact_leaf = cache.get(&leaf1);
-	let artifact_node = cache.get(&noden1);
-	let artifact_root = cache.get(&noden3);
-
-	cache.clear();
-
-	let artifact_root_2 = cache.get(&noden3);
-	let artifact_node_2 = cache.get(&noden1);
-	let artifact_leaf_2 = cache.get(&leaf1);
-
-	assert_ne!(artifact_leaf, artifact_leaf_2);
-	assert_ne!(artifact_node, artifact_node_2);
-	assert_ne!(artifact_root, artifact_root_2);
 
 }
+
 
