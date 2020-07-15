@@ -482,6 +482,20 @@ impl<B: ?Sized, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::B
 			_dummy: (),
 		}
 	}
+
+	pub fn new_from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
+		if BCan::bin_as_ptr(&builder_bin) == BCan::as_ptr(&builder_can) {
+			Some(
+				ArtifactPromiseUnsized {
+					builder: builder_bin,
+					builder_canned: builder_can,
+					_dummy: (),
+				}
+			)
+		} else {
+			None
+		}
+	}
 }
 
 cfg_if! {
