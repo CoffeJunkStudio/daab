@@ -78,9 +78,8 @@ impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
 		ArtCan::Bin: 'static,
-		BCan: Clone + CanStrong,
-		BCan: Can<BuilderLeaf>,
-		BCan::Bin: Clone + AsRef<BuilderLeaf> {
+		BCan: CanStrong,
+		{
 
 	type Artifact = SimpleNode<ArtCan::Bin>;
 
@@ -141,11 +140,8 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<Art
 		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
 		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
 		<ArtCan as Can<<RB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
-		BCan: Clone + CanStrong,
-		BCan: Can<LB>,
-		BCan: Can<RB>,
-		<BCan as Can<LB>>::Bin: Clone + AsRef<LB>,
-		<BCan as Can<RB>>::Bin: Clone + AsRef<RB>, {
+		BCan: CanStrong,
+		{
 
 	type Artifact = ComplexNode<
 		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin,
@@ -173,9 +169,7 @@ impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 		ArtCan: Clone + Debug,
 		ArtCan: CanSized<Leaf>,
 		ArtCan::Bin: 'static,
-		BCan: Clone + Debug + CanStrong,
-		BCan: Can<BuilderLeaf>,
-		BCan::Bin: Clone + AsRef<BuilderLeaf>
+		BCan: Debug + CanStrong,
 	{
 
 }
@@ -191,11 +185,7 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
 		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
 		<ArtCan as Can<<RB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
-		BCan: Clone + Debug + CanStrong,
-		BCan: Can<LB>,
-		BCan: Can<RB>,
-		<BCan as Can<LB>>::Bin: Clone + AsRef<LB>,
-		<BCan as Can<RB>>::Bin: Clone + AsRef<RB>,
+		BCan: Debug + CanStrong,
 	{
 
 }
