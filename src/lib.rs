@@ -248,7 +248,6 @@ pub mod utils;
 
 use canning::CanBase;
 use canning::Can;
-use canning::CanOwned;
 use canning::CanStrong;
 use canning::CanSized;
 use canning::CanRef;
@@ -308,7 +307,8 @@ pub trait Builder<ArtCan, BCan>: Debug
 pub type ArtifactPromise<B, BCan> = ArtifactPromiseSized<B, BCan>;
 
 
-pub trait ArtifactPromiseTrait<B: ?Sized, BCan: Can<B>> {
+// typical bound: `where BCan: Can<B>`
+pub trait ArtifactPromiseTrait<B: ?Sized, BCan> {
 	fn id(&self) -> BuilderId;
 
 	fn accessor(&self) -> ArtifactPromiseAccessor<B>;
@@ -341,13 +341,10 @@ pub struct ArtifactPromiseSized<B, BCan: Can<B>> {
 	_dummy: (),
 }
 
-impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: CanSized<B>> ArtifactPromiseSized<B, BCan> {
 	/// Crates a new promise for the given builder.
 	///
-	pub fn new(builder: B) -> Self
-			where
-				BCan: CanSized<B>, {
-
+	pub fn new(builder: B) -> Self {
 		let bin = BCan::into_bin(builder);
 
 		Self::new_binned(bin)
@@ -366,7 +363,7 @@ impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
 }
 
 
-impl<B, BCan: CanOwned<B>> ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
 	/// Returns the id of this artifact promise
 	/// This Id has the following property:
 	/// The ids of two artifact promises are the same if and only if
@@ -376,7 +373,7 @@ impl<B, BCan: CanOwned<B>> ArtifactPromiseSized<B, BCan> {
 	}
 }
 
-impl<B, BCan: CanOwned<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSized<B, BCan>
+impl<B, BCan: CanSized<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSized<B, BCan>
 		where
 			BCan::Bin: AsRef<B> + Clone, {
 
@@ -398,7 +395,7 @@ impl<B, BCan: CanOwned<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSize
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
 		impl<B, BCan> ArtifactPromiseSized<B, BCan> where
-				BCan: CanOwned<B>,
+				BCan: CanSized<B>,
 				BCan::Bin: Clone, {
 
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
@@ -412,7 +409,7 @@ cfg_if! {
 	}
 }
 
-impl<B, BCan: CanOwned<B>> Clone for ArtifactPromiseSized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: Can<B>> Clone for ArtifactPromiseSized<B, BCan> where BCan::Bin: Clone {
 	fn clone(&self) -> Self {
 		ArtifactPromiseSized {
 			builder: self.builder.clone(),
@@ -421,28 +418,28 @@ impl<B, BCan: CanOwned<B>> Clone for ArtifactPromiseSized<B, BCan> where BCan::B
 	}
 }
 
-impl<B, BCan: CanOwned<B>> Hash for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Hash for ArtifactPromiseSized<B, BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id().hash(state);
 	}
 }
 
-impl<B, BCan: CanOwned<B>> PartialEq for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> PartialEq for ArtifactPromiseSized<B, BCan> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id().eq(&other.id())
 	}
 }
 
-impl<B, BCan: CanOwned<B>> Eq for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Eq for ArtifactPromiseSized<B, BCan> {
 }
 
-impl<B, BCan: CanOwned<B>> fmt::Pointer for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> fmt::Pointer for ArtifactPromiseSized<B, BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(f, "{:p}", BCan::bin_as_ptr(&self.builder))
 	}
 }
 
-impl<B, BCan: CanOwned<B>> fmt::Debug for ArtifactPromiseSized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<B, BCan: Can<B>> fmt::Debug for ArtifactPromiseSized<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
@@ -461,7 +458,7 @@ pub struct ArtifactPromiseUnsized<B: ?Sized, BCan: Can<B>> {
 	_dummy: (),
 }
 
-impl<B, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self
@@ -474,9 +471,11 @@ impl<B, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clon
 	}
 }
 
-impl<B: ?Sized, BCan: CanOwned<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
+	// TODO: Remove!
+	#[deprecated = "breaks encapsulation, will be removed"]
 	pub fn new_binned(builder_bin: BCan::Bin) -> Self {
 		ArtifactPromiseUnsized {
 			builder: builder_bin.clone(),
@@ -521,6 +520,11 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 		BCan::can_as_ptr(&self.builder_canned) as *const ()
 	}
 
+	// TODO: This is currently the only way to instantiate a truly unsized AP,
+	// however, it breaks encapsulation, as the inner Builder might be still
+	// accessible from the outside. Therefore, it should be removed as soon as
+	// `unsize` becomes stable.
+	#[deprecated = "breaks encapsulation, will be removed"]
 	pub fn new_from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
 		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
 			Some(
@@ -596,10 +600,9 @@ impl<B: ?Sized, BCan: Can<B>> fmt::Debug for ArtifactPromiseUnsized<B, BCan> whe
 	}
 }
 
-impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseUnsized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseUnsized<B, BCan> where BCan::Bin: fmt::Debug + Clone {
 	fn from(builder: B) -> Self {
-		//ArtifactPromiseUnsized::new(builder)
-		todo!()
+		ArtifactPromiseUnsized::new(builder)
 	}
 }
 
@@ -637,9 +640,6 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
 				AP: ArtifactPromiseTrait<B, BCan> {
 
 		cfg_if! {
@@ -660,11 +660,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			promise: &AP
 		) -> &B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-				ArtCan::Bin: AsRef<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRef<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		cfg_if! {
@@ -684,11 +680,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 			builder: &AP
 		) -> B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-				ArtCan::Bin: AsRef<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
@@ -727,8 +719,6 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, T: 'static> ArtifactResolver<'a
 		promise: &AP
 	) -> Option<&mut B::DynState>
 			where
-				BCan: Can<B>,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>, {
 
 
@@ -788,13 +778,13 @@ pub struct BuilderEntry<BCan> {
 }
 
 impl<BCan> BuilderEntry<BCan> {
-	fn new<B: ?Sized + 'static>(value: BCan) -> Self
-			where BCan: Can<B> {
+	fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
+			where AP: ArtifactPromiseTrait<B, BCan> {
 
-		let id = BuilderId::new(value.can_as_ptr());
+		let id = ap.id();
 
 		BuilderEntry {
-			builder: value,
+			builder: ap.as_can(),
 			id,
 		}
 	}
@@ -860,7 +850,12 @@ impl<BCan: CanBase> fmt::Pointer for BuilderEntry<BCan> {
 /// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
 /// to `ArtifactCache<dyn Doctor>`.
 ///
-pub struct ArtifactCache<ArtCan, BCan, #[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtCan, BCan>> where BCan: CanStrong {
+pub struct ArtifactCache<
+	ArtCan,
+	BCan,
+	#[cfg(feature = "diagnostics")] T: ?Sized = dyn Doctor<ArtCan, BCan>
+> where BCan: CanStrong {
+
 	/// Maps Builder-Capsules to their Artifact value
 	cache: HashMap<BuilderId, ArtCan>,
 
@@ -1020,9 +1015,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1048,11 +1040,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> &B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-				ArtCan::Bin: AsRef<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRef<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>,  {
 
 
@@ -1075,7 +1063,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> &mut HashSet<BuilderId>
 			where
 				ArtCan: Can<B::Artifact>,
-				BCan: Can<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1093,9 +1080,8 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			builder: &AP
 		) -> Option<ArtCan::Bin>
 			where
-				ArtCan: CanOwned<B::Artifact>,
+				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				BCan: Can<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1117,7 +1103,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> Option<&B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
-				BCan: Can<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1139,7 +1124,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> Option<&mut B::Artifact>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				BCan: Can<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1161,7 +1145,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> Option<B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
-				BCan: Can<B>,
 				B::Artifact: Clone,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
@@ -1178,15 +1161,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> &mut ArtCan
 			where
 				ArtCan: CanSized<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
 		self.make_builder_known(promise);
 
-		let ent = BuilderEntry::new(promise.as_can());
+		let ent = BuilderEntry::new(promise);
 
 		#[cfg(feature = "diagnostics")]
 		let diag_builder = BuilderHandle::new(promise.clone());
@@ -1256,9 +1236,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1278,10 +1255,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> &B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRef<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1301,10 +1275,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> &mut B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRefMut<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRefMut<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1326,10 +1297,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> B::Artifact
 			where
-				ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				BCan::Bin: AsRef<B>,
+				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
@@ -1359,8 +1327,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			&mut self, promise: &AP
 		) -> Option<&mut B::DynState>
 			where
-				BCan: Can<B>,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1369,15 +1335,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Sets the dynamic state of the given builder.
 	///
+	#[deprecated = "Will be removed soon"]
 	pub fn set_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP,
 			user_data: B::DynState
 		) -> Option<Box<B::DynState>>
 			where
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		self.make_builder_known(promise);
@@ -1397,8 +1361,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> Option<Box<B::DynState>>
 			where
-				BCan: Can<B>,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		let bid = promise.id();
@@ -1463,9 +1425,6 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		)
 			where
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
@@ -1497,6 +1456,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	/// dependent builder should hold a strong reference to its builder.
 	///
 	pub fn garbage_collection(&mut self) {
+
 		let unreachable_builder_ids: Vec<_> = self.know_builders.iter()
 			.filter(|(_bid, weak)| BCan::upgrade_from_weak(&weak).is_none())
 			.map(|(bid, _weak)| *bid)
@@ -1511,6 +1471,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 	/// Remove any weak builder reference that is no longer used.
 	fn cleanup_unused_weak_refs(&mut self) {
+
 		let unused_builder_ids: Vec<_> = self.know_builders.keys().filter(|b|
 			!(self.cache.contains_key(*b) || self.dyn_state.contains_key(*b))
 		).cloned().collect();
@@ -1527,15 +1488,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		)
 			where
-				BCan: Can<B> + Clone,
-				BCan::Bin: Clone,
-				ArtCan: Can<B::Artifact>,
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 		let bid = promise.id();
 
 		if !self.know_builders.contains_key(&bid) {
-			self.know_builders.insert(bid, promise.as_can().clone().downgrade());
+			self.know_builders.insert(bid, promise.as_can().downgrade());
 		}
 	}
 

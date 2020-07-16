@@ -32,6 +32,7 @@ cfg_if! {
 ///
 /// See `Can`.
 ///
+// Impl for Rc, Arc, Box, Ap
 pub trait CanBase: Sized {
 	/// Returns the pointer to the inner value.
 	///
@@ -46,6 +47,7 @@ pub trait CanBase: Sized {
 /// A good example for a `Can` is `Rc<dyn Any>`. Which for `T` can be casted
 /// to a `Rc<T>` which would be the `Bin` type.
 ///
+// Impl for Rc, Arc, Box, Ap for <T: ?Sized>
 pub trait Can<T: ?Sized>: CanBase {
 	/// A specific wrapper for `T` which can be casted from `Self`.
 	///
@@ -65,11 +67,25 @@ cfg_if! {
 	}
 }
 
-pub trait CanOwned<T: ?Sized>: Can<T> {
+/// Sized variant of `Can`.
+///
+// Impl for Rc, Arc, Box, Ap for <T: Sized>
+pub trait CanSized<T>: Can<T> {
+	/// Create a `Bin` for `T`.
+	///
+	fn into_bin(t: T) -> Self::Bin;
+
+	/// Create `Self` directly from `T`.
+	fn from_inner(t: T) -> Self {
+		Self::from_bin(Self::into_bin(t))
+	}
 
 	/// Creates Self form a `Bin`.
 	///
 	/// This is a upcast and can not fail.
+	///
+	// NOTICE this function might not require T: Sized, but as of know casting
+	// (up & down) requires it in the implementation anyway
 	fn from_bin(b: Self::Bin) -> Self;
 
 	/// Tries to downcast the opaque `Can` to an specific `Bin`.
@@ -77,8 +93,9 @@ pub trait CanOwned<T: ?Sized>: Can<T> {
 	/// Because `Can`s are supposed to be alike `Any` allowing various `T`s to
 	/// be casted to the same `Can`, this operation inherently may fail.
 	///
+	// NOTICE this function might not require T: Sized, but as of know casting
+	// (up & down) requires it in the implementation anyway
 	fn downcast_can(self) -> Option<Self::Bin>;
-
 }
 
 /// Can that has a weak representation.
@@ -91,6 +108,7 @@ pub trait CanOwned<T: ?Sized>: Can<T> {
 /// Again the `Rc` type is a good example here, it is the `CanStrong` here and
 /// the `std::rc::Weak` is the `CanWeak` in this regards.
 ///
+// Impl for Rc, Arc
 pub trait CanStrong: CanBase {
 	/// The weak representation for this type.
 	type CanWeak: Debug;
@@ -108,7 +126,15 @@ pub trait CanStrong: CanBase {
 /// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
 /// this `Can` to `T`.
 ///
-pub trait CanRef<T: ?Sized>: Can<T> {
+// NOTICE: Can<T> would be sufficient as trait bound, but in this crate,
+// CanRef<T> is always used together with CanSized<T>, and this way, the latter
+// trait bound can be omitted in several places.
+//
+// NOTICE this function might not require T: Sized, but as of know casting
+// (up & down) requires it in the implementation anyway
+//
+// Impl for Rc, Arc, Box for <T: Sized>
+pub trait CanRef<T>: CanSized<T> {
 
 	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
 	/// `Bin` and cloning.
@@ -122,7 +148,15 @@ pub trait CanRef<T: ?Sized>: Can<T> {
 /// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
 /// this `Can` to `T`.
 ///
-pub trait CanRefMut<T: ?Sized>: Can<T> {
+// NOTICE: Can<T> would be sufficient as trait bound, but in this crate,
+// CanRef<T> is always used together with CanSized<T>, and this way, the latter
+// trait bound can be omitted in several places.
+//
+// NOTICE this function might not require T: Sized, but as of know casting
+// (up & down) requires it in the implementation anyway
+//
+// Impl for Rc, Arc, Box for <T: Sized>
+pub trait CanRefMut<T>: CanSized<T> {
 	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
 	/// `Bin` and cloning.
 	///
@@ -130,18 +164,6 @@ pub trait CanRefMut<T: ?Sized>: Can<T> {
 
 }
 
-/// Sized variant of `Can`.
-///
-pub trait CanSized<T>: CanOwned<T> {
-	/// Create a `Bin` for `T`.
-	///
-	fn into_bin(t: T) -> Self::Bin;
-
-	/// Create `Self` directly from `T`.
-	fn from_inner(t: T) -> Self {
-		Self::from_bin(Self::into_bin(t))
-	}
-}
 
 
 
@@ -194,16 +216,6 @@ cfg_if! {
 	}
 }
 
-impl<T: Debug + 'static> CanOwned<T> for Rc<dyn Any> {
-	fn downcast_can(self) -> Option<Self::Bin> {
-		self.downcast().ok()
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-}
-
-
 impl<T: Debug + 'static> CanRef<T> for Rc<dyn Any> {
 	fn downcast_can_ref(&self) -> Option<&T> {
 		self.downcast_ref()
@@ -213,6 +225,12 @@ impl<T: Debug + 'static> CanRef<T> for Rc<dyn Any> {
 impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	fn into_bin(t: T) -> Self::Bin {
 		Rc::new(t)
+	}
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
 	}
 }
 
@@ -247,16 +265,6 @@ cfg_if! {
 	}
 }
 
-impl<T: Debug + 'static> CanOwned<T> for Box<dyn Any> {
-	fn downcast_can(self) -> Option<Self::Bin> {
-		self.downcast().ok()
-		//	.map(|r: &T| Box::new(r.clone()))
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-}
-
 impl<T: Debug + 'static> CanRef<T> for Box<dyn Any> {
 	fn downcast_can_ref(&self) -> Option<&T> {
 		self.downcast_ref()
@@ -272,6 +280,13 @@ impl<T: Debug + 'static> CanRefMut<T> for Box<dyn Any> {
 impl<T: Debug + 'static> CanSized<T> for Box<dyn Any> {
 	fn into_bin(t: T) -> Self::Bin {
 		Box::new(t)
+	}
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
+		//	.map(|r: &T| Box::new(r.clone()))
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
 	}
 }
 
@@ -322,15 +337,6 @@ cfg_if! {
 	}
 }
 
-impl<T: Debug + Send + Sync + 'static> CanOwned<T> for Arc<dyn Any + Send + Sync> {
-	fn downcast_can(self) -> Option<Self::Bin> {
-		self.downcast().ok()
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		b
-	}
-}
-
 impl<T: Debug + Send + Sync + 'static> CanRef<T> for Arc<dyn Any + Send + Sync> {
 	fn downcast_can_ref(&self) -> Option<&T> {
 		self.downcast_ref()
@@ -340,6 +346,12 @@ impl<T: Debug + Send + Sync + 'static> CanRef<T> for Arc<dyn Any + Send + Sync> 
 impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync> {
 	fn into_bin(t: T) -> Self::Bin {
 		Arc::new(t)
+	}
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.downcast().ok()
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		b
 	}
 }
 
@@ -381,9 +393,12 @@ cfg_if! {
 	}
 }
 
-impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
-		where BCan: CanOwned<B> + Clone {
+impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
+		where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
 
+	fn into_bin(t: B) -> Self::Bin {
+		Ap::new(t)
+	}
 	fn downcast_can(self) -> Option<Self::Bin> {
 		self.builder.clone().downcast_can().map( |bin| {
 			Ap {
@@ -394,14 +409,7 @@ impl<BCan: 'static, B: 'static> CanOwned<B> for BuilderEntry<BCan>
 		})
 	}
 	fn from_bin(b: Self::Bin) -> Self {
-		BuilderEntry::new(b.builder_canned)
-	}
-}
-
-impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
-		where BCan: CanSized<B> + Clone, BCan::Bin: Clone {
-	fn into_bin(t: B) -> Self::Bin {
-		Ap::new(t)
+		BuilderEntry::new(&b)
 	}
 }
 

@@ -33,7 +33,7 @@ use std::hash::Hasher;
 use std::fmt::Debug;
 
 use crate::Can;
-use crate::CanOwned;
+use crate::CanSized;
 use crate::ArtifactPromiseTrait;
 use crate::BuilderEntry;
 
@@ -135,7 +135,7 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 	/// Constructs a new artifact handle with the given value.
 	///
 	pub fn new<T: Any + Debug>(value: ArtCan::Bin) -> Self
-		where ArtCan: CanOwned<T> {
+		where ArtCan: CanSized<T> {
 
 		let dbg_text = format!("{:#?}", value);
 
@@ -195,13 +195,13 @@ impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
 	pub fn new<AP, B: ?Sized + Debug + 'static>(value: &AP) -> Self
-			where BCan: Can<B> + Clone,
+			where
 				AP: ArtifactPromiseTrait<B, BCan> {
 
 		let dbg_text = format!("{:#?}", &value.accessor().builder);
 
 		BuilderHandle {
-			value: BuilderEntry::new(value.as_can()),
+			value: BuilderEntry::new(value),
 			type_name: std::any::type_name::<B>(),
 			dbg_text,
 		}
