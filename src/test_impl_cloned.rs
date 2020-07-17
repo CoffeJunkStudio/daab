@@ -273,7 +273,7 @@ fn test_clear() {
 
 	let artifact1 = cache.get_cloned(&leaf1);
 
-	cache.clear();
+	cache.clear_all();
 
 	let artifact2 = cache.get_cloned(&leaf1);
 
@@ -503,7 +503,7 @@ fn test_complex_clear() {
 	let artifact_node = cache.get_cloned(&noden1);
 	let artifact_root = cache.get_cloned(&noden3);
 
-	cache.clear();
+	cache.clear_all();
 
 	let artifact_root_2 = cache.get_cloned(&noden3);
 	let artifact_node_2 = cache.get_cloned(&noden1);

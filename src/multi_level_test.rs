@@ -103,11 +103,11 @@ fn test_level_1() {
 	assert_ne!(cache.get(&leaf1), cache.get(&leaf2));
 	
 	assert_eq!(cache.get(&leaf1), cache.get(&cache_ap.get(&bb1)));
-	
-	
+
+
 	// Just clear builder builder
-	cache_ap.clear();
-	
+	cache_ap.clear_all();
+
 	assert_ne!(cache.get(&leaf1), cache.get(&cache_ap.get(&bb1)))
 }
 

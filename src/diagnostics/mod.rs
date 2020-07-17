@@ -26,13 +26,13 @@
 //!
 
 
-use crate::CanBase;
 use std::any::Any;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 
-use crate::CanSized;
+use crate::canning::CanBase;
+use crate::canning::CanSized;
 use crate::ArtifactPromiseTrait;
 use crate::BuilderId;
 

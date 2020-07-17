@@ -457,6 +457,7 @@ use crate::ArtifactPromise as Ap;
 use crate::ArtifactPromiseUnsized as Apu;
 use crate::ArtifactPromiseTrait;
 
+/// A can type that can be used as an artifact can for builders.
 #[derive(Debug, Clone)]
 pub struct BuilderArtifact<BCan>(BCan);
 

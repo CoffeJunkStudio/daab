@@ -5,8 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 use pretty_assertions::{assert_eq, assert_ne};
 
-#[cfg(feature = "diagnostics")]
-use crate::diagnostics;
+use std::marker::PhantomData;
 
 use crate::*;
 
@@ -460,7 +459,7 @@ fn test_complex_clear() {
 	let artifact_node = cache.get(&noden1);
 	let artifact_root = cache.get(&noden3);
 
-	cache.clear();
+	cache.clear_all();
 
 	let artifact_root_2 = cache.get(&noden3);
 	let artifact_node_2 = cache.get(&noden1);

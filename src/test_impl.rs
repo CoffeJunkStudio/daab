@@ -272,9 +272,9 @@ fn test_clear() {
 	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
 	
 	let artifact1 = cache.get(&leaf1);
-	
-	cache.clear();
-	
+
+	cache.clear_all();
+
 	let artifact2 = cache.get(&leaf1);
 	
 	// Ensure artifacts differ after clear
@@ -502,9 +502,9 @@ fn test_complex_clear() {
 	let artifact_leaf = cache.get(&leaf1);
 	let artifact_node = cache.get(&noden1);
 	let artifact_root = cache.get(&noden3);
-	
-	cache.clear();
-	
+
+	cache.clear_all();
+
 	let artifact_root_2 = cache.get(&noden3);
 	let artifact_node_2 = cache.get(&noden1);
 	let artifact_leaf_2 = cache.get(&leaf1);

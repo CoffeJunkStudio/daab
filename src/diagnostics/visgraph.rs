@@ -1,6 +1,6 @@
 
 
-use crate::CanBase;
+use super::CanBase;
 use super::Doctor;
 use super::BuilderHandle;
 use super::ArtifactHandle;

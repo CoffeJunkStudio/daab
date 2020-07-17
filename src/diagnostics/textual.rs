@@ -3,7 +3,7 @@
 use super::Doctor;
 use super::BuilderHandle;
 use super::ArtifactHandle;
-use crate::CanBase;
+use super::CanBase;
 
 use std::io::Write;
 use cfg_if::cfg_if;

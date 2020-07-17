@@ -158,7 +158,7 @@
 //! // Change state
 //! cache.set_dyn_state(&node_builder_1, 127.into());
 //! // Without invalidation, the cached artefact remains unchanged
-//! assert_eq!(cache.get_dyn_state(&node_builder_1), Some(&mut 127));
+//! assert_eq!(cache.get_dyn_state(&node_builder_1), Some(& 127));
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //! // Invalidate node, and ensure it made use of the state
 //! cache.invalidate(&node_builder_1);
@@ -226,15 +226,10 @@
 #![warn(missing_docs)]
 
 
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::any::Any;
 use std::hash::Hash;
-use std::hash::Hasher;
 use std::fmt;
 use std::fmt::Debug;
-use std::borrow::Borrow;
-use std::marker::PhantomData;
 
 use cfg_if::cfg_if;
 
@@ -247,7 +242,6 @@ pub mod canning;
 pub mod cache;
 pub mod utils;
 
-use canning::CanBase;
 use canning::Can;
 use canning::CanStrong;
 use canning::CanBuilder;
@@ -274,8 +268,6 @@ pub mod diagnostics;
 
 cfg_if! {
 	if #[cfg(feature = "diagnostics")] {
-		use std::ops::Deref;
-		use std::ops::DerefMut;
 		use diagnostics::Doctor;
 		use diagnostics::ArtifactHandle;
 		use diagnostics::BuilderHandle;
