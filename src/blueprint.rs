@@ -90,11 +90,21 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseSized<B, BCan> {
 impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
 	/// Create a new promise for the given binned builder.
 	///
-	pub fn new_binned(builder_bin: BCan::Bin) -> Self {
+	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
 		ArtifactPromiseSized {
 			builder: builder_bin,
 			_dummy: (),
 		}
+	}
+
+	/// Returns the pointer to the inner builder.
+	///
+	/// The returned pointer has a unspecific validity, thus it may only be used
+	/// for comparing with other pointers but dereferencing it can never be
+	/// considered safe.
+	///
+	pub(crate) fn builder_ptr(&self) -> *const () {
+		BCan::bin_as_ptr(&self.builder) as *const ()
 	}
 }
 
@@ -299,7 +309,7 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	/// for comparing with other pointers but dereferencing it can never be
 	/// considered safe.
 	///
-	pub(crate) fn as_ptr(&self) -> *const () {
+	pub(crate) fn builder_ptr(&self) -> *const () {
 		BCan::can_as_ptr(&self.builder_canned) as *const ()
 	}
 

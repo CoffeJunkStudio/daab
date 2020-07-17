@@ -199,9 +199,9 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for TextualDoc<W> {
 		if self.opts.show_addresses {
 			writeln!(self.output(),
 				r#"resolves [{:p}] {} -> [{:p}] {}"#,
-				builder.value.id,
+				builder.id(),
 				bs,
-				used.value.id,
+				used.id(),
 				us,
 			).unwrap();
 		} else {
@@ -223,7 +223,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for TextualDoc<W> {
 				r#"built #{}.{} [{:p}] {} => [{:p}] "#,
 				count.0,
 				count.1,
-				builder.value.id,
+				builder.id(),
 				bs,
 				artifact.value.can_as_ptr(),
 			).unwrap();
@@ -280,7 +280,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for TextualDoc<W> {
 		if self.opts.show_addresses {
 			write!(self.output(),
 				"[{:p}] {}",
-				builder.value.id,
+				builder.id(),
 				bs,
 			).unwrap();
 		} else {

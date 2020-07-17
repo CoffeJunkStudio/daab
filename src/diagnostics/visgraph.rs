@@ -155,29 +155,29 @@ impl<W: Write> Drop for VisgraphDoc<W> {
 
 impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
 	fn resolve(&mut self, builder: &BuilderHandle<BCan>, used: &BuilderHandle<BCan>) {
-	
+
 		let s = self.builder_str(builder);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			builder.value.id,
+			builder.id(),
 			s
 		).unwrap();
-		
+
 		let s = self.builder_str(used);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			used.value.id,
+			used.id(),
 			s
 		).unwrap();
-		
+
 		writeln!(self.output(),
 			r#"  "{:p}" -> "{:p}""#,
-			builder.value.id,
-			used.value.id
+			builder.id(),
+			used.id()
 		).unwrap();
-		
+
 		self.output().flush().unwrap();
-		
+
 	}
 	
 	
@@ -187,7 +187,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
 		let s = self.builder_str(builder);
 		writeln!(self.output(),
 			r#"  "{:p}" [label = {:?}]"#,
-			builder.value.id,
+			builder.id(),
 			s
 		).unwrap();
 		
@@ -208,7 +208,7 @@ impl<ArtCan: CanBase, BCan, W: Write> Doctor<ArtCan, BCan> for VisgraphDoc<W> {
 			
 		writeln!(self.output(),
 			r#"  "{:p}" -> "{}.{}-{:p}" [arrowhead = "none"]"#,
-			builder.value.id,
+			builder.id(),
 			count.0,
 			count.1,
 			artifact.value.can_as_ptr()

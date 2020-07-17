@@ -67,8 +67,7 @@ cfg_if! {
 		/// **Notice: This trait is only available if the `unsized`
 		/// feature has been activated**.
 		///
-		pub trait CanUnsized<T: ?Sized, UT: ?Sized>: Can<T> + Can<UT>
-				where T: Unsize<UT> {
+		pub trait CanUnsized<T: ?Sized, UT: ?Sized>: Can<T> + Can<UT> {
 
 			/// Convert the inner type in accordance with unsized.
 			///
@@ -454,28 +453,61 @@ impl<ArtCan: 'static, Artifact: 'static, DynState, B> CanBuilderSync<ArtCan, Art
 // Artifact Promise impls
 //
 
-use crate::ArtifactPromiseUnsized as Ap;
-use crate::BuilderEntry;
+use crate::ArtifactPromise as Ap;
+use crate::ArtifactPromiseUnsized as Apu;
+use crate::ArtifactPromiseTrait;
 
-impl<BCan: CanBase + 'static> CanBase for BuilderEntry<BCan> {
+#[derive(Debug, Clone)]
+pub struct BuilderArtifact<BCan>(BCan);
+
+impl<BCan: CanBase + 'static> CanBase for BuilderArtifact<BCan> {
 	fn can_as_ptr(&self) -> *const dyn Any {
-		self.deref()
+		self.0.can_as_ptr()
 	}
 }
 
-impl<BCan: 'static, B: ?Sized + 'static> Can<B> for BuilderEntry<BCan>
+impl<BCan: 'static, B: 'static> Can<Ap<B,BCan>> for BuilderArtifact<BCan>
 		where BCan: Can<B> {
 
 	type Bin = Ap<B, BCan>;
 
 	fn bin_as_ptr(b: &Self::Bin) -> *const () {
-		b.deref().as_ptr()
+		b.builder_ptr()
+	}
+}
+
+impl<BCan: 'static, B: 'static> CanSized<Ap<B,BCan>> for BuilderArtifact<BCan>
+		where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
+
+	fn into_bin(ap: Ap<B,BCan>) -> Self::Bin {
+		ap
+	}
+	fn downcast_can(self) -> Option<Self::Bin> {
+		self.0.downcast_can().map( |bin| {
+			Ap::new_binned(bin)
+		})
+	}
+	fn from_bin(b: Self::Bin) -> Self {
+		BuilderArtifact(b.canned().can)
+	}
+}
+
+
+
+
+impl<BCan: 'static, B: ?Sized + 'static> Can<Apu<B,BCan>> for BuilderArtifact<BCan>
+		where BCan: Can<B> {
+
+	type Bin = Apu<B, BCan>;
+
+	fn bin_as_ptr(b: &Self::Bin) -> *const () {
+		b.deref().builder_ptr()
 	}
 }
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
-		impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<B, UB> for BuilderEntry<BCan>
+		impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<Apu<B,BCan>, Apu<UB,BCan>> for BuilderArtifact<BCan>
 				where
 					BCan: CanUnsized<B, UB>,
 					BCan: 'static,
@@ -483,28 +515,26 @@ cfg_if! {
 					UB: 'static,
 					B: Unsize<UB> {
 
-			fn into_unsized(bin: <Self as Can<B>>::Bin) -> <Self as Can<UB>>::Bin {
+			fn into_unsized(bin: <Self as Can<Apu<B,BCan>>>::Bin) -> <Self as Can<Apu<UB,BCan>>>::Bin {
 				bin.into_unsized()
 			}
 		}
 	}
 }
 
-impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
+impl<BCan: 'static, B: 'static> CanSized<Apu<B,BCan>> for BuilderArtifact<BCan>
 		where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
 
-	fn into_bin(t: B) -> Self::Bin {
-		Ap::new(t)
+	fn into_bin(ap: Apu<B,BCan>) -> Self::Bin {
+		ap
 	}
 	fn downcast_can(self) -> Option<Self::Bin> {
-		self.builder.downcast_can().map( |bin| {
-			Ap::new_binned(bin)
+		self.0.downcast_can().map( |bin| {
+			Apu::new_binned(bin)
 		})
 	}
 	fn from_bin(b: Self::Bin) -> Self {
-		BuilderEntry::new(&b)
+		BuilderArtifact(b.canned().can)
 	}
 }
-
-
 

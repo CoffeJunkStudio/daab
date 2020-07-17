@@ -9,7 +9,7 @@ use std::any::Any;
 #[cfg(feature = "diagnostics")]
 use crate::Doctor;
 
-use crate::BuilderEntry;
+use crate::canning::BuilderArtifact;
 use crate::Can;
 
 
@@ -65,7 +65,7 @@ pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, Can
 /// This resolver uses `Rc` for storing builders and `ArtifactPromise` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
-pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, BuilderEntry<CanType>, CanType, T>;
+pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, BuilderArtifact<CanType>, CanType, T>;
 
 
 cfg_if::cfg_if!{
@@ -94,7 +94,7 @@ cfg_if::cfg_if!{
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(not(feature = "diagnostics"))]
-pub type SuperArtifactCache = crate::ArtifactCache<BuilderEntry<CanType>, CanType>;
+pub type SuperArtifactCache = crate::ArtifactCache<BuilderArtifact<CanType>, CanType>;
 
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder.
 ///
@@ -102,7 +102,7 @@ pub type SuperArtifactCache = crate::ArtifactCache<BuilderEntry<CanType>, CanTyp
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(feature = "diagnostics")]
-pub type SuperArtifactCache<T = dyn Doctor<BuilderEntry<CanType>, CanType>> = crate::ArtifactCache<BuilderEntry<CanType>, CanType, T>;
+pub type SuperArtifactCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::ArtifactCache<BuilderArtifact<CanType>, CanType, T>;
 
 
 /// Functional builder wrapper.
@@ -185,12 +185,12 @@ pub trait SuperBuilder: Debug {
 	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact;
 }
 
-impl<B: ?Sized + SuperBuilder> crate::Builder<crate::BuilderEntry<CanType>, CanType> for B {
-	type Artifact = B::Artifact;
+impl<B: ?Sized + SuperBuilder> crate::Builder<BuilderArtifact<CanType>, CanType> for B {
+	type Artifact = ArtifactPromise<B::Artifact>;
 	type DynState = B::DynState;
 
 	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact {
-		self.build(cache)
+		ArtifactPromise::new(self.build(cache))
 	}
 }
 

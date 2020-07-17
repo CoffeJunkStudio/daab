@@ -34,7 +34,7 @@ use std::fmt::Debug;
 
 use crate::CanSized;
 use crate::ArtifactPromiseTrait;
-use crate::BuilderEntry;
+use crate::BuilderId;
 
 
 mod visgraph;
@@ -187,7 +187,10 @@ impl<ArtCan: CanBase> Eq for ArtifactHandle<ArtCan> {
 #[derive(Clone, Debug)]
 pub struct BuilderHandle<BCan> {
 	/// The actual builder as promise.
-	value: BuilderEntry<BCan>,
+	value: BCan,
+
+	/// The unique id of that builder.
+	pub id: BuilderId,
 
 	/// The type name of the builder as of `std::any::type_name`.
 	pub type_name: &'static str,
@@ -204,24 +207,32 @@ impl<BCan> BuilderHandle<BCan> {
 				AP: ArtifactPromiseTrait<B, BCan> {
 
 		let dbg_text = format!("{:#?}", &value.builder().builder);
+		let id = value.id();
 
 		BuilderHandle {
-			value: BuilderEntry::new(value),
+			value: value.canned().can,
+			id,
 			type_name: std::any::type_name::<B>(),
 			dbg_text,
 		}
+	}
+
+	/// The unique id of that builder.
+	///
+	pub fn id(&self) -> BuilderId {
+		self.id
 	}
 }
 
 impl<BCan> Hash for BuilderHandle<BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.value.hash(state);
+		self.id.hash(state);
 	}
 }
 
 impl<BCan> PartialEq for BuilderHandle<BCan> {
 	fn eq(&self, other: &Self) -> bool {
-		self.value.eq(&other.value)
+		self.id.eq(&other.id)
 	}
 }
 

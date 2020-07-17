@@ -23,7 +23,10 @@ use crate::ArtifactPromiseTrait;
 
 use crate::Builder;
 use crate::BuilderId;
-use crate::BuilderEntry;
+
+mod internal;
+
+use internal::BuilderEntry;
 
 
 
@@ -72,8 +75,8 @@ pub struct ArtifactCache<
 	/// Maps Builder-Capsules to their DynState value
 	dyn_state: HashMap<BuilderId, Box<dyn Any>>,
 
-	/// Tracks the direct promise dependants of each promise
-	dependants: HashMap<BuilderId, HashSet<BuilderId>>,
+	/// Tracks the direct promise dependents of each promise
+	dependents: HashMap<BuilderId, HashSet<BuilderId>>,
 
 	/// Keeps a weak reference to all known builder ids that are those used in
 	/// `cache` and/or dyn_state.
@@ -101,8 +104,8 @@ cfg_if! {
 
 		impl<ArtCan: Debug, BCan: CanStrong + Debug, T: Debug> Debug for ArtifactCache<ArtCan, BCan, T> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?}, doctor: {:?} }}",
-					self.cache, self.dependants, self.doctor)
+				write!(f, "ArtifactCache {{ cache: {:?}, dependents: {:?}, doctor: {:?} }}",
+					self.cache, self.dependents, self.doctor)
 			}
 		}
 
@@ -113,7 +116,7 @@ cfg_if! {
 				Self {
 					cache: HashMap::new(),
 					dyn_state: HashMap::new(),
-					dependants: HashMap::new(),
+					dependents: HashMap::new(),
 					know_builders: HashMap::new(),
 
 					doctor: DefDoctor::default(),
@@ -131,7 +134,7 @@ cfg_if! {
 				Self {
 					cache: HashMap::new(),
 					dyn_state: HashMap::new(),
-					dependants: HashMap::new(),
+					dependents: HashMap::new(),
 					know_builders: HashMap::new(),
 
 					doctor,
@@ -181,8 +184,8 @@ cfg_if! {
 
 		impl<ArtCan: Debug, BCan: CanStrong + Debug> Debug for ArtifactCache<ArtCan, BCan> {
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-				write!(f, "ArtifactCache {{ cache: {:?}, dependants: {:?} }}",
-					self.cache, self.dependants)
+				write!(f, "ArtifactCache {{ cache: {:?}, dependents: {:?} }}",
+					self.cache, self.dependents)
 			}
 		}
 
@@ -193,7 +196,7 @@ cfg_if! {
 				Self {
 					cache: HashMap::new(),
 					dyn_state: HashMap::new(),
-					dependants: HashMap::new(),
+					dependents: HashMap::new(),
 					know_builders: HashMap::new(),
 				}
 			}
@@ -234,7 +237,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 
 		let deps = self.get_dependants(promise);
-		if !deps.contains(&user.id) {
+		if !deps.contains(&user.id()) {
 			deps.insert(*user.borrow());
 		}
 
@@ -260,7 +263,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 
 
 		let deps = self.get_dependants(promise);
-		if !deps.contains(&user.id) {
+		if !deps.contains(&user.id()) {
 			deps.insert(*user.borrow());
 		}
 
@@ -281,11 +284,11 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 				AP: ArtifactPromiseTrait<B, BCan>  {
 
 
-		if !self.dependants.contains_key(&promise.id()) {
-			self.dependants.insert(promise.id(), HashSet::new());
+		if !self.dependents.contains_key(&promise.id()) {
+			self.dependents.insert(promise.id(), HashSet::new());
 		}
 
-		self.dependants.get_mut(&promise.id()).unwrap()
+		self.dependents.get_mut(&promise.id()).unwrap()
 	}
 
 	/// Get and cast the stored artifact if it exists.
@@ -605,7 +608,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	pub fn clear(&mut self) {
 		self.cache.clear();
 		self.dyn_state.clear();
-		self.dependants.clear();
+		self.dependents.clear();
 		self.know_builders.clear();
 
 		#[cfg(feature = "diagnostics")]
@@ -619,7 +622,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		// However, this would be more significant, if the building would be
 		// done in a loop too.
 
-		if let Some(set) = self.dependants.remove(builder) {
+		if let Some(set) = self.dependents.remove(builder) {
 			for dep in set {
 				self.invalidate_any(&dep);
 			}
