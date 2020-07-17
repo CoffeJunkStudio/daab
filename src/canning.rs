@@ -497,12 +497,8 @@ impl<BCan: 'static, B: 'static> CanSized<B> for BuilderEntry<BCan>
 		Ap::new(t)
 	}
 	fn downcast_can(self) -> Option<Self::Bin> {
-		self.builder.clone().downcast_can().map( |bin| {
-			Ap {
-				builder: bin,
-				builder_canned: self.builder,
-				_dummy: (),
-			}
+		self.builder.downcast_can().map( |bin| {
+			Ap::new_binned(bin)
 		})
 	}
 	fn from_bin(b: Self::Bin) -> Self {

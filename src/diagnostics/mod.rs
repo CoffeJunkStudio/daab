@@ -203,7 +203,7 @@ impl<BCan> BuilderHandle<BCan> {
 			where
 				AP: ArtifactPromiseTrait<B, BCan> {
 
-		let dbg_text = format!("{:#?}", &value.accessor().builder);
+		let dbg_text = format!("{:#?}", &value.builder().builder);
 
 		BuilderHandle {
 			value: BuilderEntry::new(value),
