@@ -32,7 +32,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 
-use crate::Can;
 use crate::CanSized;
 use crate::ArtifactPromiseTrait;
 use crate::BuilderEntry;
@@ -112,9 +111,9 @@ pub trait Doctor<ArtCan, BCan> {
 
 /// Encapsulates a generic artifact with some debugging information.
 ///
-/// This struct encapsulates a artifact as `Rc<dyn Any>` which might be fairly usless,
+/// This struct encapsulates a artifact as `Rc<dyn Any>` which might be fairly useless,
 /// unless one wants to cast or test it against a concrete type.
-/// Thus this struct also contains the strinified type name of that value
+/// Thus this struct also contains the stringified type name of that value
 /// as well as the `Debug` string of the value.
 /// Also notice, that different values can be differentiated by the allocation
 /// pointer thus the implementation of `Hash` and `Eq`.
@@ -146,6 +145,12 @@ impl<ArtCan> ArtifactHandle<ArtCan> {
 		}
 	}
 
+	/// Extract artifact from handle.
+	///
+	/// Since the artifact is canned it is only useful it the exact type of the
+	/// artifact is known or at least assumed and a downcast is going to be
+	/// attempt.
+	///
 	pub fn into_inner(self) -> ArtCan {
 		self.value
 	}
@@ -173,8 +178,8 @@ impl<ArtCan: CanBase> Eq for ArtifactHandle<ArtCan> {
 /// Encapsulates a generic builder with some debugging information.
 ///
 /// This struct encapsulates a builder as `ArtifactPromise<dyn Any>` which might
-/// be fairly usless.
-/// Thus this struct also contains the strinified type name of that value
+/// be fairly useless.
+/// Thus this struct also contains the stringified type name of that value
 /// as well as the `Debug` string of the value.
 /// Also notice, that different builders can be differentiated by the allocation
 /// pointer thus the implementation of `Hash` and `Eq`.

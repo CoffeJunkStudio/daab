@@ -594,7 +594,7 @@ fn test_dyn_builder_stable() {
 	let artifact_node = cache.get_cloned(&noden1);
 
 
-	let noden1_unsized: DynamicArtifactPromise<ComplexNode> = DynamicArtifactPromise::new_from_clones(noden1_rc.clone(), noden1_rc.clone()).unwrap();
+	let noden1_unsized: DynamicArtifactPromise<ComplexNode> = DynamicArtifactPromise::from_clones(noden1_rc.clone(), noden1_rc.clone()).unwrap();
 
 	assert_eq!(artifact_node, cache.get_cloned(&noden1_unsized));
 

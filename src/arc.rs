@@ -1,7 +1,8 @@
 
 //!
 //! Alias module for using `Rc` to wrap `ArtifactPromise` and artifacts.
-//! 
+//!
+
 
 use std::fmt::Debug;
 use std::any::Any;
@@ -13,18 +14,26 @@ use crate::BuilderEntry;
 
 
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
-/// 
+///
 /// This is just an alias for `Arc<T>`.
 ///
 pub type BinType<T> = std::sync::Arc<T>;
 
 /// Can for wrappers of this module.
-/// 
+///
 /// This is just an alias for `Arc<dyn Any + Send + Sync>`.
-/// 
+///
 pub type CanType = BinType<dyn Any + Send + Sync>;
 
+/// The wrapping type for builders.
+///
+/// Here it is the same as `BinType`.
+///
 pub type BuilderBinType<T> = BinType<T>;
+
+/// The can type for builders.
+///
+pub type BuilderCan = CanType;
 
 
 /// Promise for the artifact of the builder `B`, usable at the `ArtifactCache`.
@@ -33,23 +42,25 @@ pub type BuilderBinType<T> = BinType<T>;
 ///
 pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
 
+/// The unsized variant of `ArtifactPromise`.
 pub type ArtifactPromiseUnsized<B> = crate::ArtifactPromiseUnsized<B, CanType>;
 
+/// An `ArtifactPromise` with a `dyn Builder<Artifact=Artifact>`.
 pub type DynamicArtifactPromise<Artifact> =
 	ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()> + Send + Sync>;
 
 
-/// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
+/// Allows to resolve any `ArtifactPromise` into its artifact. Usable within a
 /// builders `build` function.
-/// 
+///
 /// This resolver uses `Arc` for storing builders and artifacts.
-/// 
+///
 pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, CanType, T>;
 
 
-/// Allows to resolve any `ArtifactPromis` into its artifact-builder. Usable
+/// Allows to resolve any `ArtifactPromise` into its artifact-builder. Usable
 /// within a super-builders `build` function.
-/// 
+///
 /// This resolver uses `Arc` for storing builders and `ArtifactPromise` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
@@ -58,7 +69,7 @@ pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, Builder
 
 cfg_if::cfg_if!{
 	if #[cfg(feature = "diagnostics")] {
-		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		/// Allows to resolve any `ArtifactPromise` into its artifact.
 		///
 		/// This cache uses `Arc` for storing builders and artifacts.
 		///
@@ -66,7 +77,7 @@ cfg_if::cfg_if!{
 			crate::ArtifactCache<CanType, CanType, T>;
 
 	} else {
-		/// Allows to resolve any `ArtifactPromis` into its artifact.
+		/// Allows to resolve any `ArtifactPromise` into its artifact.
 		///
 		/// This cache uses `Arc` for storing builders and artifacts.
 		///
@@ -75,22 +86,27 @@ cfg_if::cfg_if!{
 }
 
 
-
-/// Allows to resolve any `ArtifactPromis` into its artifact-builder.
-/// 
+/// Allows to resolve any `ArtifactPromise` into its artifact-builder.
+///
 /// This cache uses `Arc` for storing builders and `ArtifactPromise` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(not(feature = "diagnostics"))]
 pub type SuperArtifactCache = crate::ArtifactCache<BuilderEntry<CanType>, CanType>;
 
-/// Allows to resolve any `ArtifactPromis` into its artifact-builder.
-/// 
+/// Allows to resolve any `ArtifactPromise` into its artifact-builder.
+///
 /// This cache uses `Arc` for storing builders and `ArtifactPromise` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(feature = "diagnostics")]
 pub type SuperArtifactCache<T = dyn Doctor<BuilderEntry<CanType>, CanType>> = crate::ArtifactCache<BuilderEntry<CanType>, CanType, T>;
+
+
+/// Functional builder wrapper.
+///
+pub type FunctionalBuilder<F> =
+	crate::utils::FunctionalBuilder<CanType, BuilderCan, F>;
 
 
 /// A simplified builder interface, intended for implementing builders.
@@ -101,7 +117,7 @@ pub trait SimpleBuilder: Debug {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + Send + Sync + 'static;
-	
+
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
 	/// dependencies.
 	///
@@ -126,9 +142,9 @@ pub trait Builder: Debug {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + Send + Sync + 'static;
-	
+
 	/// Type of the dynamic state of this builder.
-	/// 
+	///
 	type DynState : Debug + 'static;
 
 	/// Produces an artifact using the given `ArtifactResolver` for resolving
@@ -147,7 +163,7 @@ impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 }
 
 /// A builder of builders using `Arc`s.
-/// 
+///
 /// This cache uses `Arc` for storing builders and `ArtifactPromise` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
@@ -156,9 +172,9 @@ pub trait SuperBuilder: Debug + Send + Sync {
 	/// another `Builder` (or `SuperBuilder`).
 	///
 	type Artifact : Debug + Send + Sync + 'static;
-	
+
 	/// Type of the dynamic state of this builder.
-	/// 
+	///
 	type DynState : Debug + 'static;
 
 	/// Produces an artifact using the given `ArtifactResolver` for resolving

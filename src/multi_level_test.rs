@@ -4,8 +4,6 @@ use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 
 
-type Ap<B> = rc::ArtifactPromise<B>;
-
 
 // Dummy counter to differentiate instances
 static COUNTER: AtomicU32 = AtomicU32::new(0);

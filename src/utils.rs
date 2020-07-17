@@ -1,4 +1,8 @@
-
+//!
+//! Utility module
+//!
+//! This module contains some utilities which can be useful when working with `daab`.
+//!
 
 use crate::ArtifactResolver;
 use crate::ArtifactPromiseTrait;
@@ -10,6 +14,7 @@ use crate::CanRef;
 use crate::CanStrong;
 use crate::CanSized;
 
+use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -88,8 +93,6 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 		ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
 		ArtCan::Bin: AsRef<Option<T>>,
 		BCan: Clone + Debug + CanStrong,
-		BCan: Can<B>,
-		<BCan as Can<B>>::Bin: Clone + AsRef<B>,
 	{
 
 	type Artifact = T;
@@ -109,6 +112,71 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 			// Try to return cached value. Panics if very first build fails.
 			resolver.my_state().clone().unwrap()
 		}
+	}
+}
+
+
+
+
+/// Functional builder wrapper.
+///
+/// A functional builder is a builder consisting of a single function
+/// `Fn(&mut ArtifactResolver) -> T`. Thus this type can be used to wrap a
+/// closure as `Builder`. The return type `T` will the artifact type of the
+/// resulting Builder.
+///
+pub struct FunctionalBuilder<ArtCan, BCan, F> {
+	inner: F,
+	_art_can: PhantomData<ArtCan>,
+	_b_can: PhantomData<BCan>,
+}
+
+impl<ArtCan, BCan, F> Debug for FunctionalBuilder<ArtCan, BCan, F> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		write!(fmt, "FunctionalBuilder{{...}}")
+	}
+}
+
+impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
+	where F: Fn(&mut ArtifactResolver<ArtCan, BCan>) -> T,
+		T: Debug + 'static {
+
+	/// Wraps the given closure as Builder.
+	///
+	pub fn new(f: F) -> Self {
+		FunctionalBuilder {
+			inner: f,
+			_art_can: PhantomData,
+			_b_can: PhantomData,
+		}
+	}
+}
+
+impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for ArtifactPromise<FunctionalBuilder<ArtCan, BCan, F>, BCan>
+	where F: for<'r, 's> Fn(&'r mut ArtifactResolver<'s, ArtCan, BCan>) -> T,
+		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F>> {
+
+	fn from(f: F) -> Self {
+		ArtifactPromise::new(
+			FunctionalBuilder::new(f)
+		)
+	}
+}
+
+impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F>
+	where F: Fn(&mut ArtifactResolver<ArtCan, BCan>) -> T,
+		T: Debug + 'static,
+		BCan: CanStrong {
+
+	type Artifact = T;
+	type DynState = ();
+
+	fn build(&self, resolver: &mut ArtifactResolver<ArtCan, BCan>)
+			 -> Self::Artifact {
+
+		let f = &self.inner;
+		f(resolver)
+
 	}
 }
 

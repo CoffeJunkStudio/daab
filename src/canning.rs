@@ -15,7 +15,10 @@
 use std::ops::Deref;
 use std::fmt::Debug;
 use std::any::Any;
+
 use cfg_if::cfg_if;
+
+use crate::Builder;
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
@@ -59,9 +62,16 @@ pub trait Can<T: ?Sized>: CanBase {
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
+		/// Can allowing unsized conversion.
+		///
+		/// **Notice: This trait is only available if the `unsized`
+		/// feature has been activated**.
+		///
 		pub trait CanUnsized<T: ?Sized, UT: ?Sized>: Can<T> + Can<UT>
 				where T: Unsize<UT> {
 
+			/// Convert the inner type in accordance with unsized.
+			///
 			fn into_unsized(bin: <Self as Can<T>>::Bin) -> <Self as Can<UT>>::Bin;
 		}
 	}
@@ -167,6 +177,10 @@ pub trait CanRefMut<T>: CanSized<T> {
 
 
 
+//
+// Rc impls
+//
+
 use std::rc::Rc;
 use std::rc::Weak as WeakRc;
 
@@ -235,6 +249,11 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 }
 
 
+
+//
+// Box impls
+//
+
 impl CanBase for Box<dyn Any> {
 	fn can_as_ptr(&self) -> *const dyn Any {
 		self.deref()
@@ -248,7 +267,6 @@ impl<T: ?Sized + Debug + 'static> Can<T> for Box<dyn Any> {
 		b.deref() as *const T as *const ()
 	}
 }
-
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
@@ -291,7 +309,10 @@ impl<T: Debug + 'static> CanSized<T> for Box<dyn Any> {
 }
 
 
-// TODO: impl for AP, Arc, maybe T/Box
+
+//
+// Arc impls
+//
 
 use std::sync::Arc;
 use std::sync::Weak as WeakArc;
@@ -356,6 +377,9 @@ impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync
 }
 
 
+//
+// Artifact Promise impls
+//
 
 use crate::ArtifactPromiseUnsized as Ap;
 use crate::BuilderEntry;

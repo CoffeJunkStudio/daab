@@ -304,16 +304,32 @@ pub trait Builder<ArtCan, BCan>: Debug
 }
 
 
+/// Legacy ArtifactPromise typedef.
 pub type ArtifactPromise<B, BCan> = ArtifactPromiseSized<B, BCan>;
 
 
+/// Generalized artifact promise of a builder.
+///
+/// Implemented by `ArtifactPromiseSized` and `ArtifactPromiseUnsized`.
+///
 // typical bound: `where BCan: Can<B>`
 pub trait ArtifactPromiseTrait<B: ?Sized, BCan> {
+	/// Get the unique id of the inner builder.
+	///
 	fn id(&self) -> BuilderId;
 
+	/// Access the inner builder.
+	///
+	/// Notice: this function deliberately returns an opaque type with no
+	/// methods, as a ArtifactPromise is supposed to be opaque, but this
+	/// accessor is required for this library to work.
+	///
 	fn accessor(&self) -> ArtifactPromiseAccessor<B>;
 
-	fn as_can(&self) -> BCan;
+	/// Get the inner builder in a opaque can.
+	///
+	#[deprecated = "breaks encapsulation, will be removed"]
+	fn to_can(&self) -> BCan;
 }
 
 
@@ -387,7 +403,7 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSize
 		}
 	}
 
-	fn as_can(&self) -> BCan {
+	fn to_can(&self) -> BCan {
 		BCan::from_bin(self.builder.clone())
 	}
 }
@@ -398,6 +414,16 @@ cfg_if! {
 				BCan: CanSized<B>,
 				BCan::Bin: Clone, {
 
+			/// Makes this sized artifact promise into an unsized artifact
+			/// promise.
+			///
+			/// **Notice: This function is only available if the `unsized`
+			/// feature has been activated**.
+			///
+			/// An unsized artifact promise might represent for instance
+			/// a builder by trait object. This allows in some cases to support
+			/// multiple builders without adding additional type parameters.
+			///
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
@@ -452,6 +478,24 @@ impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseSized<B, BCan> where BCan:
 }
 
 
+/// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
+///
+/// This struct is essentially a wrapper around two `Rc`s, but it provides a
+/// `Hash` and `Eq` implementation based on the identity of the `Rc`s inner
+/// value. In other words the address of the allocation behind the Rc is
+/// compared instead of the semantics (also see [`Rc::ptr_eq()`]).
+/// Thus all clones of an `ArtifactPromise` are considered identical.
+///
+/// Also see `ArtifactPromise`, which only requires a single `Rc`. Therefore
+/// when ever possible `ArtifactPromise` should be preferred over this type.
+/// This type exists only to allow for unsized builders that is a builder as
+/// trait object (aka `dyn Builder`).
+///
+/// An `ArtifactPromise` can be either resolved using the `ArtifactCache::get()`
+/// or `ArtifactResolver::resolve()`, whatever is available.
+///
+/// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
+///
 pub struct ArtifactPromiseUnsized<B: ?Sized, BCan: Can<B>> {
 	builder: BCan::Bin,
 	builder_canned: BCan,
@@ -474,9 +518,7 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clon
 impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
-	// TODO: Remove!
-	#[deprecated = "breaks encapsulation, will be removed"]
-	pub fn new_binned(builder_bin: BCan::Bin) -> Self {
+	fn new_binned(builder_bin: BCan::Bin) -> Self {
 		ArtifactPromiseUnsized {
 			builder: builder_bin.clone(),
 			builder_canned: BCan::from_bin(builder_bin),
@@ -490,6 +532,17 @@ cfg_if! {
 		impl<B: ?Sized, BCan> ArtifactPromiseUnsized<B, BCan> where
 				BCan: Can<B>, {
 
+			/// Converts this artifact promise from type `B` to `UB` via
+			/// unsizing.
+			///
+			/// **Notice: This function is only available if the `unsized`
+			/// feature has been activated**.
+			///
+			/// Unsizing is typically involved when using trait objects. Thus if
+			/// artifact promise of a `dyn Builder` is needed this function can
+			/// be used to convert an artifact promise of a specific builder to
+			/// an artifact promise of a trait object, if compatible.
+			///
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
@@ -516,16 +569,37 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 		BuilderId::new(BCan::can_as_ptr(&self.builder_canned))
 	}
 
-	pub fn as_ptr(&self) -> *const () {
+	/// Returns the pointer to the inner builder.
+	///
+	/// The returned pointer has a unspecific validity, thus it may only be used
+	/// for comparing with other pointers but dereferencing it can never be
+	/// considered safe.
+	///
+	fn as_ptr(&self) -> *const () {
 		BCan::can_as_ptr(&self.builder_canned) as *const ()
 	}
 
+	/// Constructs a truly unsized instance from two clones of the same builder.
+	///
+	/// # Panic
+	///
+	/// Panics if the two arguments are not the same `Rc`.
+	///
+	/// # Deprecated
+	///
+	/// This function can not absorb the builder itself so there might remain
+	/// e.g. `Rc`-clones keeping the inner builder accessible form the outside.
+	/// This avoids the effects of this type which is opaque encapsulation.
+	/// Therefore this function might be removed in the future when an
+	/// alternative stable way to construct a truly unsized promise has been
+	/// found.
+	///
 	// TODO: This is currently the only way to instantiate a truly unsized AP,
 	// however, it breaks encapsulation, as the inner Builder might be still
 	// accessible from the outside. Therefore, it should be removed as soon as
 	// `unsize` becomes stable.
 	#[deprecated = "breaks encapsulation, will be removed"]
-	pub fn new_from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
+	pub fn from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
 		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
 			Some(
 				ArtifactPromiseUnsized {
@@ -556,7 +630,7 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseU
 		}
 	}
 
-	fn as_can(&self) -> BCan {
+	fn to_can(&self) -> BCan {
 		self.builder_canned.clone()
 	}
 }
@@ -757,15 +831,6 @@ impl fmt::Pointer for BuilderId {
 	}
 }
 
-/*
-impl Borrow<BuilderIdRaw> for BuilderId {
-	fn borrow(&self) -> &BuilderIdRaw {
-		&self.0
-	}
-}
-*/
-
-type BuilderIdRaw = *const dyn Any;
 
 
 /// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
@@ -784,7 +849,7 @@ impl<BCan> BuilderEntry<BCan> {
 		let id = ap.id();
 
 		BuilderEntry {
-			builder: ap.as_can(),
+			builder: ap.to_can(),
 			id,
 		}
 	}
@@ -1493,7 +1558,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		let bid = promise.id();
 
 		if !self.know_builders.contains_key(&bid) {
-			self.know_builders.insert(bid, promise.as_can().downgrade());
+			self.know_builders.insert(bid, promise.to_can().downgrade());
 		}
 	}
 
