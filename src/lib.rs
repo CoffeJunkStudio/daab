@@ -249,6 +249,7 @@ pub mod utils;
 use canning::CanBase;
 use canning::Can;
 use canning::CanStrong;
+use canning::CanBuilder;
 use canning::CanSized;
 use canning::CanRef;
 use canning::CanRefMut;
@@ -610,6 +611,25 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 			)
 		} else {
 			None
+		}
+	}
+}
+
+impl<ArtCan, BCan, Artifact, DynState> ArtifactPromiseUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>, BCan> where
+	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>> {
+
+	/// Creates an trait object artifact promise from given builder.
+	///
+	pub fn new_unsized<B>(builder: B) -> Self
+		where
+			BCan: CanBuilder<ArtCan, Artifact, DynState, B>, {
+
+		let (bin_dyn, can) = BCan::can_unsized(builder);
+
+		ArtifactPromiseUnsized {
+			builder: bin_dyn,
+			builder_canned: can,
+			_dummy: (),
 		}
 	}
 }

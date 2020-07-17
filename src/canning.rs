@@ -171,9 +171,33 @@ pub trait CanRefMut<T>: CanSized<T> {
 	/// `Bin` and cloning.
 	///
 	fn downcast_can_mut(&mut self) -> Option<&mut T>;
-
 }
 
+/// A can that can hold and convert a given builder into a can of `dyn Builder`
+///
+pub trait CanBuilder<ArtCan, Artifact, DynState, B>:
+		CanStrong +
+		Can<B> +
+		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>
+	{
+
+	/// Create a unsized bin from given builder.
+	///
+	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>>::Bin, Self);
+}
+
+/// A can that can hold and convert a given builder into a can of `dyn Builder`
+///
+pub trait CanBuilderSync<ArtCan, Artifact, DynState, B>:
+		CanStrong +
+		Can<B> +
+		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>
+	{
+
+	/// Create a unsized bin from given builder.
+	///
+	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>>::Bin, Self);
+}
 
 
 
@@ -245,6 +269,30 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	}
 	fn from_bin(b: Self::Bin) -> Self {
 		b
+	}
+}
+
+impl<ArtCan: 'static, Artifact: 'static, DynState, B> CanBuilder<ArtCan, Artifact, DynState, B> for Rc<dyn Any>
+	where
+		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + 'static,
+		Artifact: Debug + 'static,
+		DynState: Debug + 'static,
+		 {
+
+	fn can_unsized(builder: B) -> (
+			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>>::Bin, Self) {
+
+		let rc = Rc::new(builder);
+
+		let rc_dyn: Rc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>> =
+			rc.clone();
+
+		let rc_any: Rc<dyn Any> = rc;
+
+		(
+			rc_dyn,
+			rc_any,
+		)
 	}
 }
 
@@ -375,6 +423,31 @@ impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync
 		b
 	}
 }
+
+impl<ArtCan: 'static, Artifact: 'static, DynState, B> CanBuilderSync<ArtCan, Artifact, DynState, B> for Arc<dyn Any + Send + Sync>
+	where
+		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync + 'static,
+		Artifact: Debug + Send + Sync + 'static,
+		DynState: Debug + Send + Sync + 'static,
+		 {
+
+	fn can_unsized(builder: B) -> (
+			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>>::Bin, Self) {
+
+		let arc = Arc::new(builder);
+
+		let arc_dyn: Arc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync> =
+			arc.clone();
+
+		let arc_any: Arc<dyn Any + Send + Sync> = arc;
+
+		(
+			arc_dyn,
+			arc_any,
+		)
+	}
+}
+
 
 
 //
