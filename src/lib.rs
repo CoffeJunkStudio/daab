@@ -355,7 +355,7 @@ cfg_if! {
 /// in order to resolve depending builders (aka `Blueprint`s) into their
 /// respective artifacts.
 ///
-pub trait Builder<ArtCan, BCan>: Debug
+pub trait Builder<ArtCan, BCan>: Debug + 'static
 		where
 			BCan: CanStrong {
 

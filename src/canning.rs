@@ -36,7 +36,7 @@ cfg_if! {
 /// See `Can`.
 ///
 // Impl for Rc, Arc, Box, Bp
-pub trait CanBase: Sized {
+pub trait CanBase: Debug + Sized + 'static {
 	/// Returns the pointer to the inner value.
 	///
 	fn can_as_ptr(&self) -> *const dyn Any;
@@ -54,7 +54,7 @@ pub trait CanBase: Sized {
 pub trait Can<T: ?Sized>: CanBase {
 	/// A specific wrapper for `T` which can be casted from `Self`.
 	///
-	type Bin: Debug;
+	type Bin: Debug + 'static;
 
 	/// Gets the pointer to
 	fn bin_as_ptr(b: &Self::Bin) -> *const ();

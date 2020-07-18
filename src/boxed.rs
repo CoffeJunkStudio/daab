@@ -80,7 +80,7 @@ pub type FunctionalBuilder<F> =
 
 
 /// Simplified builder without a dynamic state.
-pub trait SimpleBuilder: Debug {
+pub trait SimpleBuilder: Debug + 'static {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
@@ -109,7 +109,7 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 /// A Builder using `Rc` for `Blueprint` and `Box` for artifacts.
 ///
-pub trait Builder: Debug {
+pub trait Builder: Debug + 'static {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;

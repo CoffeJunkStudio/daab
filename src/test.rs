@@ -74,13 +74,11 @@ impl<AP> BuilderSimpleNode<AP> {
 	}
 }
 
-impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
+impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
 		AP: Promise<BuilderLeaf, BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
-		ArtCan::Bin: 'static,
-		//ArtCan: crate::canning::CanResolvable<Leaf>,
 		BCan: CanStrong,
 		{
 
@@ -135,23 +133,21 @@ impl<ApL,ApR,LB,RB> BuilderComplexNode<ApL,ApR,LB,RB> {
 	}
 }
 
-impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<ArtCan, BCan> for BuilderComplexNode<ApL, ApR, LB, RB>
+impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for BuilderComplexNode<ApL, ApR, LB, RB>
 	where
-		LB: LeafOrNodeBuilder<ArtCan, BCan>,
-		RB: LeafOrNodeBuilder<ArtCan, BCan>,
-		ApL: Promise<LB, BCan> + Debug,
-		ApR: Promise<RB, BCan> + Debug,
+		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
+		RB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
+		ApL: Promise<LB, BCan>,
+		ApR: Promise<RB, BCan>,
 		ArtCan: Clone,
-		ArtCan: CanSized<<LB as Builder<ArtCan, BCan>>::Artifact>,
-		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
-		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
-		<ArtCan as Can<<RB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
+		ArtCan: CanSized<LB::Artifact>,
+		ArtCan: CanSized<RB::Artifact>,
 		BCan: CanStrong,
 		{
 
 	type Artifact = ComplexNode<
-		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin,
-		<ArtCan as Can<<RB as Builder<ArtCan, BCan>>::Artifact>>::Bin,
+		<ArtCan as Can<LB::Artifact>>::Bin,
+		<ArtCan as Can<RB::Artifact>>::Bin,
 	>;
 
 	type DynState = ();
@@ -170,15 +166,14 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<Art
 
 //trait LeafOrNode<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> where BCan: CanStrong {}
 
-trait LeafOrNodeBuilder<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> where BCan: CanStrong {}
+trait LeafOrNodeBuilder<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> + 'static where BCan: CanStrong {}
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
 		AP: Promise<BuilderLeaf, BCan> + Debug,
-		ArtCan: Clone + Debug,
+		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
-		ArtCan::Bin: 'static,
-		BCan: Debug + CanStrong,
+		BCan: CanStrong,
 	{
 
 }
@@ -187,14 +182,12 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
 		RB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
-		ApL: Promise<LB, BCan> + Debug,
-		ApR: Promise<RB, BCan> + Debug,
-		ArtCan: Clone + Debug,
-		ArtCan: CanSized<<LB as Builder<ArtCan, BCan>>::Artifact>,
-		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
-		<ArtCan as Can<<LB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
-		<ArtCan as Can<<RB as Builder<ArtCan, BCan>>::Artifact>>::Bin: 'static,
-		BCan: Debug + CanStrong,
+		ApL: Promise<LB, BCan>,
+		ApR: Promise<RB, BCan>,
+		ArtCan: Clone,
+		ArtCan: CanSized<LB::Artifact>,
+		ArtCan: CanSized<RB::Artifact>,
+		BCan: CanStrong,
 	{
 
 }

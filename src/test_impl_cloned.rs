@@ -594,7 +594,7 @@ fn test_dyn_builder_stable() {
 	let artifact_node = cache.get_cloned(&noden1);
 
 
-	let noden1_unsized: DynamicBlueprint<ComplexNode> = DynamicBlueprint::from_clones(noden1_rc.clone(), noden1_rc.clone()).unwrap();
+	let noden1_unsized: DynamicBlueprint<ComplexNode> = DynamicBlueprint::from_clones(noden1_rc.clone(), noden1_rc).unwrap();
 
 	assert_eq!(artifact_node, cache.get_cloned(&noden1_unsized));
 

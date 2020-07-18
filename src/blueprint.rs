@@ -2,6 +2,7 @@
 
 
 use std::fmt;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::hash::Hasher;
 
@@ -20,7 +21,7 @@ use crate::CanSized;
 /// Implemented by `Blueprint` and `BlueprintUnsized`.
 ///
 // typical bound: `where BCan: Can<B>`
-pub trait Promise<B: ?Sized, BCan> {
+pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
 	/// Get the unique id of the inner builder.
 	///
 	fn id(&self) -> BuilderId;
@@ -117,6 +118,7 @@ impl<B, BCan: Can<B>> Blueprint<B, BCan> {
 
 impl<B, BCan: CanSized<B>> Promise<B, BCan> for Blueprint<B, BCan>
 		where
+			B: 'static,
 			BCan::Bin: AsRef<B> + Clone, {
 
 	fn id(&self) -> BuilderId {
@@ -366,6 +368,7 @@ impl<ArtCan, BCan, Artifact, DynState> BlueprintUnsized<dyn Builder<ArtCan, BCan
 
 impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
 		where
+			B: 'static,
 			BCan::Bin: AsRef<B>,
 			BCan: Clone, {
 

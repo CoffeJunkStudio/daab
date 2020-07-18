@@ -7,9 +7,7 @@
 use crate::Resolver;
 use crate::Promise;
 use crate::Blueprint;
-use crate::Cache;
 use crate::Builder;
-use crate::Can;
 use crate::CanRef;
 use crate::CanStrong;
 use crate::CanSized;
@@ -56,18 +54,13 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 		default_value: Option<T>
 	) -> Blueprint<Self, BCan>
 		where
-			B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
-			AP: Promise<B, BCan> + Debug + 'static,
+			B: Builder<ArtCan, BCan, Artifact=Option<T>>,
+			AP: Promise<B, BCan>,
 			T: Clone + Debug + 'static,
-			ArtCan: Debug,
-			ArtCan: Can<T>,
 			ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
-			<ArtCan as Can<Option<T>>>::Bin: AsRef<Option<T>>,
-			BCan: Clone + Debug + CanStrong,
+			ArtCan::Bin: AsRef<Option<T>>,
+			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
-			<BCan as Can<Self>>::Bin: Clone + AsRef<Self>,
-			BCan: Can<B>,
-			<BCan as Can<B>>::Bin: Clone + AsRef<B>,
 	{
 
 		Blueprint::new(
@@ -82,13 +75,12 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 
 impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<AP, B, T>
 	where
-		B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
-		AP: Promise<B, BCan> + Debug,
+		B: Builder<ArtCan, BCan, Artifact=Option<T>>,
+		AP: Promise<B, BCan>,
 		T: Clone + Debug + 'static,
-		ArtCan: Debug,
 		ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
 		ArtCan::Bin: AsRef<Option<T>>,
-		BCan: Clone + Debug + CanStrong,
+		BCan: Clone + CanStrong,
 	{
 
 	type Artifact = T;
@@ -138,8 +130,11 @@ impl<ArtCan, BCan, F> Debug for FunctionalBuilder<ArtCan, BCan, F> {
 }
 
 impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
-	where F: Fn(&mut Resolver<ArtCan, BCan>) -> T,
-		T: Debug + 'static {
+	where
+		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
+		T: Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: 'static {
 
 	/// Wraps the given closure as Builder.
 	///
@@ -153,8 +148,12 @@ impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
 }
 
 impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for Blueprint<FunctionalBuilder<ArtCan, BCan, F>, BCan>
-	where F: for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T,
-		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F>> {
+	where
+		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
+		T: Debug + 'static,
+		BCan: CanStrong,
+		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F>>,
+		ArtCan: 'static {
 
 	fn from(f: F) -> Self {
 		Blueprint::new(
@@ -164,9 +163,11 @@ impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for Blueprint<Functio
 }
 
 impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F>
-	where F: Fn(&mut Resolver<ArtCan, BCan>) -> T,
+	where
+		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
 		T: Debug + 'static,
-		BCan: CanStrong {
+		BCan: CanStrong,
+		ArtCan: 'static {
 
 	type Artifact = T;
 	type DynState = ();

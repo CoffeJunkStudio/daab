@@ -111,7 +111,7 @@ pub type FunctionalBuilder<F> =
 ///
 /// For this trait exists a generic `impl Builder`.
 ///
-pub trait SimpleBuilder: Debug {
+pub trait SimpleBuilder: Debug + 'static {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
@@ -140,7 +140,7 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 /// A Builder using `Rc` for `Blueprint` and artifacts.
 ///
-pub trait Builder: Debug {
+pub trait Builder: Debug + 'static {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
@@ -177,7 +177,7 @@ impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 /// This cache uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
-pub trait SuperBuilder: Debug {
+pub trait SuperBuilder: Debug + 'static {
 	/// The artifact type as produced by this builder. It is supposed to be
 	/// another `Builder` (or `SuperBuilder`).
 	///
