@@ -126,9 +126,12 @@
 //!
 //!         Node {
 //!             leaf,
-//!             value: resolver.get_my_state().copied().unwrap_or(42),
+//!             value: *resolver.my_state(),
 //!             // ...
 //!         }
+//!     }
+//!     fn init_dyn_state(&self) -> Self::DynState {
+//!         42
 //!     }
 //! }
 //!
@@ -151,22 +154,23 @@
 //!
 //! // Different artifacts may link the same dependent artifact
 //! assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
+//! 
+//! // Purge builder 2 to ensure the following does not affect it
+//! cache.purge(&node_builder_2);
 //!
 //! // Test dynamic state
 //! assert_eq!(cache.get(&node_builder_1).value, 42);
 //!
 //! // Change state
-//! cache.set_dyn_state(&node_builder_1, 127.into());
+//! *cache.dyn_state_mut(&node_builder_1) = 127.into();
 //! // Without invalidation, the cached artefact remains unchanged
-//! assert_eq!(cache.get_dyn_state(&node_builder_1), Some(& 127));
-//! assert_eq!(cache.get(&node_builder_1).value, 42);
+//! assert_eq!(cache.dyn_state(&node_builder_1), &127);
 //! // Invalidate node, and ensure it made use of the state
-//! cache.invalidate(&node_builder_1);
 //! assert_eq!(cache.get(&node_builder_1).value, 127);
 //!
 //! // State of node 2 remains unchanged
-//! assert_eq!(cache.get(&node_builder_2).value, 42);
 //! assert_eq!(cache.get_dyn_state(&node_builder_2), None);
+//! assert_eq!(cache.get(&node_builder_2).value, 42);
 //! ```
 //!
 //!
@@ -224,6 +228,74 @@
 #![deny(unconditional_recursion)]
 
 #![warn(missing_docs)]
+
+
+
+/*
+TODO Make builders return Results!
+Also a Never type for infallible Builders.
+
+pub enum Never {}
+//pub type Never = !;
+
+fn unpack<T>(res: Result<T,Never>) -> T {
+    match res {
+        Ok(t) => t,
+        Err(n) => match n {},
+    }
+}
+trait Unpacking {
+    type Res;
+    fn unpack(self) -> Self::Res;
+}
+impl<T> Unpacking for Result<T,Never> {
+    type Res = T;
+
+    fn unpack(self) -> T {
+        unpack(self)
+    }
+}
+
+trait Builder {
+	type Artifact : Debug + 'static;
+	type DynState : Debug + 'static;
+	type ErrTy;
+
+	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>)
+		-> Result<Self::Artifact, Self::ErrTy>;
+}
+
+//unpack(cache.get())
+//cache.get_unpacked()
+//cache.get().unpack()
+impl RawCache {
+    fn get_unpacked<B: ?Sized + Builder<ErrTy=Never> + Any + 'static>(
+			&mut self, ap: &Ap<B>) -> Rc<B::Artifact> {
+
+        unpack(self.get(ap))
+    }
+    fn get<B: ?Sized + Builder + Any + 'static>(&mut self, ap: &Ap<B>)
+			-> Result<Rc<B::Artifact>,B::ErrTy> {
+
+        self.lookup(ap).map_or_else(|| self.build(ap), |v| Ok(v))
+    }
+    fn build<B: ?Sized + Builder + Any + 'static>(&mut self, ap: &Ap<B>) -> Result<Rc<B::Artifact>,B::ErrTy> {
+        let value = ap.builder.build(&mut ArtifactResolver::new());
+
+        match value {
+            Ok(art) => {
+                let rced = Rc::new(art);
+                self.artifacts.insert(ap.ptr(), rced.clone());
+                self.known_builders.push(ap.builder_base.clone());
+                Ok(rced)
+            },
+            Err(e) => {
+                Err(e)
+            }
+        }
+    }
+*/
+
 
 
 use std::any::Any;
@@ -302,6 +374,13 @@ pub trait Builder<ArtCan, BCan>: Debug
 	/// dependencies.
 	///
 	fn build(&self, cache: &mut Resolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact;
+	
+	/// Return an inital dynamic state for this builder.
+	/// 
+	/// When a builder is first seen by a `Cache` the cache will use this method
+	/// to obtain an inital value for the dynamic state of this builder.
+	/// 
+	fn init_dyn_state(&self) -> Self::DynState;
 }
 
 

@@ -38,12 +38,13 @@ use std::marker::PhantomData;
 #[derive(Debug, Clone)]
 pub struct FallibleBuilder<AP, B: ?Sized, T> {
 	inner: AP,
+	default_value: Option<T>,
 	_b: PhantomData<B>,
-	_t: PhantomData<T>,
 }
 
 impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 	where
+		T: Clone,
 		B: Debug + 'static, {
 
 	/// Wrap given Builder and fill missing recreations with a previous value.
@@ -51,36 +52,31 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 	/// **Use with care**
 	///
 	pub fn new<ArtCan, BCan>(
-		cache: &mut Cache<ArtCan, BCan>,
 		inner: AP,
 		default_value: Option<T>
 	) -> Blueprint<Self, BCan>
-	where
-		B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
-		AP: Promise<B, BCan> + Debug + 'static,
-		T: Clone + Debug + 'static,
-		ArtCan: Debug,
-		ArtCan: Can<T>,
-		ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
-		<ArtCan as Can<Option<T>>>::Bin: AsRef<Option<T>>,
-		BCan: Clone + Debug + CanStrong,
-		BCan: CanSized<Self>,
-		<BCan as Can<Self>>::Bin: Clone + AsRef<Self>,
-		BCan: Can<B>,
-		<BCan as Can<B>>::Bin: Clone + AsRef<B>,
-		{
+		where
+			B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
+			AP: Promise<B, BCan> + Debug + 'static,
+			T: Clone + Debug + 'static,
+			ArtCan: Debug,
+			ArtCan: Can<T>,
+			ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
+			<ArtCan as Can<Option<T>>>::Bin: AsRef<Option<T>>,
+			BCan: Clone + Debug + CanStrong,
+			BCan: CanSized<Self>,
+			<BCan as Can<Self>>::Bin: Clone + AsRef<Self>,
+			BCan: Can<B>,
+			<BCan as Can<B>>::Bin: Clone + AsRef<B>,
+	{
 
-		let me = Blueprint::new(
+		Blueprint::new(
 			FallibleBuilder {
 				inner,
+				default_value,
 				_b: PhantomData,
-				_t: PhantomData,
 			}
-		);
-
-		cache.set_dyn_state(&me, default_value);
-
-		me
+		)
 	}
 }
 
@@ -112,6 +108,10 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 			// Try to return cached value. Panics if very first build fails.
 			resolver.my_state().clone().unwrap()
 		}
+	}
+	
+	fn init_dyn_state(&self) -> Self::DynState {
+		self.default_value.clone()
 	}
 }
 
@@ -177,6 +177,9 @@ impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCa
 		let f = &self.inner;
 		f(resolver)
 
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
 	}
 }
 

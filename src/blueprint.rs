@@ -28,7 +28,7 @@ pub trait Promise<B: ?Sized, BCan> {
 	/// Access the inner builder.
 	///
 	/// Notice: this function deliberately returns an opaque type with no
-	/// methods, as a ArtifactPromise is supposed to be opaque, but this
+	/// methods, as a Promise is supposed to be opaque, but this
 	/// accessor is required for this library to work.
 	///
 	fn builder(&self) -> BuilderAccessor<B>;
@@ -36,7 +36,7 @@ pub trait Promise<B: ?Sized, BCan> {
 	/// Get the inner builder in a opaque can.
 	///
 	/// Notice: this function deliberately returns an opaque type with no
-	/// methods, as a ArtifactPromise is supposed to be opaque, but this
+	/// methods, as a Promise is supposed to be opaque, but this
 	/// accessor is required for this library to work.
 	///
 	fn canned(&self) -> CannedAccessor<BCan>;

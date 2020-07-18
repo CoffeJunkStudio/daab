@@ -172,15 +172,15 @@ cfg_if! {
 	}
 }
 
-/// Auxiliary function to casts an `Option` of `Box` of `Any` to `Doc`.
+/// Auxiliary function to casts an `Option` of `Box` of `Any` to `DynState`.
 ///
-/// Must only be used with the correct `Doc`, or panics.
+/// Must only be used with the correct `DynState`, or panics.
 ///
-fn cast_dyn_state<Doc: 'static>(v: Option<Box<dyn Any>>) -> Option<Box<Doc>> {
+fn cast_dyn_state_ref<DynState: 'static>(v: Option<&Box<dyn Any>>) -> Option<&DynState> {
 	v.map(
 		|b| {
 			// Ensure value type
-			b.downcast()
+			b.downcast_ref()
 				.expect("Cached Builder DynState is of invalid type")
 		}
 	)
@@ -191,7 +191,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Record the dependency of `user` upon `promise`.
 	///
-	pub fn track_dependency<AP, B: ?Sized>(
+	pub(crate) fn track_dependency<AP, B: ?Sized>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
@@ -203,29 +203,13 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				AP: Promise<B, BCan> {
 
 
-		let deps = self.get_dependents(promise);
-		deps.insert(user.id());
+		self.dependents.entry(promise.id())
+			.or_insert_with(HashSet::new)
+			.insert(user.id());
 
 		#[cfg(feature = "diagnostics")]
 		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
 
-	}
-
-	/// Returns the vector of dependents of promise
-	///
-	fn get_dependents<AP, B: ?Sized>(
-			&mut self,
-			promise: &AP
-		) -> &mut HashSet<BuilderId>
-			where
-				AP: Promise<B, BCan> {
-
-
-		if !self.dependents.contains_key(&promise.id()) {
-			self.dependents.insert(promise.id(), HashSet::new());
-		}
-
-		self.dependents.get_mut(&promise.id()).unwrap()
 	}
 
 
@@ -328,6 +312,9 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		self.make_builder_known(promise);
 
+		// Ensure there is a DynState
+		self.ensure_dyn_state(promise);
+
 		let ent = BuilderEntry::new(promise);
 
 		#[cfg(feature = "diagnostics")]
@@ -371,6 +358,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.artifacts.get_mut(&id).unwrap()
 
 	}
+
 
 	/// Gets the artifact of the given builder.
 	///
@@ -450,91 +438,113 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	}
 
 
+	/// Ensure given dyn state exists and return it by reference.
+	/// 
+	fn ensure_dyn_state<AP, B: ?Sized>(
+			&mut self, promise: &AP
+		) -> &mut B::DynState
+			where
+				B: Builder<ArtCan, BCan> + 'static,
+				AP: Promise<B, BCan> {
+		
+		self.dyn_states
+			.entry(promise.id())
+			// Access entry or insert it with builder's default
+			.or_insert_with(
+				|| Box::new(promise.builder().builder.init_dyn_state())
+			)
+			// Ensure state type, it's safe because we have the builder's AP
+			.downcast_mut()
+			.expect("Cached Builder DynState is of invalid type")
+	}
+
+
 	/// Get and cast the dynamic static of given builder id.
+	/// 
+	/// **This function is only intendet for internal use, where the builder id
+	/// has been carfully chosen**.
 	///
 	/// `T` must be the type of the respective dynamic state of `bid`,
 	/// or this panics.
 	///
-	pub fn get_dyn_state_cast<T: 'static>(&mut self, bid: &BuilderId) -> Option<&mut T> {
+	pub(crate) fn get_dyn_state_cast<T: 'static>(
+			&mut self,
+			bid: &BuilderId
+		) -> Option<&mut T> {
 
 		self.dyn_states.get_mut(bid)
 		.map(
 			|b| {
-				// Ensure state type
+				// Ensure state type, might fail if given wrong argument
 				b.downcast_mut()
 					.expect("Cached Builder DynState is of invalid type")
 			}
 		)
 	}
 
-	/// Gets the dynamic state of the given builder.
+	/// Gets the mutable dynamic state of the given builder and invalidate it.
 	///
-	pub fn get_dyn_state_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn dyn_state_mut<AP, B: ?Sized>(
 			&mut self, promise: &AP
-		) -> Option<&mut B::DynState>
+		) -> &mut B::DynState
 			where
-				AP: Promise<B, BCan>  {
+				B: Builder<ArtCan, BCan> + 'static,
+				AP: Promise<B, BCan> {
 
 		// Since the user choses `mut` he intends to modify the dyn state this
 		// requires the rebuild the artifact
 		self.invalidate(promise);
 
-		self.get_dyn_state_cast(&promise.id())
+		self.ensure_dyn_state(promise)
 	}
 
 	/// Gets the dynamic state of the given builder.
 	///
-	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn dyn_state<AP, B: ?Sized>(
 			&mut self, promise: &AP
+		) -> &B::DynState
+			where
+				B: Builder<ArtCan, BCan> + 'static,
+				AP: Promise<B, BCan>  {
+
+		// Here, no invalidation, because we do not allow the user to modify the
+		// dyn state.
+
+		// Coherce ref to shared (`&`) and return
+		self.ensure_dyn_state(promise)
+	}
+
+	/// Gets the dynamic state of the given builder.
+	///
+	pub fn get_dyn_state<AP, B: ?Sized>(
+			&self, promise: &AP
 		) -> Option<&B::DynState>
 			where
+				B: Builder<ArtCan, BCan> + 'static,
 				AP: Promise<B, BCan>  {
 
-		self.get_dyn_state_cast(&promise.id())
-		// Demote `&mut` to `&`
-		.map(|s| &*s)
+		cast_dyn_state_ref(self.dyn_states.get(&promise.id()))
 	}
-
-	/// Sets the dynamic state of the given builder.
-	///
-	#[deprecated = "Will be removed soon"]
-	pub fn set_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
-			&mut self,
-			promise: &AP,
-			user_data: B::DynState
-		) -> Option<Box<B::DynState>>
-			where
-				AP: Promise<B, BCan>  {
-
-		self.make_builder_known(promise);
-
-		cast_dyn_state(
-			self.dyn_states.insert(promise.id(), Box::new(user_data))
-		)
-	}
-
-	// TODO: add convenience function such as:
-	// pub fn set_user_data_and_invalidate_on_change(...)
-
-	/// Deletes the dynamic state of the given builder.
-	///
-	pub fn remove_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	
+	/// Deletes the artifact and the dynamic state of the given builder.
+	/// 
+	pub fn purge<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
-		) -> Option<Box<B::DynState>>
+		)
 			where
+				B: Builder<ArtCan, BCan> + 'static,
 				AP: Promise<B, BCan>  {
 
 		let bid = promise.id();
 
 		// Remove weak reference if no builder exists
-		if !self.artifacts.contains_key(&bid) {
-			self.know_builders.remove(&bid);
-		}
-
-		cast_dyn_state(
-			self.dyn_states.remove(&bid)
-		)
+		self.know_builders.remove(&bid);
+		
+		self.artifacts.remove(&bid);
+		self.dyn_states.remove(&bid);
+		
+		self.invalidate(promise);
 	}
 
 	/// Deletes all dynamic states of this cache.
@@ -591,11 +601,12 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Removes the given promise with its cached artifact from the cache and
 	/// all depending artifacts (with their promises).
 	///
-	pub fn invalidate<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn invalidate<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)
 			where
+				B: Builder<ArtCan, BCan> + 'static,
 				AP: Promise<B, BCan>  {
 
 
@@ -648,9 +659,9 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		let bid = promise.id();
 
-		if !self.know_builders.contains_key(&bid) {
-			self.know_builders.insert(bid, promise.canned().can.downgrade());
-		}
+		self.know_builders.entry(bid).or_insert_with(
+			|| promise.canned().can.downgrade()
+		);
 	}
 
 	/// Returns the number of currently kept artifact promises.

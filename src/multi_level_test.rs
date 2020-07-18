@@ -44,6 +44,9 @@ impl rc::SuperBuilder for BuilderBuilder {
 	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
 		BuilderLeaf{}
 	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
 }
 
 
@@ -59,6 +62,9 @@ impl rc::SuperBuilder for SuperBuilder {
 
 	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
 		BuilderBuilder{}
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
 	}
 }
 

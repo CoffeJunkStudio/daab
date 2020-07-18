@@ -267,7 +267,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// for correctness of the pointer comparison, internally done by the
 	/// promise.
 	///
-	///	If all strong references of the respective builder are out of scope, the
+	/// If all strong references of the respective builder are out of scope, the
 	/// `garbage_collection()` method can be used to get rid of the cached
 	/// promise including the possibly still cached artifact and dyn state.
 	///
@@ -283,7 +283,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get(promise)
 	}
 
-	/// Gets a reference of the artifact of the given builder.
+	/// Gets a reference to the artifact of the given builder.
 	///
 	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -296,7 +296,10 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_ref(promise)
 	}
 
-	/// Gets a mutable reference of the artifact of the given builder.
+	/// Gets a mutable reference to the artifact of the given builder.
+	/// 
+	/// As opposed to `get_ref`, this method will invalidate all dependents of
+	/// the given builder.
 	///
 	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -323,10 +326,10 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_cloned(promise)
 	}
 
-	/// Gets the dynamic state of the given builder.
+	/// Gets the dynamic state of the given builder if any.
 	///
 	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
-			&mut self, promise: &AP
+			&self, promise: &AP
 		) -> Option<&B::DynState>
 			where
 				AP: Promise<B, BCan>  {
@@ -334,44 +337,34 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_dyn_state(promise)
 	}
 
-	/// Gets the dynamic state of the given builder.
+	/// Gets the dynamic state of the given builder, it will be initalized if
+	/// it didn't exist yet.
 	///
-	pub fn get_dyn_state_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self, promise: &AP
-		) -> Option<&mut B::DynState>
+		) -> &B::DynState
 			where
 				AP: Promise<B, BCan>  {
 
-		self.inner.get_dyn_state_mut(promise)
+		self.inner.dyn_state(promise)
 	}
 
-	/// Sets the dynamic state of the given builder.
+	/// Gets the mutable dynamic state of the given builder, it will be
+	/// initalized if it didn't exist yet.
+	/// 
+	/// As opposed to `dyn_state`, this function will invalidate the given
+	/// builder and cause its artifact to be rebuilded when next requested.
 	///
-	#[deprecated = "Will be removed soon"]
-	pub fn set_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
-			&mut self,
-			promise: &AP,
-			user_data: B::DynState
-		) -> Option<Box<B::DynState>>
+	pub fn dyn_state_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+			&mut self, promise: &AP
+		) -> &mut B::DynState
 			where
 				AP: Promise<B, BCan>  {
 
-		self.inner.set_dyn_state(promise, user_data)
+		self.inner.dyn_state_mut(promise)
 	}
 
-	/// Deletes the dynamic state of the given builder.
-	///
-	pub fn remove_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
-			&mut self,
-			promise: &AP
-		) -> Option<Box<B::DynState>>
-			where
-				AP: Promise<B, BCan>  {
-
-		self.inner.remove_dyn_state(promise)
-	}
-
-	/// Deletes all dynamic states of this cache.
+	/// Deletes all cached artifacts in this cache, but keeps dynamic states.
 	///
 	pub fn clear_artifacts(&mut self) {
 		self.inner.clear_artifacts()
@@ -382,6 +375,26 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	pub fn clear_all(&mut self) {
 		self.inner.clear_all()
+	}
+	
+	/// Deletes the artifact and the dynamic state of the given builder.
+	/// 
+	/// This function has the effect that all references of the given builder
+	/// in this cache will be removed.
+	/// 
+	/// As a consequence, all dependent builders (if any) will be invalidated,
+	/// but their dynamic states will be kept.
+	/// 
+	/// If you only want to remove the artifact see `invalidate()`.
+	///
+	pub fn purge<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+			&mut self,
+			promise: &AP
+		)
+			where
+				AP: Promise<B, BCan>  {
+
+		self.inner.purge(promise)
 	}
 
 	/// Removes the given promise with its cached artifact from the cache and
@@ -536,31 +549,25 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 
 	/// Returns the dynamic state of the owning builder.
 	///
-	/// ## Panic
-	///
-	/// This function panics if no dynamic state has been set for this builder.
-	///
 	pub fn my_state(&mut self) -> &mut Doc {
+		// The unwrap is safe here, because Cache ensures that a DynState exists
+		// before we comme here.
 		self.cache.get_dyn_state_cast(self.user.borrow()).unwrap()
 	}
 
-	/// Gets the dynamic state of the owning builder.
-	///
-	pub fn get_my_state(&mut self) -> Option<&mut Doc> {
-		self.cache.get_dyn_state_cast(self.user.borrow())
-	}
-
 	/// Get the dynamic static of given artifact promise.
+	/// 
+	/// See `my_state` to return the dynamic state of the current builder.
 	///
 	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &AP
-	) -> Option<&B::DynState>
+	) -> &B::DynState
 			where
 				AP: Promise<B, BCan>, {
 
 		self.track_dependency(promise);
-		self.cache.get_dyn_state(promise)
+		self.cache.dyn_state(promise)
 	}
 }
 

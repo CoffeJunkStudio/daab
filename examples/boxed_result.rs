@@ -29,6 +29,9 @@ impl Builder for FooBuilder {
 		println!("Building FooArtifact...");
 		Ok(FooArtifact.into())
 	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
 }
 
 #[derive(Debug)]
@@ -41,6 +44,9 @@ impl Builder for BazBuilder {
 	fn build(&self, resolver: &mut Resolver) -> Self::Artifact {
 		println!("Building BazArtifact...");
 		BazArtifact.into()
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
 	}
 }
 
@@ -63,6 +69,9 @@ impl Builder for BarBuilder {
 			baz_artifact
 		}.into())
 	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
 }
 
 fn main() {
@@ -79,7 +88,7 @@ fn main() {
 	let dyn_st = cache.get_dyn_state(&foo_builder);
 	dbg!(dyn_st);
 	println!("Setting FooBuilder dyn_state...");
-	cache.set_dyn_state(&foo_builder, ());
+	*cache.dyn_state_mut(&foo_builder) = ();
 	println!("Taking FooBuilder dyn_state...");
 	let dyn_st = cache.get_dyn_state(&foo_builder);
 	dbg!(dyn_st);

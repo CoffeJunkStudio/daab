@@ -603,6 +603,35 @@ fn test_dyn_builder_stable() {
 
 }
 
+/*
+Does not work with Arc!
+#[test]
+fn test_dyn_builder_stable2() {
+	let mut cache = Cache::new();
+
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
+
+	let nodef1 = Blueprint::new(BuilderComplexNode::new_leaf(leaf1.clone()));
+	let nodef2 = Blueprint::new(BuilderComplexNode::new_leaf(leaf2.clone()));
+
+	let noden1_builder = 
+		BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone());
+	//let noden1 = Blueprint::new_binned(noden1_rc.clone());
+
+	//let artifact_node = cache.get_cloned(&noden1);
+
+
+	let noden1_unsized: DynamicBlueprint<ComplexNode> = DynamicBlueprint::new_unsized(noden1_builder);
+
+	assert_eq!(cache.get_cloned(&noden1_unsized), cache.get_cloned(&noden1_unsized));
+
+	// Try it again
+	assert_eq!(cache.get_cloned(&noden1_unsized), cache.get_cloned(&noden1_unsized));
+
+}
+*/
+
 #[cfg(feature = "unsized")]
 #[test]
 fn test_dyn_builder() {

@@ -44,6 +44,9 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
 	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
 }
 
 
@@ -77,6 +80,7 @@ impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
 		ArtCan::Bin: 'static,
+		//ArtCan: crate::canning::CanResolvable<Leaf>,
 		BCan: CanStrong,
 		{
 
@@ -93,6 +97,9 @@ impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			leaf
 		}
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
 	}
 }
 
@@ -156,6 +163,9 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<Art
 			right: cache.resolve(&self.right),
 		}
 	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
 }
 
 //trait LeafOrNode<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> where BCan: CanStrong {}
@@ -212,6 +222,9 @@ impl crate::boxed::Builder for BuilderLeafBox {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
 	}
 }
 
