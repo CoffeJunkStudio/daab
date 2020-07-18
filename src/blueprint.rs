@@ -15,16 +15,12 @@ use crate::CanSized;
 
 
 
-/// Legacy ArtifactPromise typedef.
-pub type ArtifactPromise<B, BCan> = ArtifactPromiseSized<B, BCan>;
-
-
 /// Generalized artifact promise of a builder.
 ///
-/// Implemented by `ArtifactPromiseSized` and `ArtifactPromiseUnsized`.
+/// Implemented by `Blueprint` and `BlueprintUnsized`.
 ///
 // typical bound: `where BCan: Can<B>`
-pub trait ArtifactPromiseTrait<B: ?Sized, BCan> {
+pub trait Promise<B: ?Sized, BCan> {
 	/// Get the unique id of the inner builder.
 	///
 	fn id(&self) -> BuilderId;
@@ -72,12 +68,12 @@ pub struct CannedAccessor<BCan> {
 ///
 /// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
 ///
-pub struct ArtifactPromiseSized<B, BCan: Can<B>> {
+pub struct Blueprint<B, BCan: Can<B>> {
 	builder: BCan::Bin,
 	_dummy: (),
 }
 
-impl<B, BCan: CanSized<B>> ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: CanSized<B>> Blueprint<B, BCan> {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self {
@@ -87,11 +83,11 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseSized<B, BCan> {
 	}
 }
 
-impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Blueprint<B, BCan> {
 	/// Create a new promise for the given binned builder.
 	///
 	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
-		ArtifactPromiseSized {
+		Blueprint {
 			builder: builder_bin,
 			_dummy: (),
 		}
@@ -109,7 +105,7 @@ impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
 }
 
 
-impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Blueprint<B, BCan> {
 	/// Returns the id of this artifact promise
 	/// This Id has the following property:
 	/// The ids of two artifact promises are the same if and only if
@@ -119,7 +115,7 @@ impl<B, BCan: Can<B>> ArtifactPromiseSized<B, BCan> {
 	}
 }
 
-impl<B, BCan: CanSized<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseSized<B, BCan>
+impl<B, BCan: CanSized<B>> Promise<B, BCan> for Blueprint<B, BCan>
 		where
 			BCan::Bin: AsRef<B> + Clone, {
 
@@ -144,7 +140,7 @@ cfg_if! {
 	if #[cfg(feature = "unsized")] {
 		use crate::CanUnsized;
 
-		impl<B, BCan> ArtifactPromiseSized<B, BCan> where
+		impl<B, BCan> Blueprint<B, BCan> where
 				BCan: CanSized<B>,
 				BCan::Bin: Clone, {
 
@@ -158,56 +154,56 @@ cfg_if! {
 			/// a builder by trait object. This allows in some cases to support
 			/// multiple builders without adding additional type parameters.
 			///
-			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
+			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
 					BCan: CanUnsized<B, UB> {
 
-				ArtifactPromiseUnsized::new_binned(self.builder).into_unsized()
+				BlueprintUnsized::new_binned(self.builder).into_unsized()
 			}
 		}
 	}
 }
 
-impl<B, BCan: Can<B>> Clone for ArtifactPromiseSized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: Can<B>> Clone for Blueprint<B, BCan> where BCan::Bin: Clone {
 	fn clone(&self) -> Self {
-		ArtifactPromiseSized {
+		Blueprint {
 			builder: self.builder.clone(),
 			_dummy: (),
 		}
 	}
 }
 
-impl<B, BCan: Can<B>> Hash for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Hash for Blueprint<B, BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id().hash(state);
 	}
 }
 
-impl<B, BCan: Can<B>> PartialEq for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> PartialEq for Blueprint<B, BCan> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id().eq(&other.id())
 	}
 }
 
-impl<B, BCan: Can<B>> Eq for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> Eq for Blueprint<B, BCan> {
 }
 
-impl<B, BCan: Can<B>> fmt::Pointer for ArtifactPromiseSized<B, BCan> {
+impl<B, BCan: Can<B>> fmt::Pointer for Blueprint<B, BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(f, "{:p}", BCan::bin_as_ptr(&self.builder))
 	}
 }
 
-impl<B, BCan: Can<B>> fmt::Debug for ArtifactPromiseSized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<B, BCan: Can<B>> fmt::Debug for Blueprint<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
 }
 
-impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseSized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<B, BCan: CanSized<B>> From<B> for Blueprint<B, BCan> where BCan::Bin: fmt::Debug {
 	fn from(builder: B) -> Self {
-		ArtifactPromiseSized::new(builder)
+		Blueprint::new(builder)
 	}
 }
 
@@ -230,13 +226,13 @@ impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseSized<B, BCan> where BCan:
 ///
 /// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
 ///
-pub struct ArtifactPromiseUnsized<B: ?Sized, BCan: Can<B>> {
+pub struct BlueprintUnsized<B: ?Sized, BCan: Can<B>> {
 	builder: BCan::Bin,
 	builder_canned: BCan,
 	_dummy: (),
 }
 
-impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Crates a new promise for the given builder.
 	///
 	pub fn new(builder: B) -> Self
@@ -249,11 +245,11 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clon
 	}
 }
 
-impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone {
+impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
 	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
-		ArtifactPromiseUnsized {
+		BlueprintUnsized {
 			builder: builder_bin.clone(),
 			builder_canned: BCan::from_bin(builder_bin),
 			_dummy: (),
@@ -263,7 +259,7 @@ impl<B, BCan: CanSized<B>> ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clon
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
-		impl<B: ?Sized, BCan> ArtifactPromiseUnsized<B, BCan> where
+		impl<B: ?Sized, BCan> BlueprintUnsized<B, BCan> where
 				BCan: Can<B>, {
 
 			/// Converts this artifact promise from type `B` to `UB` via
@@ -277,14 +273,14 @@ cfg_if! {
 			/// be used to convert an artifact promise of a specific builder to
 			/// an artifact promise of a trait object, if compatible.
 			///
-			pub fn into_unsized<UB: ?Sized + 'static>(self) -> ArtifactPromiseUnsized<UB, BCan>
+			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
 					BCan: CanUnsized<B, UB> {
 
 				//let b: Rc<UB> = self.builder;
 
-				ArtifactPromiseUnsized {
+				BlueprintUnsized {
 					builder: BCan::into_unsized(self.builder),
 					builder_canned: self.builder_canned,
 					_dummy: (),
@@ -294,7 +290,7 @@ cfg_if! {
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
+impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 	/// Returns the id of this artifact promise
 	/// This Id has the following property:
 	/// The ids of two artifact promises are the same if and only if
@@ -336,7 +332,7 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	pub fn from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
 		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
 			Some(
-				ArtifactPromiseUnsized {
+				BlueprintUnsized {
 					builder: builder_bin,
 					builder_canned: builder_can,
 					_dummy: (),
@@ -348,7 +344,7 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseUnsized<B, BCan> {
 	}
 }
 
-impl<ArtCan, BCan, Artifact, DynState> ArtifactPromiseUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>, BCan> where
+impl<ArtCan, BCan, Artifact, DynState> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>, BCan> where
 	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>> {
 
 	/// Creates an trait object artifact promise from given builder.
@@ -359,7 +355,7 @@ impl<ArtCan, BCan, Artifact, DynState> ArtifactPromiseUnsized<dyn Builder<ArtCan
 
 		let (bin_dyn, can) = BCan::can_unsized(builder);
 
-		ArtifactPromiseUnsized {
+		BlueprintUnsized {
 			builder: bin_dyn,
 			builder_canned: can,
 			_dummy: (),
@@ -368,7 +364,7 @@ impl<ArtCan, BCan, Artifact, DynState> ArtifactPromiseUnsized<dyn Builder<ArtCan
 }
 
 
-impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseUnsized<B, BCan>
+impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
 		where
 			BCan::Bin: AsRef<B>,
 			BCan: Clone, {
@@ -390,9 +386,9 @@ impl<B: ?Sized, BCan: Can<B>> ArtifactPromiseTrait<B, BCan> for ArtifactPromiseU
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> Clone for ArtifactPromiseUnsized<B, BCan> where BCan::Bin: Clone, BCan: Clone {
+impl<B: ?Sized, BCan: Can<B>> Clone for BlueprintUnsized<B, BCan> where BCan::Bin: Clone, BCan: Clone {
 	fn clone(&self) -> Self {
-		ArtifactPromiseUnsized {
+		BlueprintUnsized {
 			builder: self.builder.clone(),
 			builder_canned: self.builder_canned.clone(),
 			_dummy: (),
@@ -402,36 +398,36 @@ impl<B: ?Sized, BCan: Can<B>> Clone for ArtifactPromiseUnsized<B, BCan> where BC
 
 
 
-impl<B: ?Sized, BCan: Can<B>> Hash for ArtifactPromiseUnsized<B, BCan> {
+impl<B: ?Sized, BCan: Can<B>> Hash for BlueprintUnsized<B, BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id().hash(state);
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> PartialEq for ArtifactPromiseUnsized<B, BCan> {
+impl<B: ?Sized, BCan: Can<B>> PartialEq for BlueprintUnsized<B, BCan> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id().eq(&other.id())
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> Eq for ArtifactPromiseUnsized<B, BCan> {
+impl<B: ?Sized, BCan: Can<B>> Eq for BlueprintUnsized<B, BCan> {
 }
 
-impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for ArtifactPromiseUnsized<B, BCan> {
+impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for BlueprintUnsized<B, BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(f, "{:p}", BCan::can_as_ptr(&self.builder_canned))
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> fmt::Debug for ArtifactPromiseUnsized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<B: ?Sized, BCan: Can<B>> fmt::Debug for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		write!(fmt, "ArtifactPromiseUnsized {{builder: {:?}, id: {:p}}}", self.builder, self.id())
+		write!(fmt, "BlueprintUnsized {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
 }
 
-impl<B, BCan: CanSized<B>> From<B> for ArtifactPromiseUnsized<B, BCan> where BCan::Bin: fmt::Debug + Clone {
+impl<B, BCan: CanSized<B>> From<B> for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug + Clone {
 	fn from(builder: B) -> Self {
-		ArtifactPromiseUnsized::new(builder)
+		BlueprintUnsized::new(builder)
 	}
 }
 

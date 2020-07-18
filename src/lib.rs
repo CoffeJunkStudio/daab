@@ -22,38 +22,38 @@
 //! which implements the [`Builder`] trait, which in turn has an associate type
 //! that specifies the artifact type.
 //!
-//! `Builder`s are supposed to be wrapped in [`ArtifactPromise`]s, which prevents
+//! `Builder`s are supposed to be wrapped in [`Blueprint`]s, which prevents
 //! to call its `Builder::build()` method directly. In other respects, the
-//! `ArtifactPromise` acts a lot like an `Rc` and thus allows to share one
+//! `Blueprint` acts a lot like an `Rc` and thus allows to share one
 //! instance among several dependants.
 //! This `Rc`-like structure creates naturally a DAG.
 //!
 //! For building a `Builder`s artifact, its `Builder::build()` method is
-//! provided with a [`ArtifactResolver`] that allows to resolve depending
-//! `ArtifactPromise`s into their respective artifacts, which is,
+//! provided with a [`Resolver`] that allows to resolve depending
+//! `Blueprint`s into their respective artifacts, which is,
 //! in order to form a DAG, wrapped behind a `Rc`.
 //!
-//! As entry point serves the [`ArtifactCache`], which allows outside of a
-//! `Builder` to resolve any `ArtifactPromise` to its artifact. The
-//! `ArtifactCache` is essentially a cache for artifacts. It can be used to
-//! translate any number of `ArtifactPromise`s to their respective artifact,
+//! As entry point serves the [`Cache`], which allows outside of a
+//! `Builder` to resolve any `Blueprint` to its artifact. The
+//! `Cache` is essentially a cache for artifacts. It can be used to
+//! translate any number of `Blueprint`s to their respective artifact,
 //! while sharing their common dependencies.
-//! Consequently, resolving the same `ArtifactPromise` using the same
-//! `ArtifactCache` results in the same `Rc`ed artifact.
-//! However, using different `ArtifactCache`s results in different artifacts.
+//! Consequently, resolving the same `Blueprint` using the same
+//! `Cache` results in the same `Rc`ed artifact.
+//! However, using different `Cache`s results in different artifacts.
 //!
-//! The `ArtifactCache` has a `clear()` method to reset the cache.
+//! The `Cache` has a `clear()` method to reset the cache.
 //! This could be useful to free the resources kept by all artifacts and
 //! builders, which are cached in it, or when artifacts shall be explicitly
 //! recreated, e.g. to form a second independent artifact DAG.
-//! Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
+//! Additionally, `Cache` has an `invalidate()` method to remove a single
 //! builder and artifact including its dependants (i.e. those artifacts which had
 //! used the invalidated one).
 //!
 //![`Builder`]: trait.Builder.html
-//![`ArtifactPromise`]: struct.ArtifactPromise.html
-//![`ArtifactResolver`]: struct.ArtifactResolver.html
-//![`ArtifactCache`]: struct.ArtifactCache.html
+//![`Blueprint`]: struct.Blueprint.html
+//![`Resolver`]: struct.Resolver.html
+//![`Cache`]: struct.Cache.html
 //!
 //! Minimal Rust version: **1.40**
 //!
@@ -86,7 +86,7 @@
 //! impl rc::SimpleBuilder for BuilderLeaf {
 //!     type Artifact = Leaf;
 //!
-//!     fn build(&self, _resolver: &mut rc::ArtifactResolver) -> Self::Artifact {
+//!     fn build(&self, _resolver: &mut rc::Resolver) -> Self::Artifact {
 //!         Leaf{
 //!             // ...
 //!         }
@@ -104,11 +104,11 @@
 //! // Composed builder, depending on BuilderLeaf
 //! #[derive(Debug)]
 //! struct BuilderNode {
-//!     builder_leaf: rc::ArtifactPromise<BuilderLeaf>, // Dependency builder
+//!     builder_leaf: rc::Blueprint<BuilderLeaf>, // Dependency builder
 //!     // ...
 //! }
 //! impl BuilderNode {
-//!     pub fn new(builder_leaf: rc::ArtifactPromise<BuilderLeaf>) -> Self {
+//!     pub fn new(builder_leaf: rc::Blueprint<BuilderLeaf>) -> Self {
 //!         Self {
 //!             builder_leaf,
 //!             // ...
@@ -120,8 +120,8 @@
 //!     type Artifact = Node;
 //!     type DynState = u8;
 //!
-//!     fn build(&self, resolver: &mut rc::ArtifactResolver<Self::DynState>) -> Self::Artifact {
-//!         // Resolve ArtifactPromise to its artifact
+//!     fn build(&self, resolver: &mut rc::Resolver<Self::DynState>) -> Self::Artifact {
+//!         // Resolve Blueprint to its artifact
 //!         let leaf = resolver.resolve(&self.builder_leaf);
 //!
 //!         Node {
@@ -133,13 +133,13 @@
 //! }
 //!
 //! // The cache to storing already created artifacts
-//! let mut cache = rc::ArtifactCache::new();
+//! let mut cache = rc::Cache::new();
 //!
 //! // Constructing builders
-//! let leaf_builder = rc::ArtifactPromise::new(BuilderLeaf::new());
+//! let leaf_builder = rc::Blueprint::new(BuilderLeaf::new());
 //!
-//! let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-//! let node_builder_2 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
+//! let node_builder_1 = Blueprint::new(BuilderNode::new(leaf_builder.clone()));
+//! let node_builder_2 = Blueprint::new(BuilderNode::new(leaf_builder.clone()));
 //!
 //! // Using the cache to access the artifacts from the builders
 //!
@@ -188,15 +188,15 @@
 //! as well as keeping the non-`diagnostics` API compatible with the
 //! `diagnostics`-API, meaning that a project not using the
 //! `diagnostics` feature can be easily converted to using
-//! `diagnostics`, usually by just replacing `ArtifactCache::new()`
-//! with `ArtifactCache::new_with_doctor()`.
-//! In order to store the `Doctor` the `ArtifactCache` is generic to a doctor,
+//! `diagnostics`, usually by just replacing `Cache::new()`
+//! with `Cache::new_with_doctor()`.
+//! In order to store the `Doctor` the `Cache` is generic to a doctor,
 //! which is important on its creation and for storing it by value.
-//! The rest of the time the `ArtifactCache` uses `dyn Doctor` as its default
+//! The rest of the time the `Cache` uses `dyn Doctor` as its default
 //! generic argument.
-//! To ease conversion between them, all creatable `ArtifactCache`s
-//! (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-//! `&mut ArtifactCache<dyn Doctor>` which has all the important methods
+//! To ease conversion between them, all creatable `Cache`s
+//! (i.e. not `Cache<dyn Doctor>`) implement `DerefMut` to
+//! `&mut Cache<dyn Doctor>` which has all the important methods
 //! implemented.
 //!
 //![`Doctor`]: diagnostics/trait.Doctor.html
@@ -208,7 +208,7 @@
 //! This crate offers the following features:
 //!
 //! - **`diagnostics`** enables elaborate graph and cache interaction debugging.
-//!   It adds the `new_with_doctor()` function to the `ArtifactCache` and adds
+//!   It adds the `new_with_doctor()` function to the `Cache` and adds
 //!   the `diagnostics` module with the `Doctor` trait definition and some
 //!   default `Doctor`s.
 //!
@@ -249,13 +249,12 @@ use canning::CanSized;
 use canning::CanRef;
 use canning::CanRefMut;
 
-pub use blueprint::ArtifactPromise;
-pub use blueprint::ArtifactPromiseTrait;
-pub use blueprint::ArtifactPromiseSized;
-pub use blueprint::ArtifactPromiseUnsized;
-pub use cache::ArtifactCache;
-pub use cache::ArtifactCacheOwned;
-pub use cache::ArtifactResolver;
+pub use blueprint::Promise;
+pub use blueprint::Blueprint;
+pub use blueprint::BlueprintUnsized;
+pub use cache::Cache;
+pub use cache::CacheOwned;
+pub use cache::Resolver;
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
@@ -280,8 +279,8 @@ cfg_if! {
 ///
 /// Each builder is supposed to contain all direct dependencies such as other
 /// builders.
-/// In the `build()` function, `resolver` gives access to the `ArtifactCache`
-/// in order to resolve depending builders (aka `ArtifactPromise`s) into their
+/// In the `build()` function, `resolver` gives access to the `Cache`
+/// in order to resolve depending builders (aka `Blueprint`s) into their
 /// respective artifacts.
 ///
 pub trait Builder<ArtCan, BCan>: Debug
@@ -299,10 +298,10 @@ pub trait Builder<ArtCan, BCan>: Debug
 	///
 	type DynState : Debug + 'static;
 
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact;
+	fn build(&self, cache: &mut Resolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact;
 }
 
 

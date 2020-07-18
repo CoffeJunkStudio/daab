@@ -1,7 +1,7 @@
 
-use daab::boxed::ArtifactCache as Cache;
-use daab::boxed::ArtifactResolver as Resolver;
-use daab::boxed::ArtifactPromise as Ap;
+use daab::boxed::Cache;
+use daab::boxed::Resolver;
+use daab::boxed::Blueprint as Bp;
 use daab::boxed::Builder as Builder;
 
 use std::rc::Rc;
@@ -46,8 +46,8 @@ impl Builder for BazBuilder {
 
 #[derive(Debug)]
 struct BarBuilder {
-	foo_builder: Ap<FooBuilder>,
-	baz_builder: Ap<BazBuilder>
+	foo_builder: Bp<FooBuilder>,
+	baz_builder: Bp<BazBuilder>
 }
 
 impl Builder for BarBuilder {
@@ -68,9 +68,9 @@ impl Builder for BarBuilder {
 fn main() {
 	let mut cache = Cache::new();
 
-	let foo_builder = Ap::new(FooBuilder);
-	let baz_builder = Ap::new(BazBuilder);
-	let bar_builder = Ap::new(BarBuilder {
+	let foo_builder = Bp::new(FooBuilder);
+	let baz_builder = Bp::new(BazBuilder);
+	let bar_builder = Bp::new(BarBuilder {
 		foo_builder: foo_builder.clone(),
 		baz_builder
 	});

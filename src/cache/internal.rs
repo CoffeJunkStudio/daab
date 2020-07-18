@@ -18,16 +18,16 @@ use crate::CanSized;
 use crate::CanRef;
 use crate::CanRefMut;
 
-use crate::ArtifactPromiseTrait;
+use crate::Promise;
 
 use crate::Builder;
 use crate::BuilderId;
 
-use super::ArtifactResolver;
+use super::Resolver;
 
 
 
-/// Auxiliary struct fro the `ArtifactCache` containing an untyped (aka
+/// Auxiliary struct fro the `Cache` containing an untyped (aka
 /// `dyn Any`) ArtifactPromise.
 ///
 #[derive(Clone, Debug)]
@@ -38,7 +38,7 @@ pub struct BuilderEntry<BCan> {
 
 impl<BCan> BuilderEntry<BCan> {
 	pub fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
-			where AP: ArtifactPromiseTrait<B, BCan> {
+			where AP: Promise<B, BCan> {
 
 		let id = ap.id();
 
@@ -82,7 +82,7 @@ impl<BCan> fmt::Pointer for BuilderEntry<BCan> {
 
 
 
-pub struct RawArtifactCache<
+pub struct RawCache<
 	ArtCan,
 	BCan,
 	#[cfg(feature = "diagnostics")] Doc: ?Sized = dyn Doctor<ArtCan, BCan>
@@ -112,19 +112,19 @@ cfg_if! {
 		use crate::ArtifactHandle;
 		use crate::BuilderHandle;
 
-		impl<ArtCan, BCan, Doc> Debug for RawArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> Debug for RawCache<ArtCan, BCan, Doc>
 			where
 				ArtCan: Debug,
 				BCan: CanStrong + Debug,
 				Doc: Debug {
 
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-				write!(f, "ArtifactCache {{ cache: {:?}, dependents: {:?}, doctor: {:?}, ... }}",
+				write!(f, "Cache {{ cache: {:?}, dependents: {:?}, doctor: {:?}, ... }}",
 					self.artifacts, self.dependents, self.doctor)
 			}
 		}
 
-		impl<ArtCan, BCan, Doc> RawArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> RawCache<ArtCan, BCan, Doc>
 			where BCan: CanStrong, Doc: Doctor<ArtCan, BCan> + 'static {
 
 			/// Creates new empty cache with given doctor for inspection.
@@ -146,16 +146,16 @@ cfg_if! {
 
 	} else {
 
-		impl<ArtCan, BCan> Debug for RawArtifactCache<ArtCan, BCan>
+		impl<ArtCan, BCan> Debug for RawCache<ArtCan, BCan>
 			where ArtCan: Debug, BCan: CanStrong + Debug {
 
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-				write!(f, "ArtifactCache {{ cache: {:?}, dependents: {:?}, ... }}",
+				write!(f, "Cache {{ cache: {:?}, dependents: {:?}, ... }}",
 					self.artifacts, self.dependents)
 			}
 		}
 
-		impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
+		impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where BCan: CanStrong {
 
 			/// Creates a new empty cache.
@@ -186,7 +186,7 @@ fn cast_dyn_state<Doc: 'static>(v: Option<Box<dyn Any>>) -> Option<Box<Doc>> {
 	)
 }
 
-impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
+impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		where ArtCan: Debug, BCan: CanStrong + Debug {
 
 	/// Record the dependency of `user` upon `promise`.
@@ -200,7 +200,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		)
 			where
 				B: Debug + 'static,
-				AP: ArtifactPromiseTrait<B, BCan> {
+				AP: Promise<B, BCan> {
 
 
 		let deps = self.get_dependents(promise);
@@ -218,7 +218,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			promise: &AP
 		) -> &mut HashSet<BuilderId>
 			where
-				AP: ArtifactPromiseTrait<B, BCan> {
+				AP: Promise<B, BCan> {
 
 
 		if !self.dependents.contains_key(&promise.id()) {
@@ -238,7 +238,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -259,7 +259,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		) -> Option<&B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -280,7 +280,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		) -> Option<&mut B::Artifact>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		let id = builder.id();
 
@@ -307,7 +307,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -323,7 +323,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		) -> &mut ArtCan
 			where
 				ArtCan: CanSized<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		self.make_builder_known(promise);
@@ -334,7 +334,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		let diag_builder = BuilderHandle::new(promise.clone());
 
 		let art = promise.builder().builder.build(
-			&mut ArtifactResolver {
+			&mut Resolver {
 				user: &ent,
 				cache: self,
 				#[cfg(feature = "diagnostics")]
@@ -381,7 +381,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		if let Some(art) = self.lookup(promise) {
@@ -401,7 +401,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		) -> &B::Artifact
 			where
 				ArtCan: CanRef<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		if self.lookup_ref(promise).is_some() {
@@ -421,7 +421,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 		) -> &mut B::Artifact
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		if self.lookup_mut(promise).is_some() {
@@ -444,7 +444,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.get_ref(promise).clone()
 	}
@@ -473,7 +473,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			&mut self, promise: &AP
 		) -> Option<&mut B::DynState>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		// Since the user choses `mut` he intends to modify the dyn state this
 		// requires the rebuild the artifact
@@ -488,7 +488,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			&mut self, promise: &AP
 		) -> Option<&B::DynState>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.get_dyn_state_cast(&promise.id())
 		// Demote `&mut` to `&`
@@ -504,7 +504,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			user_data: B::DynState
 		) -> Option<Box<B::DynState>>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.make_builder_known(promise);
 
@@ -523,7 +523,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			promise: &AP
 		) -> Option<Box<B::DynState>>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		let bid = promise.id();
 
@@ -596,7 +596,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			promise: &AP
 		)
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 
 		self.invalidate_any(&promise.id());
@@ -644,7 +644,7 @@ impl<ArtCan, BCan> RawArtifactCache<ArtCan, BCan>
 			promise: &AP
 		)
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		let bid = promise.id();
 

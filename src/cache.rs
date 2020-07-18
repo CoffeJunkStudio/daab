@@ -13,49 +13,49 @@ use crate::CanSized;
 use crate::CanRef;
 use crate::CanRefMut;
 
-use crate::ArtifactPromiseTrait;
+use crate::Promise;
 
 use crate::Builder;
 
 mod internal;
 
 use internal::BuilderEntry;
-use internal::RawArtifactCache;
+use internal::RawCache;
 
 
 
 /// Structure for caching and looking up artifacts.
 ///
-/// The `ArtifactCache` is the central structure of this crate. It helps to
+/// The `Cache` is the central structure of this crate. It helps to
 /// avoid dependency duplication when multiple `Builder`s depend on the same
 /// artifact.
 ///
 /// Since all `Builder`s in the context of this crate are supposed to be wrapped
-/// within `ArtifactPromise`s, the `ArtifactCache` is the only way of acquiring
+/// within `ArtifactPromise`s, the `Cache` is the only way of acquiring
 /// an artifact in the first place.
 ///
 /// Notice In the debugging version (when the **`diagnostics`** feature is active),
 /// this struct contains a debuger `Doctor`, which
 /// allows run-time inspection of various events.
-/// In order to store it, the **`diagnostics`** `ArtifactCache` is generic to
+/// In order to store it, the **`diagnostics`** `Cache` is generic to
 /// some `Doctor`.
-/// The `new()` method then returns a `ArtifactCache<NoopDoctor>`
-/// and `new_with_doctor()` returns some `ArtifactCache<Doc>`.
+/// The `new()` method then returns a `Cache<NoopDoctor>`
+/// and `new_with_doctor()` returns some `Cache<Doc>`.
 ///
-/// Only an `ArtifactCache<Doc>` with `Doc: Sized` can be store in variables.
+/// Only an `Cache<Doc>` with `Doc: Sized` can be store in variables.
 /// However, since most of the code does not care about the concrete
 /// `Doctor` the default generic is `dyn Doctor`, on which all other methods are
 /// defined.
-/// An `ArtifactCache<dyn Doctor>` can not be stored, but it can be passed
-/// on by reference (e.g. as `&mut ArtifactCache`). This prevents the use of
+/// An `Cache<dyn Doctor>` can not be stored, but it can be passed
+/// on by reference (e.g. as `&mut Cache`). This prevents the use of
 /// additional generics in **`diagnostics`** mode, and allows to easier achive
 /// compatibility between **`diagnostics`** and non-**`diagnostics`** mode.
-/// To ease conversion between `ArtifactCache<Doc>` and
-/// `ArtifactCache<dyn Doctor>` (aka `ArtifactCache`), all creatable
-/// `ArtifactCache`s (i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut`
-/// to `ArtifactCache<dyn Doctor>`.
+/// To ease conversion between `Cache<Doc>` and
+/// `Cache<dyn Doctor>` (aka `Cache`), all creatable
+/// `Cache`s (i.e. not `Cache<dyn Doctor>`) implement `DerefMut`
+/// to `Cache<dyn Doctor>`.
 ///
-pub struct ArtifactCache<
+pub struct Cache<
 	ArtCan,
 	BCan,
 	#[cfg(feature = "diagnostics")] Doc: ?Sized = dyn Doctor<ArtCan, BCan>
@@ -63,37 +63,47 @@ pub struct ArtifactCache<
 
 	/// The inner cache
 	#[cfg(feature = "diagnostics")]
-	inner: RawArtifactCache<ArtCan, BCan, Doc>,
+	inner: RawCache<ArtCan, BCan, Doc>,
 	#[cfg(not(feature = "diagnostics"))]
-	inner: RawArtifactCache<ArtCan, BCan>,
+	inner: RawCache<ArtCan, BCan>,
 
 }
 
-/// The ownable and storable variant of the ArtifactCache.
+/// The ownable and storable variant of the Cache.
 ///
-/// This is a simple type-def to ArtifactCache, which gurantees independent of
+/// This is a simple type-def to Cache, which gurantees independent of
 /// whether the `diagnostics` feature is enabled or not that this type is
-/// constructable and storable as owned value.
+/// storable as owned value.
 ///
-/// When ever a ArtifactCache needs to be stored such as in a struct, this type
-/// alias should be preferred over using ArtifactCache directly.
+/// When ever a Cache needs to be stored such as in a struct, this type
+/// alias should be preferred over using Cache directly.
 ///
 #[cfg(feature = "diagnostics")]
-pub type ArtifactCacheOwned<ArtCan, BCan> =
-	ArtifactCache<ArtCan, BCan, DefDoctor>;
-#[cfg(not(feature = "diagnostics"))]
-pub type ArtifactCacheOwned<ArtCan, BCan> =
-	ArtifactCache<ArtCan, BCan>;
+pub type CacheOwned<ArtCan, BCan> =
+	Cache<ArtCan, BCan, DefDoctor>;
 
-impl<ArtCan, BCan> Default for ArtifactCacheOwned<ArtCan, BCan>
+/// The ownable and storable variant of the Cache.
+///
+/// This is a simple type-def to Cache, which gurantees independent of
+/// whether the `diagnostics` feature is enabled or not that this type is
+/// storable as owned value.
+///
+/// When ever a Cache needs to be stored such as in a struct, this type
+/// alias should be preferred over using Cache directly.
+///
+#[cfg(not(feature = "diagnostics"))]
+pub type CacheOwned<ArtCan, BCan> =
+	Cache<ArtCan, BCan>;
+
+impl<ArtCan, BCan> Default for CacheOwned<ArtCan, BCan>
 	where BCan: CanStrong {
 
 	fn default() -> Self {
-		ArtifactCacheOwned::new()
+		CacheOwned::new()
 	}
 }
 
-impl<ArtCan, BCan> ArtifactCacheOwned<ArtCan, BCan>
+impl<ArtCan, BCan> CacheOwned<ArtCan, BCan>
 	where BCan: CanStrong {
 
 	/// Creates a new empty cache with a dummy doctor.
@@ -102,11 +112,11 @@ impl<ArtCan, BCan> ArtifactCacheOwned<ArtCan, BCan>
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
 				Self {
-					inner: RawArtifactCache::new_with_doctor(Default::default())
+					inner: RawCache::new_with_doctor(Default::default())
 				}
 			} else {
 				Self {
-					inner: RawArtifactCache::new()
+					inner: RawCache::new()
 				}
 			}
 		}
@@ -121,7 +131,7 @@ cfg_if! {
 		use crate::DefDoctor;
 		use crate::BuilderHandle;
 
-		impl<ArtCan, BCan, Doc> Debug for ArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> Debug for Cache<ArtCan, BCan, Doc>
 			where ArtCan: Debug, BCan: CanStrong + Debug, Doc: Debug {
 
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -129,7 +139,7 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtCan, BCan, Doc> ArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> Cache<ArtCan, BCan, Doc>
 			where BCan: CanStrong, Doc: Doctor<ArtCan, BCan> + 'static {
 
 			/// Creates new empty cache with given doctor for inspection.
@@ -138,7 +148,7 @@ cfg_if! {
 			///
 			pub fn new_with_doctor(doctor: Doc) -> Self {
 				Self {
-					inner: RawArtifactCache::new_with_doctor(doctor)
+					inner: RawCache::new_with_doctor(doctor)
 				}
 			}
 
@@ -150,7 +160,7 @@ cfg_if! {
 				&mut self.inner.doctor
 			}
 
-			/// Consumes the `ArtifactCache` and returns the inner doctor.
+			/// Consumes the `Cache` and returns the inner doctor.
 			///
 			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
 			///
@@ -159,17 +169,17 @@ cfg_if! {
 			}
 		}
 
-		impl<ArtCan, BCan, Doc> Deref for ArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> Deref for Cache<ArtCan, BCan, Doc>
 			where BCan: CanStrong, Doc: Doctor<ArtCan, BCan> + 'static {
 
-			type Target = ArtifactCache<ArtCan, BCan>;
+			type Target = Cache<ArtCan, BCan>;
 
 			fn deref(&self) -> &Self::Target {
 				self
 			}
 		}
 
-		impl<ArtCan, BCan, Doc> DerefMut for ArtifactCache<ArtCan, BCan, Doc>
+		impl<ArtCan, BCan, Doc> DerefMut for Cache<ArtCan, BCan, Doc>
 			where BCan: CanStrong, Doc: Doctor<ArtCan, BCan> + 'static {
 
 			fn deref_mut(&mut self) -> &mut Self::Target {
@@ -179,7 +189,7 @@ cfg_if! {
 
 
 	} else {
-		impl<ArtCan, BCan> Debug for ArtifactCache<ArtCan, BCan>
+		impl<ArtCan, BCan> Debug for Cache<ArtCan, BCan>
 			where ArtCan: Debug, BCan: CanStrong + Debug {
 
 			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -189,7 +199,7 @@ cfg_if! {
 	}
 }
 
-impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
+impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 
 	/// Get and cast the stored artifact if it exists.
 	///
@@ -200,7 +210,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.lookup(promise)
 	}
@@ -213,7 +223,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> Option<&B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.lookup_ref(promise)
 	}
@@ -226,7 +236,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> Option<&mut B::Artifact>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.lookup_mut(promise)
 	}
@@ -240,7 +250,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.lookup_cloned(promise)
 	}
@@ -268,7 +278,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get(promise)
 	}
@@ -281,7 +291,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> &B::Artifact
 			where
 				ArtCan: CanRef<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get_ref(promise)
 	}
@@ -294,7 +304,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 		) -> &mut B::Artifact
 			where
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get_mut(promise)
 	}
@@ -308,7 +318,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get_cloned(promise)
 	}
@@ -319,7 +329,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			&mut self, promise: &AP
 		) -> Option<&B::DynState>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get_dyn_state(promise)
 	}
@@ -330,7 +340,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			&mut self, promise: &AP
 		) -> Option<&mut B::DynState>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.get_dyn_state_mut(promise)
 	}
@@ -344,7 +354,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			user_data: B::DynState
 		) -> Option<Box<B::DynState>>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.set_dyn_state(promise, user_data)
 	}
@@ -356,7 +366,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 			promise: &AP
 		) -> Option<Box<B::DynState>>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.remove_dyn_state(promise)
 	}
@@ -379,14 +389,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 	///
 	/// Depending artifacts are all artifacts which used the former during
 	/// its building. The dependencies are automatically tracked via the
-	/// `ArtifactResolver`.
+	/// `Resolver`.
 	///
 	pub fn invalidate<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
 		)
 			where
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.inner.invalidate(promise)
 	}
@@ -436,23 +446,23 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> ArtifactCache<ArtCan, BCan> {
 /// Resolves any `ArtifactPromise` to the artifact of the inner builder.
 ///
 /// This struct is only available to `Builder`s within their `build()` method.
-/// It gives certain access to the `ArtifactCache`, such as resolving
+/// It gives certain access to the `Cache`, such as resolving
 /// `ArtifactPromise`s.
 ///
-/// The `ArtifactResolver` records each resolution of an `ArtifactPromise`
+/// The `Resolver` records each resolution of an `ArtifactPromise`
 /// in order to keep track of dependencies between builders.
 /// This dependency information is used for correct invalidation of dependants
-/// on cache invalidation via `ArtifactCache::invalidate()`.
+/// on cache invalidation via `Cache::invalidate()`.
 ///
-pub struct ArtifactResolver<'a, ArtCan, BCan: CanStrong, Doc = ()> {
+pub struct Resolver<'a, ArtCan, BCan: CanStrong, Doc = ()> {
 	user: &'a BuilderEntry<BCan>,
-	cache: &'a mut RawArtifactCache<ArtCan, BCan>,
+	cache: &'a mut RawCache<ArtCan, BCan>,
 	#[cfg(feature = "diagnostics")]
 	diag_builder: &'a BuilderHandle<BCan>,
 	_b: PhantomData<Doc>,
 }
 
-impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<'a, ArtCan, BCan, Doc> {
+impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtCan, BCan, Doc> {
 
 	fn track_dependency<AP, B: ?Sized>(
 			&mut self,
@@ -460,7 +470,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 		)
 			where
 				B: Debug + 'static,
-				AP: ArtifactPromiseTrait<B, BCan> {
+				AP: Promise<B, BCan> {
 
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -475,7 +485,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 
 
 	/// Resolves the given `ArtifactPromise` into its artifact either by
-	/// looking up the cached value in the associated `ArtifactCache` or by
+	/// looking up the cached value in the associated `Cache` or by
 	/// building it.
 	///
 	pub fn resolve<AP, B: ?Sized>(
@@ -486,14 +496,14 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				B: Builder<ArtCan, BCan> + 'static,
-				AP: ArtifactPromiseTrait<B, BCan> {
+				AP: Promise<B, BCan> {
 
 		self.track_dependency(promise);
 		self.cache.get(promise)
 	}
 
 	/// Resolves the given `ArtifactPromise` into its artifact reference either
-	/// by looking up the cached value in the associated `ArtifactCache` or by
+	/// by looking up the cached value in the associated `Cache` or by
 	/// building it.
 	///
 	pub fn resolve_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
@@ -502,7 +512,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 		) -> &B::Artifact
 			where
 				ArtCan: CanRef<B::Artifact>,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.track_dependency(promise);
 		self.cache.get_ref(promise)
@@ -518,7 +528,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
-				AP: ArtifactPromiseTrait<B, BCan>  {
+				AP: Promise<B, BCan>  {
 
 		self.track_dependency(promise);
 		self.cache.get_cloned(promise)
@@ -547,7 +557,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> ArtifactResolver<
 		promise: &AP
 	) -> Option<&B::DynState>
 			where
-				AP: ArtifactPromiseTrait<B, BCan>, {
+				AP: Promise<B, BCan>, {
 
 		self.track_dependency(promise);
 		self.cache.get_dyn_state(promise)

@@ -23,7 +23,7 @@ struct BuilderLeaf {
 impl rc::SimpleBuilder for BuilderLeaf {
 	type Artifact = Leaf;
 	
-	fn build(&self, _cache: &mut rc::ArtifactResolver) -> Self::Artifact {
+	fn build(&self, _cache: &mut rc::Resolver) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -41,7 +41,7 @@ impl rc::SuperBuilder for BuilderBuilder {
 	type Artifact = BuilderLeaf;
 	type DynState = ();
 
-	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Self::Artifact {
+	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
 		BuilderLeaf{}
 	}
 }
@@ -57,7 +57,7 @@ impl rc::SuperBuilder for SuperBuilder {
 	type Artifact = BuilderBuilder;
 	type DynState = ();
 
-	fn build(&self, _cache: &mut rc::SuperArtifactResolver) -> Self::Artifact {
+	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
 		BuilderBuilder{}
 	}
 }
@@ -67,10 +67,10 @@ impl rc::SuperBuilder for SuperBuilder {
 // Base line test
 #[test]
 fn test_builder_leaf() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 	
-	let leaf1 = ArtifactPromise::new(BuilderLeaf{});
-	let leaf2 = ArtifactPromise::new(BuilderLeaf{});
+	let leaf1 = Blueprint::new(BuilderLeaf{});
+	let leaf2 = Blueprint::new(BuilderLeaf{});
 	
 	//println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	
@@ -84,15 +84,15 @@ fn test_builder_leaf() {
 // Test for first level indirection
 #[test]
 fn test_level_1() {
-	let mut cache_ap = ArtifactCache::new();
+	let mut cache_ap = Cache::new();
 	
-	let bb1 = ArtifactPromise::new(BuilderBuilder{});
+	let bb1 = Blueprint::new(BuilderBuilder{});
 	
 	
-	let mut cache = ArtifactCache::new();
+	let mut cache = Cache::new();
 	
 	let leaf1 = cache_ap.get(&bb1);
-	let leaf2 = ArtifactPromise::new(BuilderLeaf{});
+	let leaf2 = Blueprint::new(BuilderLeaf{});
 	
 	//println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	
@@ -115,16 +115,16 @@ fn test_level_1() {
 // Test for second level indirection (same cache)
 #[test]
 fn test_level_2() {
-	let mut cache_ap = ArtifactCache::new();
+	let mut cache_ap = Cache::new();
 	
-	let sb1 = ArtifactPromise::new(SuperBuilder{});
+	let sb1 = Blueprint::new(SuperBuilder{});
 	
-	let bb1 = ArtifactPromise::new(BuilderBuilder{});
+	let bb1 = Blueprint::new(BuilderBuilder{});
 	
 	
-	let mut cache = ArtifactCache::new();
+	let mut cache = Cache::new();
 	
-	let leaf1 = ArtifactPromise::new(BuilderLeaf{});
+	let leaf1 = Blueprint::new(BuilderLeaf{});
 	
 	// Flat test
 	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
@@ -152,17 +152,17 @@ fn test_level_2() {
 // Test for second level indirection (different caches)
 #[test]
 fn test_level_2_diff_caches() {
-	let mut cache_ap1 = ArtifactCache::new();
-	let mut cache_ap2 = ArtifactCache::new();
+	let mut cache_ap1 = Cache::new();
+	let mut cache_ap2 = Cache::new();
 	
-	let sb1 = ArtifactPromise::new(SuperBuilder{});
+	let sb1 = Blueprint::new(SuperBuilder{});
 	
-	let bb1 = ArtifactPromise::new(BuilderBuilder{});
+	let bb1 = Blueprint::new(BuilderBuilder{});
 	
 	
-	let mut cache = ArtifactCache::new();
+	let mut cache = Cache::new();
 	
-	let leaf1 = ArtifactPromise::new(BuilderLeaf{});
+	let leaf1 = Blueprint::new(BuilderLeaf{});
 	
 	// Flat test
 	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));

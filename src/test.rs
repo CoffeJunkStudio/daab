@@ -39,7 +39,7 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 
 	type DynState = ();
 
-	fn build(&self, _cache: &mut ArtifactResolver<ArtCan,BCan>) -> Self::Artifact {
+	fn build(&self, _cache: &mut Resolver<ArtCan,BCan>) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -62,7 +62,7 @@ impl<AP> BuilderSimpleNode<AP> {
 
 	pub fn new<BCan: Debug>(leaf: AP) -> Self
 		where
-			AP: ArtifactPromiseTrait<BuilderLeaf, BCan>,
+			AP: Promise<BuilderLeaf, BCan>,
 			BCan: Can<BuilderLeaf>, {
 
 		Self {
@@ -73,7 +73,7 @@ impl<AP> BuilderSimpleNode<AP> {
 
 impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
-		AP: ArtifactPromiseTrait<BuilderLeaf, BCan> + Debug,
+		AP: Promise<BuilderLeaf, BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
 		ArtCan::Bin: 'static,
@@ -84,7 +84,7 @@ impl<AP, ArtCan: Debug, BCan: Debug> Builder<ArtCan, BCan> for BuilderSimpleNode
 
 	type DynState = ();
 
-	fn build(&self, cache: &mut ArtifactResolver<ArtCan,BCan>)
+	fn build(&self, cache: &mut Resolver<ArtCan,BCan>)
 		-> Self::Artifact {
 
 		let leaf = cache.resolve(&self.leaf);
@@ -132,8 +132,8 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<Art
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan>,
 		RB: LeafOrNodeBuilder<ArtCan, BCan>,
-		ApL: ArtifactPromiseTrait<LB, BCan> + Debug,
-		ApR: ArtifactPromiseTrait<RB, BCan> + Debug,
+		ApL: Promise<LB, BCan> + Debug,
+		ApR: Promise<RB, BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<<LB as Builder<ArtCan, BCan>>::Artifact>,
 		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
@@ -149,7 +149,7 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB: 'static, RB: 'static> Builder<Art
 
 	type DynState = ();
 
-	fn build(&self, cache: &mut ArtifactResolver<ArtCan, BCan>) -> Self::Artifact {
+	fn build(&self, cache: &mut Resolver<ArtCan, BCan>) -> Self::Artifact {
 		ComplexNode {
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			left: cache.resolve(&self.left),
@@ -164,7 +164,7 @@ trait LeafOrNodeBuilder<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> where BCan:
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
-		AP: ArtifactPromiseTrait<BuilderLeaf, BCan> + Debug,
+		AP: Promise<BuilderLeaf, BCan> + Debug,
 		ArtCan: Clone + Debug,
 		ArtCan: CanSized<Leaf>,
 		ArtCan::Bin: 'static,
@@ -177,8 +177,8 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
 		RB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
-		ApL: ArtifactPromiseTrait<LB, BCan> + Debug,
-		ApR: ArtifactPromiseTrait<RB, BCan> + Debug,
+		ApL: Promise<LB, BCan> + Debug,
+		ApR: Promise<RB, BCan> + Debug,
 		ArtCan: Clone + Debug,
 		ArtCan: CanSized<<LB as Builder<ArtCan, BCan>>::Artifact>,
 		ArtCan: CanSized<<RB as Builder<ArtCan, BCan>>::Artifact>,
@@ -208,7 +208,7 @@ impl crate::boxed::Builder for BuilderLeafBox {
 	type Artifact = Leaf;
 	type DynState = ();
 
-	fn build(&self, _cache: &mut crate::boxed::ArtifactResolver) -> Self::Artifact {
+	fn build(&self, _cache: &mut crate::boxed::Resolver) -> Self::Artifact {
 		Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 		}
@@ -220,10 +220,10 @@ impl crate::boxed::Builder for BuilderLeafBox {
 
 #[test]
 fn test_boxed_ref() {
-	let mut cache = crate::boxed::ArtifactCache::new();
+	let mut cache = crate::boxed::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeafBox::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
+	let leaf1 = Blueprint::new(BuilderLeafBox::new());
+	let leaf2 = Blueprint::new(BuilderLeafBox::new());
 
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
@@ -237,10 +237,10 @@ fn test_boxed_ref() {
 
 #[test]
 fn test_boxed_mut() {
-	let mut cache = crate::boxed::ArtifactCache::new();
+	let mut cache = crate::boxed::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeafBox::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeafBox::new());
+	let leaf1 = Blueprint::new(BuilderLeafBox::new());
+	let leaf2 = Blueprint::new(BuilderLeafBox::new());
 
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
@@ -256,11 +256,11 @@ fn test_boxed_mut() {
 fn test_leaf_broken() {
 	use std::rc::Rc;
 
-	let mut cache_rc: ArtifactCacheOwned<Rc<dyn Any>, Rc<dyn Any>> = ArtifactCache::new();
-	let mut cache_box = ArtifactCacheOwned::<Box<dyn Any>, Rc<dyn Any>>::new();
+	let mut cache_rc: CacheOwned<Rc<dyn Any>, Rc<dyn Any>> = Cache::new();
+	let mut cache_box = CacheOwned::<Box<dyn Any>, Rc<dyn Any>>::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
@@ -288,10 +288,10 @@ fn test_leaf_broken() {
 
 #[test]
 fn test_leaf_rc() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
@@ -305,10 +305,10 @@ fn test_leaf_rc() {
 
 #[test]
 fn test_leaf_boxed() {
-	let mut cache = boxed::ArtifactCache::new();
+	let mut cache = boxed::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
 	println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
@@ -322,14 +322,14 @@ fn test_leaf_boxed() {
 
 #[test]
 fn test_node_rc() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node1), cache.get(&node1));
@@ -344,14 +344,14 @@ fn test_node_rc() {
 
 #[test]
 fn test_node_arc() {
-	let mut cache = arc::ArtifactCache::new();
+	let mut cache = arc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get(&node1), cache.get(&node1));
@@ -369,14 +369,14 @@ fn test_node_arc() {
 fn test_node_boxed() {
 	use std::rc::Rc;
 
-	let mut cache = ArtifactCacheOwned::<Box<dyn Any>, Rc<dyn Any>>::new();
+	let mut cache = CacheOwned::<Box<dyn Any>, Rc<dyn Any>>::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let node2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let node3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let node2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let node3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
 	// Ensure same builder results in same artifact
 	assert_eq!(cache.get_cloned(&node1), cache.get_cloned(&node1));
@@ -392,24 +392,24 @@ fn test_node_boxed() {
 
 #[test]
 fn test_complex() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let nodef1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let nodef2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let nodef3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let nodef2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
-	let noden1 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden1 = Blueprint::new(BuilderComplexNode::new(
 		nodef1.clone(),
 		nodef2.clone()
 	));
-	let noden2 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden2 = Blueprint::new(BuilderComplexNode::new(
 		nodef3.clone(),
 		noden1.clone()
 	));
-	let noden3 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden3 = Blueprint::new(BuilderComplexNode::new(
 		noden2.clone(),
 		noden2.clone()
 	));
@@ -433,24 +433,24 @@ fn test_complex() {
 
 #[test]
 fn test_complex_clear() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let nodef1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let nodef2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let nodef3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let nodef2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
-	let noden1 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden1 = Blueprint::new(BuilderComplexNode::new(
 		nodef1.clone(),
 		nodef2.clone()
 	));
-	let noden2 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden2 = Blueprint::new(BuilderComplexNode::new(
 		nodef3.clone(),
 		noden1.clone()
 	));
-	let noden3 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden3 = Blueprint::new(BuilderComplexNode::new(
 		noden2.clone(),
 		noden2.clone()
 	));
@@ -473,9 +473,9 @@ fn test_complex_clear() {
 
 #[test]
 fn test_invalidate() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
 
 	let artifact1 = cache.get(&leaf1);
 
@@ -490,36 +490,36 @@ fn test_invalidate() {
 
 #[test]
 fn test_into() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
 	let lart = cache.get(&leaf1);
 
-	let node1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1));
+	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1));
 
 	assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
 }
 
 #[test]
 fn test_complex_invalidate() {
-	let mut cache = rc::ArtifactCache::new();
+	let mut cache = rc::Cache::new();
 
-	let leaf1 = ArtifactPromise::new(BuilderLeaf::new());
-	let leaf2 = ArtifactPromise::new(BuilderLeaf::new());
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
 
-	let nodef1 = ArtifactPromise::new(BuilderSimpleNode::new(leaf1.clone()));
-	let nodef2 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
-	let nodef3 = ArtifactPromise::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef1 = Blueprint::new(BuilderSimpleNode::new(leaf1.clone()));
+	let nodef2 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
+	let nodef3 = Blueprint::new(BuilderSimpleNode::new(leaf2.clone()));
 
-	let noden1 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden1 = Blueprint::new(BuilderComplexNode::new(
 		nodef1.clone(),
 		nodef2.clone()
 	));
-	let noden2 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden2 = Blueprint::new(BuilderComplexNode::new(
 		nodef3.clone(),
 		noden1.clone()
 	));
-	let noden3 = ArtifactPromise::new(BuilderComplexNode::new(
+	let noden3 = Blueprint::new(BuilderComplexNode::new(
 		noden2.clone(),
 		noden2.clone()
 	));

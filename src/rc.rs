@@ -1,6 +1,6 @@
 
 //!
-//! Alias module for using `Rc` to wrap `ArtifactPromise` and artifacts.
+//! Alias module for using `Rc` to wrap `Blueprint` and artifacts.
 //!
 
 use std::fmt::Debug;
@@ -35,20 +35,16 @@ pub type BuilderBinType<T> = BinType<T>;
 ///
 pub type BuilderCan = CanType;
 
-/// Promise for the artifact of the builder `B`, usable at the `ArtifactCache`.
-///
-/// This promise uses `Rc` for storing the builder, this allows cloning.
-///
-pub type ArtifactPromise<B> = crate::ArtifactPromise<B, CanType>;
+pub type Blueprint<B> = crate::Blueprint<B, CanType>;
 
-/// The unsized variant of `ArtifactPromise`.
+/// The unsized variant of `Blueprint`.
 ///
-pub type ArtifactPromiseUnsized<B> = crate::ArtifactPromiseUnsized<B, CanType>;
+pub type BlueprintUnsized<B> = crate::BlueprintUnsized<B, CanType>;
 
-/// An `ArtifactPromise` with a `dyn Builder<Artifact=Artifact>`.
+/// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 ///
-pub type DynamicArtifactPromise<Artifact> =
-	ArtifactPromiseUnsized<dyn Builder<Artifact=Artifact, DynState=()>>;
+pub type DynamicBlueprint<Artifact> =
+	BlueprintUnsized<dyn Builder<Artifact=Artifact, DynState=()>>;
 
 
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
@@ -56,16 +52,16 @@ pub type DynamicArtifactPromise<Artifact> =
 ///
 /// This resolver uses `Rc` for storing builders and artifacts.
 ///
-pub type ArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, CanType, CanType, T>;
+pub type Resolver<'a, T = ()> = crate::Resolver<'a, CanType, CanType, T>;
 
 
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder. Usable
 /// within a super-builders `build` function.
 ///
-/// This resolver uses `Rc` for storing builders and `ArtifactPromise` for
+/// This resolver uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
-pub type SuperArtifactResolver<'a, T = ()> = crate::ArtifactResolver<'a, BuilderArtifact<CanType>, CanType, T>;
+pub type SuperResolver<'a, T = ()> = crate::Resolver<'a, BuilderArtifact<CanType>, CanType, T>;
 
 
 cfg_if::cfg_if!{
@@ -74,15 +70,15 @@ cfg_if::cfg_if!{
 		///
 		/// This cache uses `Rc` for storing builders and artifacts.
 		///
-		pub type ArtifactCache<T = dyn Doctor<CanType, CanType>> =
-			crate::ArtifactCache<CanType, CanType, T>;
+		pub type Cache<T = dyn Doctor<CanType, CanType>> =
+			crate::Cache<CanType, CanType, T>;
 
 	} else {
 		/// Allows to resolve any `ArtifactPromis` into its artifact.
 		///
 		/// This cache uses `Rc` for storing builders and artifacts.
 		///
-		pub type ArtifactCache = crate::ArtifactCache<CanType, CanType>;
+		pub type Cache = crate::Cache<CanType, CanType>;
 	}
 }
 
@@ -90,19 +86,19 @@ cfg_if::cfg_if!{
 
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder.
 ///
-/// This cache uses `Rc` for storing builders and `ArtifactPromise` for
+/// This cache uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(not(feature = "diagnostics"))]
-pub type SuperArtifactCache = crate::ArtifactCache<BuilderArtifact<CanType>, CanType>;
+pub type SuperCache = crate::Cache<BuilderArtifact<CanType>, CanType>;
 
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder.
 ///
-/// This cache uses `Rc` for storing builders and `ArtifactPromise` for
+/// This cache uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 #[cfg(feature = "diagnostics")]
-pub type SuperArtifactCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::ArtifactCache<BuilderArtifact<CanType>, CanType, T>;
+pub type SuperCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::Cache<BuilderArtifact<CanType>, CanType, T>;
 
 
 /// Functional builder wrapper.
@@ -120,10 +116,10 @@ pub trait SimpleBuilder: Debug {
 	///
 	type Artifact : Debug + 'static;
 
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolver) -> Self::Artifact;
+	fn build(&self, resolver: &mut Resolver) -> Self::Artifact;
 }
 
 // Generic impl for legacy builder
@@ -132,13 +128,13 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 	type DynState = ();
 
-	fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
+	fn build(&self, cache: &mut Resolver) -> Self::Artifact {
 		self.build(cache)
 	}
 }
 
 
-/// A Builder using `Rc` for `ArtifactPromise` and artifacts.
+/// A Builder using `Rc` for `Blueprint` and artifacts.
 ///
 pub trait Builder: Debug {
 	/// The artifact type as produced by this builder.
@@ -149,24 +145,24 @@ pub trait Builder: Debug {
 	/// 
 	type DynState : Debug + 'static;
 	
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact;
+	fn build(&self, resolver: &mut Resolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
 
-	fn build(&self, cache: &mut ArtifactResolver<Self::DynState>) -> Self::Artifact where CanType: Can<Self::Artifact> {
+	fn build(&self, cache: &mut Resolver<Self::DynState>) -> Self::Artifact where CanType: Can<Self::Artifact> {
 		self.build(cache)
 	}
 }
 
 /// A builder of builders using `Rc`s.
 /// 
-/// This cache uses `Rc` for storing builders and `ArtifactPromise` for
+/// This cache uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 pub trait SuperBuilder: Debug {
@@ -179,18 +175,18 @@ pub trait SuperBuilder: Debug {
 	/// 
 	type DynState : Debug + 'static;
 	
-	/// Produces an artifact using the given `ArtifactResolver` for resolving
+	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact;
+	fn build(&self, resolver: &mut SuperResolver<Self::DynState>) -> Self::Artifact;
 }
 
 impl<B: ?Sized + SuperBuilder> crate::Builder<BuilderArtifact<CanType>, CanType> for B {
-	type Artifact = ArtifactPromise<B::Artifact>;
+	type Artifact = Blueprint<B::Artifact>;
 	type DynState = B::DynState;
 
-	fn build(&self, cache: &mut SuperArtifactResolver<Self::DynState>) -> Self::Artifact {
-		ArtifactPromise::new(self.build(cache))
+	fn build(&self, cache: &mut SuperResolver<Self::DynState>) -> Self::Artifact {
+		Blueprint::new(self.build(cache))
 	}
 }
 

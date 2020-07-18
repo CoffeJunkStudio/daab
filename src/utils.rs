@@ -4,10 +4,10 @@
 //! This module contains some utilities which can be useful when working with `daab`.
 //!
 
-use crate::ArtifactResolver;
-use crate::ArtifactPromiseTrait;
-use crate::ArtifactPromise;
-use crate::ArtifactCache;
+use crate::Resolver;
+use crate::Promise;
+use crate::Blueprint;
+use crate::Cache;
 use crate::Builder;
 use crate::Can;
 use crate::CanRef;
@@ -51,13 +51,13 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 	/// **Use with care**
 	///
 	pub fn new<ArtCan, BCan>(
-		cache: &mut ArtifactCache<ArtCan, BCan>,
+		cache: &mut Cache<ArtCan, BCan>,
 		inner: AP,
 		default_value: Option<T>
-	) -> ArtifactPromise<Self, BCan>
+	) -> Blueprint<Self, BCan>
 	where
 		B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
-		AP: ArtifactPromiseTrait<B, BCan> + Debug + 'static,
+		AP: Promise<B, BCan> + Debug + 'static,
 		T: Clone + Debug + 'static,
 		ArtCan: Debug,
 		ArtCan: Can<T>,
@@ -70,7 +70,7 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 		<BCan as Can<B>>::Bin: Clone + AsRef<B>,
 		{
 
-		let me = ArtifactPromise::new(
+		let me = Blueprint::new(
 			FallibleBuilder {
 				inner,
 				_b: PhantomData,
@@ -87,7 +87,7 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<AP, B, T>
 	where
 		B: Builder<ArtCan, BCan, Artifact=Option<T>> + Debug + 'static,
-		AP: ArtifactPromiseTrait<B, BCan> + Debug,
+		AP: Promise<B, BCan> + Debug,
 		T: Clone + Debug + 'static,
 		ArtCan: Debug,
 		ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
@@ -98,7 +98,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 	type Artifact = T;
 	type DynState = Option<T>;
 
-	fn build(&self, resolver: &mut ArtifactResolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact {
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact {
 
 		let value = resolver.resolve_cloned(&self.inner);
 
@@ -121,7 +121,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 /// Functional builder wrapper.
 ///
 /// A functional builder is a builder consisting of a single function
-/// `Fn(&mut ArtifactResolver) -> T`. Thus this type can be used to wrap a
+/// `Fn(&mut Resolver) -> T`. Thus this type can be used to wrap a
 /// closure as `Builder`. The return type `T` will the artifact type of the
 /// resulting Builder.
 ///
@@ -138,7 +138,7 @@ impl<ArtCan, BCan, F> Debug for FunctionalBuilder<ArtCan, BCan, F> {
 }
 
 impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
-	where F: Fn(&mut ArtifactResolver<ArtCan, BCan>) -> T,
+	where F: Fn(&mut Resolver<ArtCan, BCan>) -> T,
 		T: Debug + 'static {
 
 	/// Wraps the given closure as Builder.
@@ -152,26 +152,26 @@ impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
 	}
 }
 
-impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for ArtifactPromise<FunctionalBuilder<ArtCan, BCan, F>, BCan>
-	where F: for<'r, 's> Fn(&'r mut ArtifactResolver<'s, ArtCan, BCan>) -> T,
+impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for Blueprint<FunctionalBuilder<ArtCan, BCan, F>, BCan>
+	where F: for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T,
 		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F>> {
 
 	fn from(f: F) -> Self {
-		ArtifactPromise::new(
+		Blueprint::new(
 			FunctionalBuilder::new(f)
 		)
 	}
 }
 
 impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F>
-	where F: Fn(&mut ArtifactResolver<ArtCan, BCan>) -> T,
+	where F: Fn(&mut Resolver<ArtCan, BCan>) -> T,
 		T: Debug + 'static,
 		BCan: CanStrong {
 
 	type Artifact = T;
 	type DynState = ();
 
-	fn build(&self, resolver: &mut ArtifactResolver<ArtCan, BCan>)
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan>)
 			 -> Self::Artifact {
 
 		let f = &self.inner;

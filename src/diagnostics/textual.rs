@@ -93,11 +93,11 @@ impl Default for TextualDocOptions {
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use daab::rc::ArtifactCache;
+/// use daab::rc::Cache;
 /// use daab::diagnostics::{TextualDoc, TextualDocOptions};
 /// use std::io::stdout;
 ///
-/// let mut cache = ArtifactCache::new_with_doctor(
+/// let mut cache = Cache::new_with_doctor(
 ///     TextualDoc::new(
 ///         TextualDocOptions {
 ///             show_builder_values: false,

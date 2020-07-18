@@ -33,7 +33,7 @@ use std::fmt::Debug;
 
 use crate::canning::CanBase;
 use crate::canning::CanSized;
-use crate::ArtifactPromiseTrait;
+use crate::Promise;
 use crate::BuilderId;
 
 
@@ -177,7 +177,7 @@ impl<ArtCan: CanBase> Eq for ArtifactHandle<ArtCan> {
 
 /// Encapsulates a generic builder with some debugging information.
 ///
-/// This struct encapsulates a builder as `ArtifactPromise<dyn Any>` which might
+/// This struct encapsulates a builder as `Blueprint<dyn Any>` which might
 /// be fairly useless.
 /// Thus this struct also contains the stringified type name of that value
 /// as well as the `Debug` string of the value.
@@ -204,7 +204,7 @@ impl<BCan> BuilderHandle<BCan> {
 	///
 	pub fn new<AP, B: ?Sized + Debug + 'static>(value: &AP) -> Self
 			where
-				AP: ArtifactPromiseTrait<B, BCan> {
+				AP: Promise<B, BCan> {
 
 		let dbg_text = format!("{:#?}", &value.builder().builder);
 		let id = value.id();
