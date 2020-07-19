@@ -304,7 +304,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	fn build<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &mut ArtCan
+		) -> Result<&mut ArtCan, B::Err>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				AP: Promise<B, BCan>  {
@@ -320,7 +320,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		#[cfg(feature = "diagnostics")]
 		let diag_builder = BuilderHandle::new(promise.clone());
 
-		let art = promise.builder().builder.build(
+		let art_res = promise.builder().builder.build(
 			&mut Resolver {
 				user: &ent,
 				cache: self,
@@ -330,32 +330,36 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			},
 		);
 
-		let art_bin = ArtCan::into_bin(art);
+		// Add artifact to cache if it was successful, otherwise just return
+		// the error
+		art_res.map(move |art| {
+			let art_bin = ArtCan::into_bin(art);
 
-		cfg_if!(
-			if #[cfg(feature = "diagnostics")] {
-				let handle = ArtifactHandle::new(art_bin);
+			cfg_if!(
+				if #[cfg(feature = "diagnostics")] {
+					let handle = ArtifactHandle::new(art_bin);
 
-				// Update doctor on diagnostics mode
-				self.doctor.build(&diag_builder, &handle);
+					// Update doctor on diagnostics mode
+					self.doctor.build(&diag_builder, &handle);
 
-				let art_can = handle.into_inner();
-			} else {
-				let art_can = ArtCan::from_bin(art_bin);
-			}
-		);
+					let art_can = handle.into_inner();
+				} else {
+					let art_can = ArtCan::from_bin(art_bin);
+				}
+			);
 
-		// keep id
-		let id = promise.id();
+			// keep id
+			let id = promise.id();
 
-		// Insert artifact
-		self.artifacts.insert(
-			id,
-			art_can,
-		);
+			// Insert/Replace artifact
+			self.artifacts.insert(
+				id,
+				art_can,
+			);
 
-		// Just unwrap, since we just inserted it
-		self.artifacts.get_mut(&id).unwrap()
+			// Just unwrap, since we just inserted it
+			self.artifacts.get_mut(&id).unwrap()
+		})
 
 	}
 
@@ -365,7 +369,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> ArtCan::Bin
+		) -> Result<ArtCan::Bin, B::Err>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
@@ -373,11 +377,13 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 
 		if let Some(art) = self.lookup(promise) {
-			art
+			Ok(art)
 
 		} else {
-			self.build(promise).clone().downcast_can()
+			self.build(promise).map(|art| {
+				art.clone().downcast_can()
 				.expect("Cached Builder Artifact is of invalid type")
+			})
 		}
 	}
 
@@ -386,18 +392,20 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &B::Artifact
+		) -> Result<&B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
 
 		if self.lookup_ref(promise).is_some() {
-			self.lookup_ref(promise).unwrap()
+			Ok(self.lookup_ref(promise).unwrap())
 
 		} else {
-			self.build(promise).downcast_can_ref()
+			self.build(promise).map(|art| {
+				art.downcast_can_ref()
 				.expect("Cached Builder Artifact is of invalid type")
+			})
 		}
 	}
 
@@ -406,7 +414,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &mut B::Artifact
+		) -> Result<&mut B::Artifact, B::Err>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
 				AP: Promise<B, BCan>  {
@@ -415,11 +423,13 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		if self.lookup_mut(promise).is_some() {
 			// Here, requires a second look up because due to the build in the
 			// else case, an `if let Some(_)` won't work due to lifetime issues
-			self.lookup_mut(promise).unwrap()
+			Ok(self.lookup_mut(promise).unwrap())
 
 		} else {
-			self.build(promise).downcast_can_mut()
+			self.build(promise).map(|art| {
+				art.downcast_can_mut()
 				.expect("Cached Builder Artifact is of invalid type")
+			})
 		}
 	}
 
@@ -428,13 +438,15 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> B::Artifact
+		) -> Result<B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
 				AP: Promise<B, BCan>  {
 
-		self.get_ref(promise).clone()
+		self.get_ref(promise).map(|art| {
+			art.clone()
+		})
 	}
 
 

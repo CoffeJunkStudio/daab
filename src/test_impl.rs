@@ -7,6 +7,8 @@ use pretty_assertions::{assert_eq, assert_ne};
 
 use super::*;
 
+use crate::Unpacking;
+
 #[cfg(feature = "diagnostics")]
 use crate::diagnostics;
 
@@ -64,10 +66,10 @@ impl BuilderSimpleNode {
 
 impl SimpleBuilder for BuilderSimpleNode {
 	type Artifact = SimpleNode;
-	
+
 	fn build(&self, cache: &mut Resolver) -> Self::Artifact {
-		let leaf = cache.resolve(&self.leaf);
-		
+		let leaf = cache.resolve(&self.leaf).unpack();
+
 		SimpleNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			leaf
@@ -103,12 +105,12 @@ impl BuilderLeafOrNodes {
 	fn build(&self, cache: &mut Resolver) -> LeafOrNodes {
 		match self {
 			Self::Leaf(l) => {
-				LeafOrNodes::Leaf(cache.resolve(l))
+				LeafOrNodes::Leaf(cache.resolve(l).unpack())
 			},
 			Self::Nodes{left, right} => {
 				LeafOrNodes::Nodes{
-					left: cache.resolve(left),
-					right: cache.resolve(right),
+					left: cache.resolve(left).unpack(),
+					right: cache.resolve(right).unpack(),
 				}
 			},
 		}
@@ -227,10 +229,10 @@ fn test_node() {
 	
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get(&node2), cache.get(&node3));
-	
+
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
-	
+	assert_eq!(cache.get(&node2).unpack().leaf, cache.get(&node3).unpack().leaf);
+
 }
 
 #[test]
@@ -253,13 +255,13 @@ fn test_complex() {
 	
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get(&noden1), cache.get(&noden2));
-	
-	let artifact_leaf = cache.get(&leaf1);
-	let artifact_node = cache.get(&noden1);
-	let artifact_root = cache.get(&noden3);
-	
+
+	let artifact_leaf = cache.get(&leaf1).unpack();
+	let artifact_node = cache.get(&noden1).unpack();
+	let artifact_root = cache.get(&noden3).unpack();
+
 	assert_eq!(artifact_root.left(), artifact_root.right());
-	
+
 	assert_eq!(artifact_root.left().unwrap().right(), Some(&artifact_node));
 	assert_eq!(artifact_node.left().unwrap().leaf(), Some(&artifact_leaf));
 	
@@ -352,9 +354,12 @@ fn test_vis_doc() {
 	
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get(&node1), cache.get(&node2));
-	
+
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+	assert_eq!(
+		cache.get::<_, BuilderSimpleNode>(&node2).unpack().leaf,
+		cache.get(&node1).unpack().leaf
+	);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner().into_inner();
@@ -422,7 +427,7 @@ fn test_text_doc() {
 	assert_ne!(cache.get(&node1), cache.get(&node2));
 	
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).unpack().leaf, cache.get(&node1).unpack().leaf);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
@@ -470,9 +475,9 @@ fn test_text_doc_long() {
 	
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get(&node1), cache.get(&node2));
-	
-	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).leaf, cache.get(&node1).leaf);
+
+	// Ensure that different artifacts may link the same dependent artifact
+	assert_eq!(cache.get::<_, BuilderSimpleNode>(&node2).unpack().leaf, cache.get(&node1).unpack().leaf);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
@@ -537,11 +542,11 @@ fn test_into() {
 	let mut cache = Cache::new();
 	
 	let leaf1 = Blueprint::new(BuilderLeaf::new());
-	let lart = cache.get(&leaf1);
-	
+	let lart = cache.get(&leaf1).unpack();
+
 	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1));
-	
-	assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
+
+	assert_eq!(cache.get(&node1).unpack().leaf.as_ref(), lart.as_ref());
 }
 
 #[test]

@@ -11,6 +11,7 @@ use std::any::Any;
 use crate::Doctor;
 
 use crate::canning::BuilderArtifact;
+use crate::Never;
 
 
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
@@ -42,7 +43,7 @@ pub type BlueprintUnsized<B> = crate::BlueprintUnsized<B, CanType>;
 
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 pub type DynamicBlueprint<Artifact> =
-	BlueprintUnsized<dyn Builder<Artifact=Artifact, DynState=()> + Send + Sync>;
+	BlueprintUnsized<dyn Builder<Artifact=Artifact, DynState=(), Err=Never> + Send + Sync>;
 
 
 
@@ -126,10 +127,12 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 	type DynState = ();
 
-	fn build(&self, cache: &mut Resolver) -> Self::Artifact {
-		self.build(cache)
+	type Err = Never;
+
+	fn build(&self, cache: &mut Resolver) -> Result<Self::Artifact, Never> {
+		Ok(self.build(cache))
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		// Intensional empty, just return a fresh `()`
 	}
@@ -147,24 +150,32 @@ pub trait Builder: Debug + 'static {
 	///
 	type DynState : Debug + 'static;
 
+	/// Error type returned by this Builder in case of failure to produce an
+	/// Artifact.
+	type Err : Debug + 'static;
+
 	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut Resolver<Self::DynState>) -> Self::Artifact;
-	
+	fn build(&self, resolver: &mut Resolver<Self::DynState>)
+		-> Result<Self::Artifact, Self::Err>;
+
 	/// Return an inital dynamic state for this builder.
-	/// 
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
 impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
+	type Err = B::Err;
 
-	fn build(&self, cache: &mut Resolver<Self::DynState>) -> Self::Artifact {
+	fn build(&self, cache: &mut Resolver<Self::DynState>)
+			-> Result<Self::Artifact, Self::Err> {
+
 		self.build(cache)
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.init_dyn_state()
 	}
@@ -185,24 +196,32 @@ pub trait SuperBuilder: Debug + Send + Sync + 'static {
 	///
 	type DynState : Debug + 'static;
 
+	/// Error type returned by this Builder in case of failure to produce an
+	/// Artifact.
+	type Err : Debug + 'static;
+
 	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut SuperResolver<Self::DynState>) -> Self::Artifact;
-	
+	fn build(&self, resolver: &mut SuperResolver<Self::DynState>)
+		-> Result<Self::Artifact, Self::Err>;
+
 	/// Return an inital dynamic state for this builder.
-	/// 
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
 impl<B: ?Sized + SuperBuilder> crate::Builder<BuilderArtifact<CanType>, CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
+	type Err = B::Err;
 
-	fn build(&self, cache: &mut SuperResolver<Self::DynState>) -> Self::Artifact {
+	fn build(&self, cache: &mut SuperResolver<Self::DynState>)
+			-> Result<Self::Artifact, Self::Err> {
+
 		self.build(cache)
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.init_dyn_state()
 	}

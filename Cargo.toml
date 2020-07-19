@@ -26,6 +26,7 @@ unsized = [] # Requires Nightly!
 
 [dependencies]
 cfg-if = "0.1.10"
+never = "0.1.0"
 tynm = {version = "0.1.0", optional = true}
 
 

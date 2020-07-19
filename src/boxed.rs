@@ -11,6 +11,8 @@ use std::any::Any;
 #[cfg(feature = "diagnostics")]
 use crate::Doctor;
 
+use crate::Never;
+
 
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
 ///
@@ -43,7 +45,7 @@ pub type BlueprintUnsized<B> = crate::rc::BlueprintUnsized<B>;
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 ///
 pub type DynamicBlueprint<Artifact> =
-	BlueprintUnsized<dyn crate::Builder<CanType, BuilderBinType<dyn Any>,Artifact=Artifact, DynState=()>>;
+	BlueprintUnsized<dyn crate::Builder<CanType, BuilderBinType<dyn Any>,Artifact=Artifact, DynState=(), Err=Never>>;
 
 
 /// Allows to resolve any `Blueprint` into its artifact. Usable within a
@@ -96,9 +98,13 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
 
 	type DynState = ();
+	
+	type Err = Never;
 
-	fn build(&self, cache: &mut Resolver) -> Self::Artifact {
-		self.build(cache)
+	fn build(&self, cache: &mut Resolver)
+			-> Result<Self::Artifact, Never> {
+
+		Ok(self.build(cache))
 	}
 	
 	fn init_dyn_state(&self) -> Self::DynState {
@@ -118,10 +124,15 @@ pub trait Builder: Debug + 'static {
 	///
 	type DynState : Debug + 'static;
 
+	/// Error type returned by this Builder in case of failure to produce an
+	/// Artifact.
+	type Err : Debug + 'static;
+
 	/// Produces an artifact using the given `Resolver` for resolving
 	/// dependencies.
 	///
-	fn build(&self, resolver: &mut Resolver<Self::DynState>) -> Self::Artifact;
+	fn build(&self, resolver: &mut Resolver<Self::DynState>)
+		-> Result<Self::Artifact, Self::Err>;
 	
 	/// Return an inital dynamic state for this builder.
 	/// 
@@ -131,8 +142,11 @@ pub trait Builder: Debug + 'static {
 impl<B: ?Sized + Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 	type Artifact = B::Artifact;
 	type DynState = B::DynState;
+	type Err = B::Err;
 
-	fn build(&self, cache: &mut Resolver<Self::DynState>) -> Self::Artifact {
+	fn build(&self, cache: &mut Resolver<Self::DynState>)
+			-> Result<Self::Artifact, Self::Err> {
+
 		self.build(cache)
 	}
 	

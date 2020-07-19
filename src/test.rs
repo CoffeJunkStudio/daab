@@ -39,10 +39,12 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 
 	type DynState = ();
 
-	fn build(&self, _cache: &mut Resolver<ArtCan,BCan>) -> Self::Artifact {
-		Leaf{
+	type Err = Never;
+
+	fn build(&self, _cache: &mut Resolver<ArtCan,BCan>) -> Result<Self::Artifact, Never> {
+		Ok(Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		}
+		})
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -86,15 +88,17 @@ impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 
 	type DynState = ();
 
+	type Err = Never;
+
 	fn build(&self, cache: &mut Resolver<ArtCan,BCan>)
-		-> Self::Artifact {
+		-> Result<Self::Artifact, Never> {
 
-		let leaf = cache.resolve(&self.leaf);
+		let leaf = cache.resolve(&self.leaf)?;
 
-		SimpleNode{
+		Ok(SimpleNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			leaf
-		}
+		})
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -152,21 +156,21 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for Bui
 
 	type DynState = ();
 
-	fn build(&self, cache: &mut Resolver<ArtCan, BCan>) -> Self::Artifact {
-		ComplexNode {
+	type Err = Never;
+
+	fn build(&self, cache: &mut Resolver<ArtCan, BCan>) -> Result<Self::Artifact, Never> {
+		Ok(ComplexNode {
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
-			left: cache.resolve(&self.left),
-			right: cache.resolve(&self.right),
-		}
+			left: cache.resolve(&self.left)?,
+			right: cache.resolve(&self.right)?,
+		})
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
 	}
 }
 
-//trait LeafOrNode<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> where BCan: CanStrong {}
-
-trait LeafOrNodeBuilder<ArtCan, BCan>: Debug + Builder<ArtCan, BCan> + 'static where BCan: CanStrong {}
+trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Never> where BCan: CanStrong {}
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
@@ -210,11 +214,12 @@ impl BuilderLeafBox {
 impl crate::boxed::Builder for BuilderLeafBox {
 	type Artifact = Leaf;
 	type DynState = ();
+	type Err = Never;
 
-	fn build(&self, _cache: &mut crate::boxed::Resolver) -> Self::Artifact {
-		Leaf{
+	fn build(&self, _cache: &mut crate::boxed::Resolver) -> Result<Self::Artifact, Never> {
+		Ok(Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		}
+		})
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -223,6 +228,13 @@ impl crate::boxed::Builder for BuilderLeafBox {
 
 
 
+fn as_ptr<T,E>(res: Result<&T,E>) -> Result<*const T,E> {
+	res.map(|v| v as *const T)
+}
+
+fn as_ptr_mut<T,E>(res: Result<&mut T,E>) -> Result<*mut T,E> {
+	res.map(|v| v as *mut T)
+}
 
 #[test]
 fn test_boxed_ref() {
@@ -235,10 +247,10 @@ fn test_boxed_ref() {
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
 
 	// Ensure same builder results in same artifact
-	assert_eq!(cache.get_ref(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
+	assert_eq!(as_ptr(cache.get_ref(&leaf1)), as_ptr(cache.get_ref(&leaf1)));
 
 	// Ensure different builder result in different artifacts
-	assert_ne!(cache.get_ref(&leaf1) as *const Leaf, cache.get_ref(&leaf2) as *const Leaf);
+	assert_ne!(as_ptr(cache.get_ref(&leaf1)), as_ptr(cache.get_ref(&leaf2)));
 }
 
 #[test]
@@ -252,10 +264,10 @@ fn test_boxed_mut() {
 	println!("Ptr: {:?}; {:?}", leaf1.id(), leaf2.id());
 
 	// Ensure same builder results in same artifact
-	assert_eq!(cache.get_mut(&leaf1) as *const Leaf, cache.get_ref(&leaf1) as *const Leaf);
+	assert_eq!(as_ptr_mut(cache.get_mut(&leaf1)), as_ptr_mut(cache.get_mut(&leaf1)));
 
 	// Ensure different builder result in different artifacts
-	assert_ne!(cache.get_mut(&leaf1) as *mut Leaf, cache.get_mut(&leaf2) as *mut Leaf);
+	assert_ne!(as_ptr_mut(cache.get_mut(&leaf1)), as_ptr_mut(cache.get_mut(&leaf2)));
 }
 
 #[test]
@@ -274,21 +286,21 @@ fn test_leaf_broken() {
 	// Ensure same builder results in same artifact
 	assert_eq!(cache_rc.get(&leaf1), cache_rc.get(&leaf1));
 	assert_eq!(cache_rc.get_cloned(&leaf1), cache_rc.get_cloned(&leaf1));
-	assert_eq!(*cache_rc.get(&leaf1), *cache_rc.get_ref(&leaf1));
+	assert_eq!(*cache_rc.get(&leaf1).unpack(), *cache_rc.get_ref(&leaf1).unpack());
 
 	// Ensure different builder result in different artifacts
-	assert_ne!(*cache_rc.get(&leaf1), *cache_rc.get_ref(&leaf2));
-	assert_ne!(*cache_rc.get(&leaf1), *cache_rc.get_ref(&leaf2));
+	assert_ne!(*cache_rc.get(&leaf1).unpack(), *cache_rc.get_ref(&leaf2).unpack());
+	assert_ne!(*cache_rc.get(&leaf1).unpack(), *cache_rc.get_ref(&leaf2).unpack());
 
 	// Ensure same builder results in same artifact
 	assert_eq!(cache_box.get_cloned(&leaf1), cache_box.get_cloned(&leaf1));
-	assert_eq!(cache_box.get_cloned(&leaf1), *cache_box.get_ref(&leaf1));
+	assert_eq!(cache_box.get_cloned(&leaf1).unpack(), *cache_box.get_ref(&leaf1).unpack());
 
 	// Ensure different builder result in different artifacts
-	assert_ne!(cache_box.get_cloned(&leaf1), *cache_box.get_ref(&leaf2));
+	assert_ne!(cache_box.get_cloned(&leaf1).unpack(), *cache_box.get_ref(&leaf2).unpack());
 
 	// Ensure different builder result in different artifacts
-	assert_ne!(*cache_rc.get_ref(&leaf1), *cache_box.get_ref(&leaf1));
+	assert_ne!(*cache_rc.get_ref(&leaf1).unpack(), *cache_box.get_ref(&leaf1).unpack());
 }
 
 
@@ -344,7 +356,7 @@ fn test_node_rc() {
 	assert_ne!(cache.get(&node2), cache.get(&node3));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
+	assert_eq!(cache.get(&node2).unpack().leaf, cache.get(&node3).unpack().leaf);
 
 }
 
@@ -366,7 +378,7 @@ fn test_node_arc() {
 	assert_ne!(cache.get(&node2), cache.get(&node3));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get(&node2).leaf, cache.get(&node3).leaf);
+	assert_eq!(cache.get(&node2).unpack().leaf, cache.get(&node3).unpack().leaf);
 
 }
 
@@ -426,9 +438,9 @@ fn test_complex() {
 	// Ensure different builder result in different artifacts
 	//assert_ne!(cache.get(&noden1), cache.get(&noden2));
 
-	let artifact_leaf = cache.get(&leaf1);
-	let artifact_node = cache.get(&noden1);
-	let artifact_root = cache.get(&noden3);
+	let artifact_leaf = cache.get(&leaf1).unpack();
+	let artifact_node = cache.get(&noden1).unpack();
+	let artifact_root = cache.get(&noden3).unpack();
 
 	assert_eq!(artifact_root.left, artifact_root.right);
 
@@ -499,11 +511,11 @@ fn test_into() {
 	let mut cache = rc::Cache::new();
 
 	let leaf1 = Blueprint::new(BuilderLeaf::new());
-	let lart = cache.get(&leaf1);
+	let lart = cache.get(&leaf1).unpack();
 
 	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1));
 
-	assert_eq!(cache.get(&node1).leaf.as_ref(), lart.as_ref());
+	assert_eq!(cache.get(&node1).unpack().leaf.as_ref(), lart.as_ref());
 }
 
 #[test]

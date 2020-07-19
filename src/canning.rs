@@ -174,28 +174,28 @@ pub trait CanRefMut<T>: CanSized<T> {
 
 /// A can that can hold and convert a given builder into a can of `dyn Builder`
 ///
-pub trait CanBuilder<ArtCan, Artifact, DynState, B>:
+pub trait CanBuilder<ArtCan, Artifact, DynState, Err, B>:
 		CanStrong +
 		Can<B> +
-		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>
+		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>
 	{
 
 	/// Create a unsized bin from given builder.
 	///
-	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>>::Bin, Self);
+	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin, Self);
 }
 
 /// A can that can hold and convert a given builder into a can of `dyn Builder`
 ///
-pub trait CanBuilderSync<ArtCan, Artifact, DynState, B>:
+pub trait CanBuilderSync<ArtCan, Artifact, DynState, Err, B>:
 		CanStrong +
 		Can<B> +
-		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>
+		Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync>
 	{
 
 	/// Create a unsized bin from given builder.
 	///
-	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>>::Bin, Self);
+	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync>>::Bin, Self);
 }
 
 
@@ -271,19 +271,20 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	}
 }
 
-impl<ArtCan: 'static, Artifact: 'static, DynState, B> CanBuilder<ArtCan, Artifact, DynState, B> for Rc<dyn Any>
+impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilder<ArtCan, Artifact, DynState, Err, B> for Rc<dyn Any>
 	where
-		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + 'static,
+		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + 'static,
 		Artifact: Debug + 'static,
 		DynState: Debug + 'static,
+		Err: Debug + 'static,
 		 {
 
 	fn can_unsized(builder: B) -> (
-			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>>>::Bin, Self) {
+			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin, Self) {
 
 		let rc = Rc::new(builder);
 
-		let rc_dyn: Rc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState>> =
+		let rc_dyn: Rc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>> =
 			rc.clone();
 
 		let rc_any: Rc<dyn Any> = rc;
@@ -423,19 +424,20 @@ impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync
 	}
 }
 
-impl<ArtCan: 'static, Artifact: 'static, DynState, B> CanBuilderSync<ArtCan, Artifact, DynState, B> for Arc<dyn Any + Send + Sync>
+impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilderSync<ArtCan, Artifact, DynState, Err, B> for Arc<dyn Any + Send + Sync>
 	where
-		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync + 'static,
+		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync + 'static,
 		Artifact: Debug + Send + Sync + 'static,
 		DynState: Debug + Send + Sync + 'static,
+		Err: Debug + Send + Sync + 'static,
 		 {
 
 	fn can_unsized(builder: B) -> (
-			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync>>::Bin, Self) {
+			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync>>::Bin, Self) {
 
 		let arc = Arc::new(builder);
 
-		let arc_dyn: Arc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState> + Send + Sync> =
+		let arc_dyn: Arc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync> =
 			arc.clone();
 
 		let arc_any: Arc<dyn Any + Send + Sync> = arc;

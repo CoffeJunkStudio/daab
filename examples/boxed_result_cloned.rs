@@ -1,8 +1,10 @@
 
-use daab::boxed::Cache;
-use daab::boxed::Resolver;
-use daab::boxed::Blueprint as Bp;
-use daab::boxed::Builder as Builder;
+use daab::rc::Cache;
+use daab::rc::Resolver;
+use daab::rc::Blueprint as Bp;
+use daab::rc::Builder as Builder;
+use daab::Never;
+use daab::prelude::*;
 
 use std::rc::Rc;
 
@@ -22,10 +24,11 @@ struct BarArtifact {
 struct FooBuilder;
 
 impl Builder for FooBuilder {
-	type Artifact = Result<Rc<FooArtifact>, ()>;
+	type Artifact = FooArtifact;
 	type DynState = ();
+	type Err = ();
 
-	fn build(&self, resolver: &mut Resolver) -> Self::Artifact {
+	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
 		println!("Building FooArtifact...");
 		Ok(FooArtifact.into())
 	}
@@ -38,12 +41,13 @@ impl Builder for FooBuilder {
 struct BazBuilder;
 
 impl Builder for BazBuilder {
-	type Artifact = Rc<BazArtifact>;
+	type Artifact = BazArtifact;
 	type DynState = ();
+	type Err = Never;
 
-	fn build(&self, resolver: &mut Resolver) -> Self::Artifact {
+	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, Never> {
 		println!("Building BazArtifact...");
-		BazArtifact.into()
+		Ok(BazArtifact.into())
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -57,12 +61,13 @@ struct BarBuilder {
 }
 
 impl Builder for BarBuilder {
-	type Artifact = Result<Rc<BarArtifact>, ()>;
+	type Artifact = BarArtifact;
 	type DynState = ();
+	type Err = ();
 
-	fn build(&self, resolver: &mut Resolver) -> Self::Artifact {
-		let foo_artifact = resolver.resolve_cloned(&self.foo_builder)?;
-		let baz_artifact = resolver.resolve_cloned(&self.baz_builder);
+	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
+		let foo_artifact = resolver.resolve(&self.foo_builder)?;
+		let baz_artifact = resolver.resolve(&self.baz_builder).unpack();
 		println!("Building BarArtifact...");
 		Ok(BarArtifact {
 			foo_artifact,
@@ -97,12 +102,12 @@ fn main() {
 	dbg!(dyn_st);
 
 	println!("Requesting BarArtifact...");
-	cache.get_cloned(&bar_builder);
+	cache.get(&bar_builder).unwrap();
 	println!("Requesting BarArtifact...");
-	cache.get_cloned(&bar_builder);
+	cache.get(&bar_builder).unwrap();
 	println!("Invalidating BarArtifact...");
 	cache.invalidate(&bar_builder);
 	println!("Requesting BarArtifact...");
-	cache.get_cloned(&bar_builder);
+	cache.get(&bar_builder).unwrap();
 }
 

@@ -11,6 +11,7 @@ use crate::Builder;
 use crate::CanRef;
 use crate::CanStrong;
 use crate::CanSized;
+use crate::Never;
 
 use std::fmt;
 use std::fmt::Debug;
@@ -34,13 +35,13 @@ use std::marker::PhantomData;
 /// after any (or all) dependency has been invalidated.
 ///
 #[derive(Debug, Clone)]
-pub struct FallibleBuilder<AP, B: ?Sized, T> {
+pub struct RedeemingBuilder<AP, B: ?Sized, T> {
 	inner: AP,
 	default_value: Option<T>,
 	_b: PhantomData<B>,
 }
 
-impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
+impl<AP, B: ?Sized, T> RedeemingBuilder<AP, B, T>
 	where
 		T: Clone,
 		B: Debug + 'static, {
@@ -64,7 +65,7 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 	{
 
 		Blueprint::new(
-			FallibleBuilder {
+			RedeemingBuilder {
 				inner,
 				default_value,
 				_b: PhantomData,
@@ -73,24 +74,26 @@ impl<AP, B: ?Sized, T> FallibleBuilder<AP, B, T>
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<AP, B, T>
+impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<AP, B, T>
 	where
-		B: Builder<ArtCan, BCan, Artifact=Option<T>>,
+		B: Builder<ArtCan, BCan, Artifact=T>,
 		AP: Promise<B, BCan>,
 		T: Clone + Debug + 'static,
-		ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
-		ArtCan::Bin: AsRef<Option<T>>,
+		ArtCan: CanSized<T> + CanRef<T>,
+		ArtCan::Bin: AsRef<T>,
 		BCan: Clone + CanStrong,
 	{
 
 	type Artifact = T;
 	type DynState = Option<T>;
+	type Err = Never;
 
-	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>) -> Self::Artifact {
-
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
+			-> Result<Self::Artifact, Never> {
+/*
 		let value = resolver.resolve_cloned(&self.inner);
 
-		if let Some(v) = value {
+		if let Ok(v) = value {
 			*resolver.my_state() = Some(v.clone());
 
 			// Return value
@@ -100,8 +103,9 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for FallibleBuilder<A
 			// Try to return cached value. Panics if very first build fails.
 			resolver.my_state().clone().unwrap()
 		}
+		*/ todo!()
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.default_value.clone()
 	}
@@ -171,12 +175,13 @@ impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCa
 
 	type Artifact = T;
 	type DynState = ();
+	type Err = Never;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan>)
-			 -> Self::Artifact {
+			 -> Result<Self::Artifact, Never> {
 
 		let f = &self.inner;
-		f(resolver)
+		Ok(f(resolver))
 
 	}
 	fn init_dyn_state(&self) -> Self::DynState {

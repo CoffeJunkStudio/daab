@@ -7,6 +7,8 @@ use pretty_assertions::{assert_eq, assert_ne};
 
 use super::*;
 
+use crate::Unpacking;
+
 #[cfg(feature = "diagnostics")]
 use crate::diagnostics;
 
@@ -66,7 +68,7 @@ impl SimpleBuilder for BuilderSimpleNode {
 	type Artifact = SimpleNode;
 
 	fn build(&self, cache: &mut Resolver) -> Self::Artifact {
-		let leaf = cache.resolve_cloned(&self.leaf);
+		let leaf = cache.resolve_cloned(&self.leaf).unpack();
 
 		SimpleNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
@@ -103,12 +105,12 @@ impl BuilderLeafOrNodes {
 	fn build(&self, cache: &mut Resolver) -> LeafOrNodes {
 		match self {
 			Self::Leaf(l) => {
-				LeafOrNodes::Leaf(cache.resolve_cloned(l))
+				LeafOrNodes::Leaf(cache.resolve_cloned(l).unpack())
 			},
 			Self::Nodes{left, right} => {
 				LeafOrNodes::Nodes{
-					left: cache.resolve_cloned(left),
-					right: cache.resolve_cloned(right),
+					left: cache.resolve_cloned(left).unpack(),
+					right: cache.resolve_cloned(right).unpack(),
 				}
 			},
 		}
@@ -229,7 +231,7 @@ fn test_node() {
 	assert_ne!(cache.get_cloned(&node2), cache.get_cloned(&node3));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get_cloned(&node2).leaf, cache.get_cloned(&node3).leaf);
+	assert_eq!(cache.get_cloned(&node2).unpack().leaf, cache.get_cloned(&node3).unpack().leaf);
 
 }
 
@@ -254,9 +256,9 @@ fn test_complex() {
 	// Ensure different builder result in different artifacts
 	assert_ne!(cache.get_cloned(&noden1), cache.get_cloned(&noden2));
 
-	let artifact_leaf = cache.get_cloned(&leaf1);
-	let artifact_node = cache.get_cloned(&noden1);
-	let artifact_root = cache.get_cloned(&noden3);
+	let artifact_leaf = cache.get_cloned(&leaf1).unpack();
+	let artifact_node = cache.get_cloned(&noden1).unpack();
+	let artifact_root = cache.get_cloned(&noden3).unpack();
 
 	assert_eq!(artifact_root.left(), artifact_root.right());
 
@@ -354,7 +356,7 @@ fn test_vis_doc() {
 	assert_ne!(cache.get_cloned(&node1), cache.get_cloned(&node2));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).leaf, cache.get_cloned(&node1).leaf);
+	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).unpack().leaf, cache.get_cloned(&node1).unpack().leaf);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner().into_inner();
@@ -422,7 +424,7 @@ fn test_text_doc() {
 	assert_ne!(cache.get_cloned(&node1), cache.get_cloned(&node2));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).leaf, cache.get_cloned(&node1).leaf);
+	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).unpack().leaf, cache.get_cloned(&node1).unpack().leaf);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
@@ -472,7 +474,7 @@ fn test_text_doc_long() {
 	assert_ne!(cache.get_cloned(&node1), cache.get_cloned(&node2));
 
 	// Enusre that different artifacts may link the same dependent artifact
-	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).leaf, cache.get_cloned(&node1).leaf);
+	assert_eq!(cache.get_cloned::<_, BuilderSimpleNode>(&node2).unpack().leaf, cache.get_cloned(&node1).unpack().leaf);
 
 	// Get the vector back, dissolves cache & doctor
 	data = cache.into_doctor().into_inner();
@@ -537,11 +539,11 @@ fn test_into() {
 	let mut cache = Cache::new();
 
 	let leaf1 = Blueprint::new(BuilderLeaf::new());
-	let lart = cache.get_cloned(&leaf1);
+	let lart = cache.get_cloned(&leaf1).unpack();
 
 	let node1 = Blueprint::new(BuilderSimpleNode::new(leaf1));
 
-	assert_eq!(cache.get_cloned(&node1).leaf, lart);
+	assert_eq!(cache.get_cloned(&node1).unpack().leaf, lart);
 }
 
 #[test]
@@ -615,7 +617,7 @@ fn test_dyn_builder_stable2() {
 	let nodef1 = Blueprint::new(BuilderComplexNode::new_leaf(leaf1.clone()));
 	let nodef2 = Blueprint::new(BuilderComplexNode::new_leaf(leaf2.clone()));
 
-	let noden1_builder = 
+	let noden1_builder =
 		BuilderComplexNode::new_nodes(nodef1.clone(), nodef2.clone());
 	//let noden1 = Blueprint::new_binned(noden1_rc.clone());
 

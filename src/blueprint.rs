@@ -346,14 +346,14 @@ impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 	}
 }
 
-impl<ArtCan, BCan, Artifact, DynState> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>, BCan> where
-	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState>> {
+impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan> where
+	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
 
 	/// Creates an trait object artifact promise from given builder.
 	///
 	pub fn new_unsized<B>(builder: B) -> Self
 		where
-			BCan: CanBuilder<ArtCan, Artifact, DynState, B>, {
+			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
 
 		let (bin_dyn, can) = BCan::can_unsized(builder);
 

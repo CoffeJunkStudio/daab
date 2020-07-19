@@ -3,6 +3,7 @@ use super::*;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU32;
 
+use rc::Blueprint as Bp;
 
 
 // Dummy counter to differentiate instances
@@ -38,11 +39,14 @@ struct BuilderBuilder {
 }
 
 impl rc::SuperBuilder for BuilderBuilder {
-	type Artifact = BuilderLeaf;
+	type Artifact = Bp<BuilderLeaf>;
 	type DynState = ();
+	type Err = Never;
 
-	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
-		BuilderLeaf{}
+	fn build(&self, _cache: &mut rc::SuperResolver)
+			-> Result<Self::Artifact, Never> {
+
+		Ok(Bp::new(BuilderLeaf{}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -57,11 +61,14 @@ struct SuperBuilder {
 }
 
 impl rc::SuperBuilder for SuperBuilder {
-	type Artifact = BuilderBuilder;
+	type Artifact = Bp<BuilderBuilder>;
 	type DynState = ();
+	type Err = Never;
 
-	fn build(&self, _cache: &mut rc::SuperResolver) -> Self::Artifact {
-		BuilderBuilder{}
+	fn build(&self, _cache: &mut rc::SuperResolver)
+			-> Result<Self::Artifact, Never> {
+
+		Ok(Bp::new(BuilderBuilder{}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -96,25 +103,37 @@ fn test_level_1() {
 	
 	
 	let mut cache = Cache::new();
-	
-	let leaf1 = cache_ap.get(&bb1);
+
+	let leaf1 = cache_ap.get(&bb1).unpack();
 	let leaf2 = Blueprint::new(BuilderLeaf{});
 	
 	//println!("BuilderLeaf: {:?}; {:?}", leaf1, leaf2);
 	
 	// Ensure same builder results in same artifact
-	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
-	
+	assert_eq!(
+		cache.get(&leaf1),
+		cache.get(&leaf1)
+	);
+
 	// Ensure different builder result in different artifacts
-	assert_ne!(cache.get(&leaf1), cache.get(&leaf2));
-	
-	assert_eq!(cache.get(&leaf1), cache.get(&cache_ap.get(&bb1)));
+	assert_ne!(
+		cache.get(&leaf1),
+		cache.get(&leaf2)
+	);
+
+	assert_eq!(
+		cache.get(&leaf1),
+		cache.get(&cache_ap.get(&bb1).unpack())
+	);
 
 
 	// Just clear builder builder
 	cache_ap.clear_all();
 
-	assert_ne!(cache.get(&leaf1), cache.get(&cache_ap.get(&bb1)))
+	assert_ne!(
+		cache.get(&leaf1),
+		cache.get(&cache_ap.get(&bb1).unpack())
+	);
 }
 
 
@@ -137,21 +156,36 @@ fn test_level_2() {
 	
 	
 	// Level 1 test
-	assert_ne!(cache.get(&cache_ap.get(&bb1)), cache.get(&leaf1));
-	
-	assert_eq!(cache.get(&cache_ap.get(&bb1)), cache.get(&cache_ap.get(&bb1)));
-	
+	assert_ne!(
+		cache.get(&cache_ap.get(&bb1).unpack()),
+		cache.get(&leaf1)
+	);
+
+	assert_eq!(
+		cache.get(&cache_ap.get(&bb1).unpack()),
+		cache.get(&cache_ap.get(&bb1).unpack())
+	);
+
 	// Level 2 test (need temporaries for recursive lookup)
-	let l1 = cache_ap.get(&sb1);
-	assert_ne!(cache.get(&cache_ap.get(&l1)), cache.get(&leaf1));
-	
-	let l1 = cache_ap.get(&sb1);
-	assert_ne!(cache.get(&cache_ap.get(&l1)), cache.get(&cache_ap.get(&bb1)));
-	
-	let l1 = cache_ap.get(&sb1);
-	let l2 = cache_ap.get(&sb1);
-	assert_eq!(cache.get(&cache_ap.get(&l1)), cache.get(&cache_ap.get(&l2)));
-	
+	let l1 = cache_ap.get(&sb1).unpack();
+	assert_ne!(
+		cache.get(&cache_ap.get(&l1).unpack()),
+		cache.get(&leaf1)
+	);
+
+	let l1 = cache_ap.get(&sb1).unpack();
+	assert_ne!(
+		cache.get(&cache_ap.get(&l1).unpack()),
+		cache.get(&cache_ap.get(&bb1).unpack())
+	);
+
+	let l1 = cache_ap.get(&sb1).unpack();
+	let l2 = cache_ap.get(&sb1).unpack();
+	assert_eq!(
+		cache.get(&cache_ap.get(&l1).unpack()),
+		cache.get(&cache_ap.get(&l2).unpack())
+	);
+
 }
 
 
@@ -175,17 +209,48 @@ fn test_level_2_diff_caches() {
 	
 	
 	// Level 1 test
-	assert_ne!(cache.get(&cache_ap1.get(&bb1)), cache.get(&leaf1));
-	
-	assert_eq!(cache.get(&cache_ap1.get(&bb1)), cache.get(&cache_ap1.get(&bb1)));
-	
+	assert_ne!(
+		cache.get(
+			&cache_ap1.get(&bb1).unpack()),
+		cache.get(&leaf1)
+	);
+
+	assert_eq!(
+		cache.get(
+			&cache_ap1.get(&bb1).unpack()),
+		cache.get(
+			&cache_ap1.get(&bb1).unpack())
+	);
+
 	// Level 2 test
-	assert_ne!(cache.get(&cache_ap1.get(&cache_ap2.get(&sb1))), cache.get(&leaf1));
-	
-	assert_ne!(cache.get(&cache_ap1.get(&cache_ap2.get(&sb1))), cache.get(&cache_ap1.get(&bb1)));
-	
-	assert_eq!(cache.get(&cache_ap1.get(&cache_ap2.get(&sb1))), cache.get(&cache_ap1.get(&cache_ap2.get(&sb1))));
-	
+	assert_ne!(
+		cache.get(
+			&cache_ap1.get(
+				&cache_ap2.get(&sb1).unpack()
+			).unpack()),
+		cache.get(&leaf1)
+	);
+
+	assert_ne!(
+		cache.get(
+			&cache_ap1.get(
+				&cache_ap2.get(&sb1).unpack()
+			).unpack()),
+		cache.get(
+			&cache_ap1.get(&bb1).unpack())
+	);
+
+	assert_eq!(
+		cache.get(
+			&cache_ap1.get(
+				&cache_ap2.get(&sb1).unpack()
+			).unpack()),
+		cache.get(
+			&cache_ap1.get(
+				&cache_ap2.get(&sb1).unpack()
+			).unpack())
+	);
+
 }
 
 

@@ -274,7 +274,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> ArtCan::Bin
+		) -> Result<ArtCan::Bin, B::Err>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
@@ -288,7 +288,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &B::Artifact
+		) -> Result<&B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
@@ -297,14 +297,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	}
 
 	/// Gets a mutable reference to the artifact of the given builder.
-	/// 
+	///
 	/// As opposed to `get_ref`, this method will invalidate all dependents of
 	/// the given builder.
 	///
 	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &mut B::Artifact
+		) -> Result<&mut B::Artifact, B::Err>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
 				AP: Promise<B, BCan>  {
@@ -317,7 +317,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> B::Artifact
+		) -> Result<B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
@@ -504,7 +504,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 	pub fn resolve<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
-		) -> ArtCan::Bin
+		) -> Result<ArtCan::Bin, B::Err>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
@@ -522,7 +522,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 	pub fn resolve_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> &B::Artifact
+		) -> Result<&B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
@@ -537,7 +537,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 	pub fn resolve_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
-		) -> B::Artifact
+		) -> Result<B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B::Artifact: Clone,
