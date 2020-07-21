@@ -14,12 +14,12 @@ static COUNTER: AtomicU32 = AtomicU32::new(0);
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Leaf {
+pub struct Leaf {
 	id: u32,
 }
 
 #[derive(Debug)]
-struct BuilderLeaf {
+pub struct BuilderLeaf {
 	// empty
 }
 
@@ -53,13 +53,13 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SimpleNode<Bin> {
+pub struct SimpleNode<Bin> {
 	id: u32,
 	leaf: Bin,
 }
 
 #[derive(Debug)]
-struct BuilderSimpleNode<AP> {
+pub struct BuilderSimpleNode<AP> {
 	leaf: AP,
 }
 
@@ -107,7 +107,7 @@ impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 
 
 #[derive(Debug, PartialEq, Eq)]
-struct ComplexNode<L,R> {
+pub struct ComplexNode<L,R> {
 	id: u32,
 	left: L,
 	right: R,
@@ -115,7 +115,7 @@ struct ComplexNode<L,R> {
 
 
 #[derive(Debug)]
-struct BuilderComplexNode<ApL,ApR,LB,RB> {
+pub struct BuilderComplexNode<ApL,ApR,LB,RB> {
 	left: ApL,
 	right: ApR,
 	_l_t: PhantomData<LB>,
@@ -170,7 +170,7 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for Bui
 	}
 }
 
-trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Never> where BCan: CanStrong {}
+pub trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Never> where BCan: CanStrong {}
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
@@ -199,7 +199,7 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 
 
 #[derive(Debug)]
-struct BuilderLeafBox {
+pub struct BuilderLeafBox {
 	// empty
 }
 

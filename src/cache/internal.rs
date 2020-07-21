@@ -27,61 +27,68 @@ use super::Resolver;
 
 
 
+/// Auxiliary function to casts an `Option` of `Box` of `Any` to `DynState`.
+///
+/// Must only be used with the correct `DynState`, or panics.
+///
+fn cast_dyn_state_ref<DynState: 'static>(v: Option<&Box<dyn Any>>) -> Option<&DynState> {
+	v.map(
+		|b| {
+			// Ensure value type
+			b.downcast_ref()
+				.expect("Cached Builder DynState is of invalid type")
+		}
+	)
+}
+
+
 /// Auxiliary struct fro the `Cache` containing an untyped (aka
 /// `dyn Any`) ArtifactPromise.
 ///
 #[derive(Clone, Debug)]
 pub struct BuilderEntry<BCan> {
 	builder: BCan,
-	id: BuilderId,
 }
 
-impl<BCan> BuilderEntry<BCan> {
+impl<BCan: CanStrong> BuilderEntry<BCan> {
 	pub fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
 			where AP: Promise<B, BCan> {
 
-		let id = ap.id();
-
 		BuilderEntry {
 			builder: ap.canned().can,
-			id,
 		}
 	}
 
 	pub fn id(&self) -> BuilderId {
-		self.id
+		BuilderId::new(self.builder.can_as_ptr())
 	}
 }
 
-impl<BCan> Hash for BuilderEntry<BCan> {
+impl<BCan: CanStrong> Hash for BuilderEntry<BCan> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
+		self.id().hash(state);
 	}
 }
 
-impl<BCan> PartialEq for BuilderEntry<BCan> {
+impl<BCan: CanStrong> PartialEq for BuilderEntry<BCan> {
 	fn eq(&self, other: &Self) -> bool {
-		self.id.eq(&other.id)
+		self.id().eq(&other.id())
 	}
 }
 
-impl<BCan> Eq for BuilderEntry<BCan> {
+impl<BCan: CanStrong> Eq for BuilderEntry<BCan> {
 }
 
-impl<BCan> Borrow<BuilderId> for BuilderEntry<BCan> {
-	fn borrow(&self) -> &BuilderId {
-		&self.id
-	}
-}
-
-impl<BCan> fmt::Pointer for BuilderEntry<BCan> {
+impl<BCan: CanStrong> fmt::Pointer for BuilderEntry<BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", self.id.0)
+		writeln!(f, "{:p}", self.id().0)
 	}
 }
 
 
 
+/// The raw cache. Only for internal use.
+///
 pub struct RawCache<
 	ArtCan,
 	BCan,
@@ -99,7 +106,7 @@ pub struct RawCache<
 
 	/// Keeps a weak reference to all known builder ids that are those used in
 	/// `cache` and/or dyn_state.
-	know_builders: HashMap<BuilderId, <BCan as CanStrong>::CanWeak>,
+	known_builders: HashMap<BuilderId, <BCan as CanStrong>::CanWeak>,
 
 	/// The doctor for error diagnostics.
 	#[cfg(feature = "diagnostics")]
@@ -136,7 +143,7 @@ cfg_if! {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
 					dependents: HashMap::new(),
-					know_builders: HashMap::new(),
+					known_builders: HashMap::new(),
 
 					doctor,
 				}
@@ -165,25 +172,11 @@ cfg_if! {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
 					dependents: HashMap::new(),
-					know_builders: HashMap::new(),
+					known_builders: HashMap::new(),
 				}
 			}
 		}
 	}
-}
-
-/// Auxiliary function to casts an `Option` of `Box` of `Any` to `DynState`.
-///
-/// Must only be used with the correct `DynState`, or panics.
-///
-fn cast_dyn_state_ref<DynState: 'static>(v: Option<&Box<dyn Any>>) -> Option<&DynState> {
-	v.map(
-		|b| {
-			// Ensure value type
-			b.downcast_ref()
-				.expect("Cached Builder DynState is of invalid type")
-		}
-	)
 }
 
 impl<ArtCan, BCan> RawCache<ArtCan, BCan>
@@ -551,7 +544,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		let bid = promise.id();
 
 		// Remove weak reference if no builder exists
-		self.know_builders.remove(&bid);
+		self.known_builders.remove(&bid);
 		
 		self.artifacts.remove(&bid);
 		self.dyn_states.remove(&bid);
@@ -576,7 +569,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.artifacts.clear();
 		self.dyn_states.clear();
 		self.dependents.clear();
-		self.know_builders.clear();
+		self.known_builders.clear();
 
 		#[cfg(feature = "diagnostics")]
 		self.doctor.clear();
@@ -636,7 +629,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	///
 	pub fn garbage_collection(&mut self) {
 
-		let unreachable_builder_ids: Vec<_> = self.know_builders.iter()
+		let unreachable_builder_ids: Vec<_> = self.known_builders.iter()
 			.filter(|(_bid, weak)| BCan::upgrade_from_weak(&weak).is_none())
 			.map(|(bid, _weak)| *bid)
 			.collect();
@@ -644,19 +637,19 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		for bid in unreachable_builder_ids {
 			self.invalidate_any(&bid);
 			self.dyn_states.remove(&bid);
-			self.know_builders.remove(&bid);
+			self.known_builders.remove(&bid);
 		}
 	}
 
 	/// Remove any weak builder reference that is no longer used.
 	fn cleanup_unused_weak_refs(&mut self) {
 
-		let unused_builder_ids: Vec<_> = self.know_builders.keys().filter(|b|
+		let unused_builder_ids: Vec<_> = self.known_builders.keys().filter(|b|
 			!(self.artifacts.contains_key(*b) || self.dyn_states.contains_key(*b))
 		).cloned().collect();
 
 		for bid in unused_builder_ids {
-			self.know_builders.remove(&bid);
+			self.known_builders.remove(&bid);
 		}
 	}
 
@@ -671,7 +664,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		let bid = promise.id();
 
-		self.know_builders.entry(bid).or_insert_with(
+		self.known_builders.entry(bid).or_insert_with(
 			|| promise.canned().can.downgrade()
 		);
 	}
@@ -679,7 +672,75 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Returns the number of currently kept artifact promises.
 	///
 	pub fn number_of_known_builders(&self) -> usize {
-		self.know_builders.len()
+		self.known_builders.len()
 	}
 }
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+	use crate::Blueprint;
+	use crate::test::*;
+	use std::rc::Rc;
+
+	fn init_entry() -> (BuilderEntry<Rc<dyn Any>>, BuilderId) {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::<_, Rc<dyn Any>>::new(builder);
+		let id = bp.id();
+
+		(BuilderEntry::new(&bp), id)
+	}
+	fn init_two_entries() -> (BuilderEntry<Rc<dyn Any>>, BuilderEntry<Rc<dyn Any>>) {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::<_, Rc<dyn Any>>::new(builder);
+
+		(
+			BuilderEntry::new(&bp),
+			BuilderEntry::new(&bp.clone()),
+		)
+	}
+
+	#[test]
+	fn builder_entry_id() {
+		let (entry, id) = init_entry();
+
+		assert_eq!(entry.id(), id);
+	}
+
+	#[test]
+	fn builder_entry_eq() {
+		let (entry_one, entry_two) = init_two_entries();
+
+		assert_eq!(entry_one.id(), entry_two.id());
+
+		assert_eq!(entry_one, entry_two);
+	}
+
+	#[test]
+	fn builder_entry_ne() {
+		let (entry_one, _) = init_entry();
+		let (entry_two, _) = init_entry();
+
+		assert_ne!(entry_one.id(), entry_two.id());
+
+		assert_ne!(entry_one, entry_two);
+	}
+
+	#[test]
+	fn builder_entry_hash() {
+		let (entry, id) = init_entry();
+
+		let mut hasher1 = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
+
+		entry.hash(&mut hasher1);
+		id.hash(&mut hasher2);
+
+		assert_eq!(hasher1.finish(), hasher2.finish());
+	}
+
+}
+
+
 
