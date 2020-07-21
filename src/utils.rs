@@ -34,6 +34,11 @@ use std::marker::PhantomData;
 /// only been manually invalidate) or having artifacts which are still usable
 /// after any (or all) dependency has been invalidated.
 ///
+/// # Panics
+///
+/// This builder panics in its `build` method if the first build of its inner
+/// builder failed and the `default_value` has been set to `None`.
+///
 #[derive(Debug, Clone)]
 pub struct RedeemingBuilder<AP, B: ?Sized, T> {
 	inner: AP,
@@ -90,20 +95,21 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
 			-> Result<Self::Artifact, Never> {
-/*
+
 		let value = resolver.resolve_cloned(&self.inner);
 
 		if let Ok(v) = value {
 			*resolver.my_state() = Some(v.clone());
 
 			// Return value
-			v
+			Ok(v)
 
 		} else {
-			// Try to return cached value. Panics if very first build fails.
-			resolver.my_state().clone().unwrap()
+			// Try to return cached value. Panics if very first build fails and
+			// no default value was provided.
+			// This is documented behavior.
+			Ok(resolver.my_state().clone().unwrap())
 		}
-		*/ todo!()
 	}
 
 	fn init_dyn_state(&self) -> Self::DynState {
