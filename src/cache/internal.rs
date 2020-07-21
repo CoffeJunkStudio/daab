@@ -2,7 +2,6 @@
 
 
 use std::any::Any;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -27,21 +26,6 @@ use super::Resolver;
 
 
 
-/// Auxiliary function to casts an `Option` of `Box` of `Any` to `DynState`.
-///
-/// Must only be used with the correct `DynState`, or panics.
-///
-fn cast_dyn_state_ref<DynState: 'static>(v: Option<&Box<dyn Any>>) -> Option<&DynState> {
-	v.map(
-		|b| {
-			// Ensure value type
-			b.downcast_ref()
-				.expect("Cached Builder DynState is of invalid type")
-		}
-	)
-}
-
-
 /// Auxiliary struct fro the `Cache` containing an untyped (aka
 /// `dyn Any`) ArtifactPromise.
 ///
@@ -51,6 +35,8 @@ pub struct BuilderEntry<BCan> {
 }
 
 impl<BCan: CanStrong> BuilderEntry<BCan> {
+	/// Constructs a new entry from given Promise.
+	///
 	pub fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
 			where AP: Promise<B, BCan> {
 
@@ -59,6 +45,10 @@ impl<BCan: CanStrong> BuilderEntry<BCan> {
 		}
 	}
 
+	/// Returns id of this entry.
+	///
+	/// The id uniquely identifies the underlying builder.
+	///
 	pub fn id(&self) -> BuilderId {
 		BuilderId::new(self.builder.can_as_ptr())
 	}
@@ -89,23 +79,54 @@ impl<BCan: CanStrong> fmt::Pointer for BuilderEntry<BCan> {
 
 /// The raw cache. Only for internal use.
 ///
+/// This struct is used by the "outer" Cache and Resolver.
+/// Both require some of the internal-only functions of this type to provide the
+/// outer interface.
+///
+/// When ever an id is used in any mapping here, its builder must be present in
+/// the `known_builders` map.
+///
 pub struct RawCache<
 	ArtCan,
 	BCan,
 	#[cfg(feature = "diagnostics")] Doc: ?Sized = dyn Doctor<ArtCan, BCan>
 > where BCan: CanStrong {
 
-	/// Maps Builder-Capsules to their Artifact value
+	/// Maps builder id to their Artifact can.
+	///
 	artifacts: HashMap<BuilderId, ArtCan>,
 
-	/// Maps Builder-Capsules to their DynState value
+	/// Maps builder id to their DynState value.
+	///
 	dyn_states: HashMap<BuilderId, Box<dyn Any>>,
 
-	/// Tracks the direct promise dependents of each promise
+	/// Tracks the set of direct depending builders of each builder, by id.
+	///
+	/// A dependent builder is one that requires the former's artifact to
+	/// produce its own. This maps for each builder (key), which other
+	/// builders (value) depend on it. I.e. it maps what artifacts needs to be
+	/// invalidate if the former one becomes invalid.
+	///
+	/// A reverse mapping is provided via `dependencies`. Both must be kept in
+	/// sync.
+	///
 	dependents: HashMap<BuilderId, HashSet<BuilderId>>,
 
-	/// Keeps a weak reference to all known builder ids that are those used in
-	/// `cache` and/or dyn_state.
+	/// Tracks the set of direct dependencies of any builders, by id.
+	///
+	/// A dependency is a requirement for an builders artifact. This maps for
+	/// each builder (key), which other builders (value) have been used to
+	/// produce the former's artifact. I.e. it maps what dependencies must be
+	/// removed if the former one becomes invalid (because that it does no
+	/// longer depend on it).
+	///
+	/// This is the reverse of `dependents`. Both must be kept in sync.
+	///
+	dependencies: HashMap<BuilderId, HashSet<BuilderId>>,
+
+	/// Keeps a weak reference to all known builders that are those which are
+	/// used as builder id in any other mapping.
+	///
 	known_builders: HashMap<BuilderId, <BCan as CanStrong>::CanWeak>,
 
 	/// The doctor for error diagnostics.
@@ -143,6 +164,7 @@ cfg_if! {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
 					dependents: HashMap::new(),
+					dependencies: HashMap::new(),
 					known_builders: HashMap::new(),
 
 					doctor,
@@ -172,6 +194,7 @@ cfg_if! {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
 					dependents: HashMap::new(),
+					dependencies: HashMap::new(),
 					known_builders: HashMap::new(),
 				}
 			}
@@ -184,6 +207,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Record the dependency of `user` upon `promise`.
 	///
+	/// The `user` must be already listed in `known_builders`.
+	///
 	pub(crate) fn track_dependency<AP, B: ?Sized>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
@@ -195,132 +220,217 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Debug + 'static,
 				AP: Promise<B, BCan> {
 
+		// Ensure that the given promise is known.
+		// User must exist already by contract.
+		self.make_builder_known(promise);
+		debug_assert!(self.is_builder_known_by_id(user.id()),
+			"Tracking dependency for unknown builder");
 
+		// Map dependents (`promise` has new dependent `user`)
 		self.dependents.entry(promise.id())
 			.or_insert_with(HashSet::new)
 			.insert(user.id());
 
+		// Revers mapping (`user` depends on `promise`)
+		self.dependencies.entry(user.id())
+			.or_insert_with(HashSet::new)
+			.insert(promise.id());
+
+		// Diagnostics
 		#[cfg(feature = "diagnostics")]
 		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
 
 	}
 
 
-	/// Get and cast the stored artifact if it exists.
+	/// Tests whether there exists an artifact for the given promise in this
+	/// cache.
 	///
-	pub fn lookup<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	/// This function is equivalent to calling `is_some()` on any of the
+	/// `lookup*` functions, but this one does no cast and has fewer
+	/// generic requirements.
+	///
+	pub fn contains_artifact<AP: ?Sized, B: ?Sized>(
 			&self,
-			builder: &AP
+			promise: &AP
+		) -> bool
+			where
+				AP: Promise<B, BCan> {
+
+		self.artifacts.contains_key(&promise.id())
+	}
+
+	/// Tests whether the artifact or dyn state of the given builder is
+	/// recorded in this cache.
+	///
+	pub fn is_builder_known<AP: ?Sized, B: ?Sized>(
+			&self,
+			promise: &AP
+		) -> bool
+			where
+				AP: Promise<B, BCan> {
+
+		self.is_builder_known_by_id(promise.id())
+	}
+
+	/// Auxillary function to test whether given builder id is contained in
+	/// `known_builders`.
+	///
+	fn is_builder_known_by_id(
+			&self,
+			bid: BuilderId,
+		) -> bool {
+
+		self.known_builders.contains_key(&bid)
+	}
+
+	/// Get the stored artifact by its bin if it exists.
+	///
+	pub fn lookup<AP, B: ?Sized>(
+			&self,
+			promise: &AP
 		) -> Option<ArtCan::Bin>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
-		self.artifacts.get(&builder.id()).map(
+		self.artifacts.get(&promise.id()).map(
 			|ent| {
+				// Ensure that the builder to the artifact is known
+				debug_assert!(self.is_builder_known(promise),
+					"Found artifact, but the builder is not known.");
+
 				// Ensure value type
 				ent.clone().downcast_can()
-					.expect("Cached Builder Artifact is of invalid type")
+					.expect("Cached artifact is of invalid type")
 			}
 		)
 	}
 
-	/// Get and cast the stored artifact if it exists.
+	/// Get and stored artifact by reference if it exists.
 	///
-	pub fn lookup_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_ref<AP, B: ?Sized>(
 			&self,
-			builder: &AP
+			promise: &AP
 		) -> Option<&B::Artifact>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
-		self.artifacts.get(&builder.id()).map(
+		self.artifacts.get(&promise.id()).map(
 			|ent| {
+				// Ensure that the builder to the artifact is known
+				debug_assert!(self.is_builder_known(promise),
+					"Found artifact, but the builder is not known.");
+
 				// Ensure value type
 				ent.downcast_can_ref()
-					.expect("Cached Builder Artifact is of invalid type")
+					.expect("Cached artifact is of invalid type")
 			}
 		)
 	}
 
-	/// Get and cast the stored artifact if it exists.
+	/// Get the stored artifact by mutable reference if it exists.
 	///
-	pub fn lookup_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_mut<AP, B: ?Sized>(
 			&mut self,
-			builder: &AP
+			promise: &AP
 		) -> Option<&mut B::Artifact>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRefMut<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
-		let id = builder.id();
+		let id = promise.id();
 
 		// Since the user chose to use `mut` instead of `ref` he intends to
 		// modify the artifact consequently invalidating all dependent builders
 		self.invalidate_dependents(&id);
+
+		// If an artifact exists, ensure that the builder is known too.
+		debug_assert!(
+			!self.contains_artifact(promise)
+				|| self.is_builder_known(promise),
+			"Found artifact, but the builder is not known."
+		);
 
 		// Get the artifact from the hash map ensuring integrity
 		self.artifacts.get_mut(&id).map(
 			|ent| {
 				// Ensure value type
 				ent.downcast_can_mut()
-					.expect("Cached Builder Artifact is of invalid type")
+					.expect("Cached artifact is of invalid type")
 			}
 		)
 	}
 
-	/// Get and cast a clone of the stored artifact if it exists.
+	/// Get a clone of the stored artifact if it exists.
 	///
-	pub fn lookup_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_cloned<AP, B: ?Sized>(
 			&self,
-			builder: &AP
+			promise: &AP
 		) -> Option<B::Artifact>
 			where
-				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
+				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
-		self.lookup_ref(builder).cloned()
+		self.lookup_ref(promise).cloned()
 	}
 
 
 	/// Build and insert the artifact for `promise`.
 	///
-	fn build<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	/// This is an internal function.
+	///
+	/// There must be no artifact in cache for the given builder.
+	///
+	fn build<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&mut ArtCan, B::Err>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
+		// Ensure that there yet is no artifact for that builder in cache
+		debug_assert!(!self.contains_artifact(promise));
 
+		// Ensure that the promise is known, because we will add its dynamic
+		// state & (possibly) its artifact.
 		self.make_builder_known(promise);
 
 		// Ensure there is a DynState
 		self.ensure_dyn_state(promise);
 
+		// Create Resolver prerequisites
 		let ent = BuilderEntry::new(promise);
-
 		#[cfg(feature = "diagnostics")]
 		let diag_builder = BuilderHandle::new(promise.clone());
 
+		// Create a temporary resolver
+		let mut resolver = Resolver {
+			user: &ent,
+			cache: self,
+			#[cfg(feature = "diagnostics")]
+			diag_builder: &diag_builder,
+			_b: PhantomData,
+		};
+
+		// Construct the artifact
 		let art_res = promise.builder().builder.build(
-			&mut Resolver {
-				user: &ent,
-				cache: self,
-				#[cfg(feature = "diagnostics")]
-				diag_builder: &diag_builder,
-				_b: PhantomData,
-			},
+			&mut resolver,
 		);
 
 		// Add artifact to cache if it was successful, otherwise just return
@@ -328,6 +438,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		art_res.map(move |art| {
 			let art_bin = ArtCan::into_bin(art);
 
+			// diagnostics
 			cfg_if!(
 				if #[cfg(feature = "diagnostics")] {
 					let handle = ArtifactHandle::new(art_bin);
@@ -341,7 +452,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				}
 			);
 
-			// keep id
+			// keep the id
 			let id = promise.id();
 
 			// Insert/Replace artifact
@@ -349,6 +460,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				id,
 				art_can,
 			);
+			//.expect_none("Built an artifact while it was still in cache");
 
 			// Just unwrap, since we just inserted it
 			self.artifacts.get_mut(&id).unwrap()
@@ -357,13 +469,14 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	}
 
 
-	/// Gets the artifact of the given builder.
+	/// Gets the bin with the artifact of the given builder.
 	///
-	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<ArtCan::Bin, B::Err>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				AP: Promise<B, BCan>  {
@@ -375,40 +488,44 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		} else {
 			self.build(promise).map(|art| {
 				art.clone().downcast_can()
-				.expect("Cached Builder Artifact is of invalid type")
+				.expect("Just build artifact is of invalid type")
 			})
 		}
 	}
 
-	/// Gets a reference of the artifact of the given builder.
+	/// Gets a reference to the artifact of the given builder.
 	///
-	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_ref<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&B::Artifact, B::Err>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
 
 		if self.lookup_ref(promise).is_some() {
+			// Here, requires a second look up because due to the build in the
+			// else case, an `if let Some(_)` won't work due to lifetime issues
 			Ok(self.lookup_ref(promise).unwrap())
 
 		} else {
 			self.build(promise).map(|art| {
 				art.downcast_can_ref()
-				.expect("Cached Builder Artifact is of invalid type")
+				.expect("Just build artifact is of invalid type")
 			})
 		}
 	}
 
-	/// Gets a mutable reference of the artifact of the given builder.
+	/// Gets a mutable reference to the artifact of the given builder.
 	///
-	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&mut B::Artifact, B::Err>
 			where
+				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRefMut<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
@@ -421,20 +538,21 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		} else {
 			self.build(promise).map(|art| {
 				art.downcast_can_mut()
-				.expect("Cached Builder Artifact is of invalid type")
+				.expect("Just build artifact is of invalid type")
 			})
 		}
 	}
 
 	/// Get a clone of the artifact of the given builder.
 	///
-	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_cloned<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<B::Artifact, B::Err>
 			where
-				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
+				ArtCan: CanRef<B::Artifact>,
 				AP: Promise<B, BCan>  {
 
 		self.get_ref(promise).map(|art| {
@@ -444,14 +562,14 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 
 	/// Ensure given dyn state exists and return it by reference.
-	/// 
+	///
 	fn ensure_dyn_state<AP, B: ?Sized>(
 			&mut self, promise: &AP
 		) -> &mut B::DynState
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan> {
-		
+
 		self.dyn_states
 			.entry(promise.id())
 			// Access entry or insert it with builder's default
@@ -460,29 +578,65 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			)
 			// Ensure state type, it's safe because we have the builder's AP
 			.downcast_mut()
-			.expect("Cached Builder DynState is of invalid type")
+			.expect("Cached dyn state is of invalid type")
 	}
 
 
-	/// Get and cast the dynamic static of given builder id.
-	/// 
-	/// **This function is only intendet for internal use, where the builder id
-	/// has been carfully chosen**.
+	/// Auxillary to get and cast the dynamic state of given builder id by
+	/// mutable reference.
 	///
-	/// `T` must be the type of the respective dynamic state of `bid`,
+	/// **This function is only intended for internal use, where the builder id
+	/// has been carefully chosen**.
+	///
+	/// `T` must be the correct type of the dynamic state of `bid`,
 	/// or this panics.
 	///
-	pub(crate) fn get_dyn_state_cast<T: 'static>(
+	pub(crate) fn dyn_state_cast_mut<T: 'static>(
 			&mut self,
-			bid: &BuilderId
+			bid: BuilderId
 		) -> Option<&mut T> {
 
-		self.dyn_states.get_mut(bid)
+		// If dyn state exists, ensure that the builder to the dyn state is
+		// known too.
+		debug_assert!(
+			!self.dyn_states.contains_key(&bid)
+			|| self.is_builder_known_by_id(bid),
+				"Found dyn state, but the builder is not known.");
+
+		self.dyn_states.get_mut(&bid)
 		.map(
 			|b| {
+
 				// Ensure state type, might fail if given wrong argument
 				b.downcast_mut()
-					.expect("Cached Builder DynState is of invalid type")
+					.expect("Cached dyn state is of invalid type")
+			}
+		)
+	}
+
+	/// Auxillary to get and cast the dynamic state of given builder id by
+	/// shared reference.
+	///
+	/// **This function is only intended for internal use, where the builder id
+	/// has been carefully chosen**.
+	///
+	/// `T` must be the correct type of the dynamic state of `bid`,
+	/// or this panics.
+	///
+	pub(crate) fn dyn_state_cast_ref<T: 'static> (
+			&self,
+			bid: BuilderId
+		) -> Option<&T> {
+
+		self.dyn_states.get(&bid).map(
+			|b| {
+				// Ensure that the builder to the dyn state is known
+				debug_assert!(self.is_builder_known_by_id(bid),
+					"Found dyn state, but the builder is not known.");
+
+				// Ensure value type
+				b.downcast_ref()
+					.expect("Cached dyn state is of invalid type")
 			}
 		)
 	}
@@ -497,7 +651,10 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				AP: Promise<B, BCan> {
 
 		// Since the user choses `mut` he intends to modify the dyn state this
-		// requires the rebuild the artifact
+		// requires the rebuild the artifact.
+		// It is reasonable to invalidate it early as the cache is mutable
+		// bounded through the returned reference, so no intermediate rebuild
+		// can happen.
 		self.invalidate(promise);
 
 		self.ensure_dyn_state(promise)
@@ -515,11 +672,11 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		// Here, no invalidation, because we do not allow the user to modify the
 		// dyn state.
 
-		// Coherce ref to shared (`&`) and return
+		// Coerce to shared ref (`&`) and return
 		self.ensure_dyn_state(promise)
 	}
 
-	/// Gets the dynamic state of the given builder.
+	/// Gets the dynamic state of the given builder, if it exists.
 	///
 	pub fn get_dyn_state<AP, B: ?Sized>(
 			&self, promise: &AP
@@ -528,11 +685,11 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Builder<ArtCan, BCan> + 'static,
 				AP: Promise<B, BCan>  {
 
-		cast_dyn_state_ref(self.dyn_states.get(&promise.id()))
+		self.dyn_state_cast_ref(promise.id())
 	}
-	
-	/// Deletes the artifact and the dynamic state of the given builder.
-	/// 
+
+	/// Deletes the artifact and dynamic state of the given builder.
+	///
 	pub fn purge<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
@@ -543,23 +700,27 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		let bid = promise.id();
 
-		// Remove weak reference if no builder exists
+		// Remove weak reference of builder since we will remove all references
+		// to it
 		self.known_builders.remove(&bid);
-		
+
+		// Purge artifact & dyn state
 		self.artifacts.remove(&bid);
 		self.dyn_states.remove(&bid);
-		
-		self.invalidate(promise);
+
+		// Invalidate dependents
+		self.invalidate_by_id(&promise.id());
+
+		#[cfg(feature = "diagnostics")]
+		self.doctor.invalidate(&BuilderHandle::new(promise));
 	}
 
-	/// Deletes all dynamic states of this cache.
+	/// Deletes all artifacts of this cache.
 	///
 	pub fn clear_artifacts(&mut self) {
 		self.artifacts.clear();
 		self.dependents.clear();
-
-		// Remove weak reference for those without dyn state
-		self.cleanup_unused_weak_refs();
+		self.dependencies.clear();
 	}
 
 	/// Clears the entire cache including all kept promise, artifacts and
@@ -569,6 +730,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.artifacts.clear();
 		self.dyn_states.clear();
 		self.dependents.clear();
+		self.dependencies.clear();
 		self.known_builders.clear();
 
 		#[cfg(feature = "diagnostics")]
@@ -578,18 +740,51 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Auxiliary invalidation function using an untyped (aka `dyn Any`)
 	/// `BuilderId`.
 	///
-	fn invalidate_any(&mut self, builder: &BuilderId) {
-		// TODO could be done in a iterative loop instead of recursion
-		// However, this would be more significant, if the building would be
-		// done in a loop too.
+	fn invalidate_by_id(&mut self, builder: &BuilderId) {
 
-		if let Some(set) = self.dependents.remove(builder) {
-			for dep in set {
-				self.invalidate_any(&dep);
+		// Remember already processed builders, because they have no more
+		// dependencies mapping.
+		let mut processed = HashSet::new();
+		processed.insert(*builder);
+
+		// Stack of builder to be invalidated.
+		let mut pending = Vec::new();
+		pending.push(*builder);
+
+
+		while let Some(bid) = pending.pop() {
+			// Mark builder as processed
+			processed.insert(bid);
+
+			// Get all dependents and invalidate them too
+			if let Some(set) = self.dependents.remove(&bid) {
+				for dep in set {
+					pending.push(dep);
+				}
 			}
+
+			// Remove dependencies too
+			if let Some(set) = self.dependencies.remove(&bid) {
+				for dep in set {
+					// For each dependency ensure that either it had been
+					// processed before, or it has a counterpart mapping.
+					// In the latter case, remove the dependent relation.
+					let found = processed.contains(&dep)
+						|| self.dependents.get_mut(&dep)
+							.expect("Mapped dependency has no dependents counterpart map.")
+							.remove(&bid);
+
+					// Notice the above code has important side-effects, thus
+					// only the return value is tested in the assert macro.
+					debug_assert!(found);
+				}
+			}
+
+
+			self.artifacts.remove(&bid);
+
 		}
 
-		self.artifacts.remove(builder);
 	}
 
 	/// Auxiliary invalidation function using an untyped (aka `dyn Any`)
@@ -598,7 +793,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	fn invalidate_dependents(&mut self, builder: &BuilderId) {
 		if let Some(set) = self.dependents.remove(builder) {
 			for dep in set {
-				self.invalidate_any(&dep);
+				self.invalidate_by_id(&dep);
 			}
 		}
 	}
@@ -611,17 +806,15 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			promise: &AP
 		)
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Debug + 'static,
 				AP: Promise<B, BCan>  {
 
 
-		self.invalidate_any(&promise.id());
+		self.invalidate_by_id(&promise.id());
 
 		#[cfg(feature = "diagnostics")]
 		self.doctor.invalidate(&BuilderHandle::new(promise));
 
-		// Remove weak reference for those without dyn_state
-		self.cleanup_unused_weak_refs();
 	}
 
 	/// Invalidates all builders and their dyn state which can not be builded
@@ -630,32 +823,22 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	pub fn garbage_collection(&mut self) {
 
 		let unreachable_builder_ids: Vec<_> = self.known_builders.iter()
+			// Only retain those which can't be upgraded (i.e. no strong
+			// references exist any more).
 			.filter(|(_bid, weak)| BCan::upgrade_from_weak(&weak).is_none())
 			.map(|(bid, _weak)| *bid)
 			.collect();
 
 		for bid in unreachable_builder_ids {
-			self.invalidate_any(&bid);
+			self.invalidate_by_id(&bid);
 			self.dyn_states.remove(&bid);
-			self.known_builders.remove(&bid);
-		}
-	}
-
-	/// Remove any weak builder reference that is no longer used.
-	fn cleanup_unused_weak_refs(&mut self) {
-
-		let unused_builder_ids: Vec<_> = self.known_builders.keys().filter(|b|
-			!(self.artifacts.contains_key(*b) || self.dyn_states.contains_key(*b))
-		).cloned().collect();
-
-		for bid in unused_builder_ids {
 			self.known_builders.remove(&bid);
 		}
 	}
 
 	/// Enlist given builder as known builder, that is to keep its weak
 	/// reference while it is used in `cache` or `dyn_state`.
-	fn make_builder_known<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	fn make_builder_known<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)

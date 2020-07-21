@@ -552,7 +552,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 	pub fn my_state(&mut self) -> &mut Doc {
 		// The unwrap is safe here, because Cache ensures that a DynState exists
 		// before we comme here.
-		self.cache.get_dyn_state_cast(&self.user.id()).unwrap()
+		self.cache.dyn_state_cast_mut(self.user.id()).unwrap()
 	}
 
 	/// Get the dynamic static of given artifact promise.
