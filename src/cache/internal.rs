@@ -90,7 +90,8 @@ pub struct RawCache<
 	ArtCan,
 	BCan,
 	#[cfg(feature = "diagnostics")] Doc: ?Sized = dyn Doctor<ArtCan, BCan>
-> where BCan: CanStrong {
+> where
+		BCan: CanStrong {
 
 	/// Maps builder id to their Artifact can.
 	///
@@ -203,7 +204,9 @@ cfg_if! {
 }
 
 impl<ArtCan, BCan> RawCache<ArtCan, BCan>
-		where ArtCan: Debug, BCan: CanStrong + Debug {
+		where
+			ArtCan: Debug,
+			BCan: CanStrong {
 
 	/// Record the dependency of `user` upon `promise`.
 	///
@@ -956,6 +959,10 @@ mod test {
 		}
 	}
 
+	fn ptr<T>(r: &T) -> *const T {
+		r as *const T
+	}
+
 	#[test]
 	fn contains_artifact() {
 		let builder = BuilderLeaf::new();
@@ -1150,10 +1157,13 @@ mod test {
 		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
 
 		assert!(!cache.contains_artifact(&bp));
+		assert!(!cache.dyn_states.contains_key(&bp.id()));
 
 		let value_1 = cache.build(&bp).unpack().clone().downcast_can().unwrap();
 
 		assert!(cache.contains_artifact(&bp));
+		assert!(cache.dyn_states.contains_key(&bp.id()));
+
 		assert!(Rc::ptr_eq(&value_1, &cache.lookup(&bp).unwrap()));
 
 		cache.invalidate(&bp);
@@ -1166,9 +1176,695 @@ mod test {
 		assert!(!Rc::ptr_eq(&value_1, &value_2));
 	}
 
-	// track_depenedncy
+	#[test]
+	#[should_panic]
+	fn build_double_build() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		// inverse assertion
+		if cache.contains_artifact(&bp) {return}
+
+		cache.build(&bp).unpack();
+
+		// inverse assertion
+		if !cache.contains_artifact(&bp) {return}
+
+		// Now there is already an artifact, no new may be build.
+		// This build should panic
+		cache.build(&bp).unpack();
+	}
+
+	#[test]
+	fn build_err() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		// Set the builder to fail
+		*cache.dyn_state_mut(&bp) = false;
+
+		// Building must fail
+		assert!(matches!(cache.build(&bp), Err(())));
+
+		// No artifact will be recorded
+		assert!(!cache.contains_artifact(&bp));
+
+		// And it continues to fail
+		assert!(matches!(cache.build(&bp), Err(())));
+		assert!(!cache.contains_artifact(&bp));
+
+		// Set the builder to produce an artifact
+		*cache.dyn_state_mut(&bp) = true;
+
+		// Now it will work
+		assert!(cache.build(&bp).is_ok());
+		assert!(cache.contains_artifact(&bp));
+
+	}
+
+	#[test]
+	fn get() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		let art = cache.get(&bp).unpack();
+		assert_eq!(Some(art), cache.lookup(&bp));
+
+		let art = cache.get(&bp).unpack();
+		assert!(Rc::ptr_eq(&art, &cache.lookup(&bp).unwrap()));
+
+		// Invalidate to retrieve a fresh artifact
+		cache.invalidate(&bp);
+
+		let art_n = cache.get(&bp).unpack();
+		assert_ne!(art, art_n);
+		assert!(!Rc::ptr_eq(&art, &art_n));
+
+		assert_eq!(Some(art_n), cache.lookup(&bp));
+	}
+
+	#[test]
+	fn get_ref() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		let art = cache.get_ref(&bp).unpack().clone();
+		assert_eq!(Some(&art), cache.lookup_ref(&bp));
+
+		let art_ptr = ptr(cache.get_ref(&bp).unpack());
+		assert_eq!(art_ptr, ptr(cache.lookup_ref(&bp).unwrap()));
+
+		let old_art = cache.get(&bp).unpack();
+		assert_eq!(ptr(old_art.as_ref()), art_ptr);
+
+		// Invalidate to retrieve a fresh artifact
+		cache.invalidate(&bp);
+
+		let art_n_ptr = ptr(cache.get_ref(&bp).unpack());
+		assert_ne!(old_art.as_ref(), unsafe{&(*art_n_ptr)});
+		assert_ne!(ptr(old_art.as_ref()), art_n_ptr);
+
+		assert_eq!(Some(art_n_ptr), cache.lookup_ref(&bp).map(|l| ptr(l)));
+	}
+
+	#[test]
+	fn get_mut() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_box();
+		let cache: &mut RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		let mut art = cache.get_mut(&bp).unpack().clone();
+		assert_eq!(Some(&mut art), cache.lookup_mut(&bp));
+
+		let art_ptr = ptr(cache.get_mut(&bp).unpack());
+		assert_eq!(art_ptr, ptr(cache.lookup_mut(&bp).unwrap()));
+
+		let mut old_art = cache.get_cloned(&bp).unpack();
+
+		// Invalidate to retrieve a fresh artifact
+		cache.invalidate(&bp);
+
+		let art_n = cache.get_mut(&bp).unpack();
+		assert_ne!(&mut old_art, art_n);
+	}
+
+	#[test]
+	fn get_cloned() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_box();
+		let cache: &mut RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		let art = cache.get_cloned(&bp).unpack();
+		assert_eq!(Some(art), cache.lookup_cloned(&bp));
+
+		let art = cache.get_cloned(&bp).unpack();
+		assert_eq!(art, cache.lookup_cloned(&bp).unwrap());
+
+		let old_art = cache.get_cloned(&bp).unpack();
+
+		// Invalidate to retrieve a fresh artifact
+		cache.invalidate(&bp);
+
+		let art_n = cache.get_cloned(&bp).unpack();
+		assert_ne!(old_art, art_n);
+	}
+
+	#[test]
+	fn ensure_dyn_state() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		let value = cache.ensure_dyn_state(&bp).clone();
+		assert_eq!(value, *cache.dyn_state(&bp));
+
+		// `ensure` may not change the value!
+		assert_eq!(value, *cache.ensure_dyn_state(&bp));
+
+		// Set the builder to fail
+		let value = false;
+		// This is different from the initial value
+		assert_ne!(value, *cache.dyn_state(&bp));
+		// Change dyn state
+		*cache.dyn_state_mut(&bp) = value;
+
+		// `ensure` may not change the value!
+		assert_eq!(value, *cache.ensure_dyn_state(&bp));
+
+	}
+
+	#[test]
+	fn dyn_state_cast_mut() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		assert!(cache.dyn_state_cast_mut::<bool>(bp.id()).is_none());
+
+		cache.ensure_dyn_state(&bp);
+
+		assert!(cache.dyn_state_cast_mut::<bool>(bp.id()).is_some());
+
+	}
+
+	#[test]
+	fn dyn_state_cast_ref() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		assert!(cache.dyn_state_cast_ref::<bool>(bp.id()).is_none());
+
+		cache.ensure_dyn_state(&bp);
+
+		assert!(cache.dyn_state_cast_ref::<bool>(bp.id()).is_some());
+	}
+
+	#[test]
+	fn dyn_state() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		let dyn_state_ptr = ptr(cache.dyn_state(&bp));
+
+		assert_eq!(dyn_state_ptr, ptr(cache.dyn_state(&bp)));
+	}
+
+	#[test]
+	fn dyn_state_mut() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		let dyn_state_ptr = ptr(cache.dyn_state_mut(&bp));
+
+		assert_eq!(dyn_state_ptr, ptr(cache.dyn_state_mut(&bp)));
+	}
+
+	#[test]
+	fn get_dyn_state() {
+		let builder = BuilderLeafFallible::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.dyn_states.get(&bp.id()).is_none());
+
+		assert!(cache.get_dyn_state(&bp).is_none());
+
+		let dyn_state_ptr = ptr(cache.ensure_dyn_state(&bp));
+
+		assert_eq!(Some(dyn_state_ptr), cache.get_dyn_state(&bp).map(|d| ptr(d)));
+	}
+
+	#[test]
+	fn purge() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		cache.get(&bp).unwrap();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+		cache.purge(&bp);
+
+		assert!(!cache.is_builder_known(&bp));
+		assert!(!cache.contains_artifact(&bp));
+		assert!(!cache.get_dyn_state(&bp).is_some());
+
+	}
+
+	#[test]
+	fn purge_deps() {
+		let base_bp = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
 
 
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		cache.purge(&mid_bp);
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(!cache.is_builder_known(&mid_bp));
+		assert!(!cache.contains_artifact(&mid_bp));
+		assert!(!cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(!cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+	}
+
+	#[test]
+	fn clear_artifacts() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		cache.get(&bp).unwrap();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+		cache.clear_artifacts();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(!cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+	}
+
+	#[test]
+	fn clear_artifacts_deps() {
+		let base_bp = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		cache.clear_artifacts();
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(!cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(!cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(!cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+	}
+
+	#[test]
+	fn clear_all() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		cache.get(&bp).unwrap();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+		cache.clear_all();
+
+		assert!(!cache.is_builder_known(&bp));
+		assert!(!cache.contains_artifact(&bp));
+		assert!(!cache.get_dyn_state(&bp).is_some());
+
+	}
+
+	#[test]
+	fn clear_all_deps() {
+		let base_bp = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		cache.clear_all();
+
+		assert!(!cache.is_builder_known(&base_bp));
+		assert!(!cache.contains_artifact(&base_bp));
+		assert!(!cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(!cache.is_builder_known(&mid_bp));
+		assert!(!cache.contains_artifact(&mid_bp));
+		assert!(!cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(!cache.is_builder_known(&end_bp));
+		assert!(!cache.contains_artifact(&end_bp));
+		assert!(!cache.get_dyn_state(&end_bp).is_some());
+	}
+
+	#[test]
+	fn invalidate() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		cache.get(&bp).unwrap();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+		cache.invalidate(&bp);
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(!cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+
+	}
+
+	#[test]
+	fn invalidate_deps() {
+		let base_bp = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		cache.invalidate(&mid_bp);
+
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(!cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(!cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+	}
+
+	#[test]
+	fn invalidate_deps_complex() {
+		let base_bp_1 = Blueprint::new(BuilderLeafFallible::new());
+		let base_bp_2 = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp_1.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+
+		// Build base layout
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp_1));
+		assert!(cache.contains_artifact(&base_bp_1));
+		assert!(cache.get_dyn_state(&base_bp_1).is_some());
+
+		assert!(!cache.is_builder_known(&base_bp_2));
+		assert!(!cache.contains_artifact(&base_bp_2));
+		assert!(!cache.get_dyn_state(&base_bp_2).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		// Change dependency from base 1 to base 2
+		// This must invalidate mid & end
+		cache.dyn_state_mut(&mid_bp).0 = base_bp_2.clone();
+
+		assert!(cache.is_builder_known(&base_bp_1));
+		assert!(cache.contains_artifact(&base_bp_1));
+		assert!(cache.get_dyn_state(&base_bp_1).is_some());
+
+		assert!(!cache.is_builder_known(&base_bp_2));
+		assert!(!cache.contains_artifact(&base_bp_2));
+		assert!(!cache.get_dyn_state(&base_bp_2).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(!cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(!cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		// Build secondary layout
+		cache.get(&end_bp).unwrap();
+
+		assert!(cache.is_builder_known(&base_bp_1));
+		assert!(cache.contains_artifact(&base_bp_1));
+		assert!(cache.get_dyn_state(&base_bp_1).is_some());
+
+		assert!(cache.is_builder_known(&base_bp_2));
+		assert!(cache.contains_artifact(&base_bp_2));
+		assert!(cache.get_dyn_state(&base_bp_2).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+
+		// Only invalidate base 1 which has no more dependents!
+		cache.invalidate(&base_bp_1);
+
+		assert!(cache.is_builder_known(&base_bp_1));
+		assert!(!cache.contains_artifact(&base_bp_1));
+		assert!(cache.get_dyn_state(&base_bp_1).is_some());
+
+		assert!(cache.is_builder_known(&base_bp_2));
+		assert!(cache.contains_artifact(&base_bp_2));
+		assert!(cache.get_dyn_state(&base_bp_2).is_some());
+
+		assert!(cache.is_builder_known(&mid_bp));
+		assert!(cache.contains_artifact(&mid_bp));
+		assert!(cache.get_dyn_state(&mid_bp).is_some());
+
+		assert!(cache.is_builder_known(&end_bp));
+		assert!(cache.contains_artifact(&end_bp));
+		assert!(cache.get_dyn_state(&end_bp).is_some());
+	}
+
+	#[test]
+	fn garbage_collection() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		cache.get(&bp).unwrap();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+		assert_eq!(1, cache.number_of_known_builders());
+
+		// While references are still reachable, GC may not change anything
+		cache.garbage_collection();
+
+		assert!(cache.is_builder_known(&bp));
+		assert!(cache.contains_artifact(&bp));
+		assert!(cache.get_dyn_state(&bp).is_some());
+		assert_eq!(1, cache.number_of_known_builders());
+
+		// Drop reference
+		drop(bp);
+
+		// Do GC, which now must remove the dropped reference
+		cache.garbage_collection();
+
+		assert_eq!(0, cache.number_of_known_builders());
+	}
+
+	#[test]
+	fn garbage_collection_deps() {
+		let base_bp = Blueprint::new(BuilderLeafFallible::new());
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(base_bp.clone());
+		let mid_bp = Blueprint::new(builder);
+
+		let builder = BuilderVariableNode::new::<Rc<dyn Any>, Rc<dyn Any>>(mid_bp.clone());
+		let end_bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+
+		cache.get(&end_bp).unwrap();
+
+		assert_eq!(3, cache.number_of_known_builders());
+
+		// Remove to mid & end
+		drop(mid_bp);
+		drop(end_bp);
+
+		// Clean only mid & end
+		cache.garbage_collection();
+		// BuilderVariableNode requires additional GC cycles
+		// because it stores APs in its dyn state!
+		cache.garbage_collection();
+
+		assert_eq!(1, cache.number_of_known_builders());
+
+		// base is still reachable and must be retained
+		assert!(cache.is_builder_known(&base_bp));
+		assert!(cache.contains_artifact(&base_bp));
+		assert!(cache.get_dyn_state(&base_bp).is_some());
+	}
 
 }
 

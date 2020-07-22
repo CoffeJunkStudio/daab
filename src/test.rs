@@ -52,6 +52,44 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 }
 
 
+#[derive(Debug)]
+pub struct BuilderLeafFallible {
+	// empty
+}
+
+impl BuilderLeafFallible {
+	pub fn new() -> Self {
+		Self {
+			// empty
+		}
+	}
+}
+
+impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeafFallible
+	where
+		ArtCan: Debug,
+		BCan: CanStrong {
+
+	type Artifact = Leaf;
+
+	type DynState = bool;
+
+	type Err = ();
+
+	fn build(&self, cache: &mut Resolver<ArtCan,BCan,bool>) -> Result<Self::Artifact, ()> {
+		if *cache.my_state() {
+			Ok(Leaf{
+				id: COUNTER.fetch_add(1, Ordering::SeqCst),
+			})
+		} else {
+			Err(())
+		}
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		true
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleNode<Bin> {
 	id: u32,
@@ -102,6 +140,69 @@ impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
+	}
+}
+
+#[derive(Debug)]
+pub struct BuilderVariableNode<B,AP> {
+	leaf: AP,
+	_b: PhantomData<B>,
+}
+
+impl<B, AP> BuilderVariableNode<B, AP> {
+
+	pub fn new<ArtCan, BCan: Debug>(leaf: AP) -> Self
+		where
+			B: Builder<ArtCan, BCan>,
+			B::Err: Into<()>,
+			AP: Promise<B, BCan> + Clone,
+			ArtCan: Clone,
+			ArtCan: CanSized<B::Artifact>,
+			BCan: CanStrong, {
+
+		Self {
+			leaf,
+			_b: PhantomData,
+		}
+	}
+}
+
+impl<B, AP, ArtCan, BCan> Builder<ArtCan, BCan> for BuilderVariableNode<B, AP>
+	where
+		B: Builder<ArtCan, BCan>,
+		(): From<B::Err>, //aka, B::Err: Into<()>,
+		AP: Promise<B, BCan> + Clone,
+		ArtCan: Clone,
+		ArtCan: CanSized<B::Artifact>,
+		BCan: CanStrong,
+		{
+
+	type Artifact = SimpleNode<ArtCan::Bin>;
+
+	type DynState = (AP, bool);
+
+	type Err = ();
+
+	fn build(&self, cache: &mut Resolver<ArtCan,BCan,(AP,bool)>)
+		-> Result<Self::Artifact, ()> {
+
+		let dyn_ap = cache.my_state().0.clone();
+		let leaf = cache.resolve(&dyn_ap)?;
+
+		if cache.my_state().1 {
+			Ok(SimpleNode{
+				id: COUNTER.fetch_add(1, Ordering::SeqCst),
+				leaf
+			})
+		} else {
+			Err(())
+		}
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		(
+			self.leaf.clone(),
+			true,
+		)
 	}
 }
 

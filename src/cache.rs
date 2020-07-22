@@ -467,15 +467,19 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 /// This dependency information is used for correct invalidation of dependants
 /// on cache invalidation via `Cache::invalidate()`.
 ///
-pub struct Resolver<'a, ArtCan, BCan: CanStrong, Doc = ()> {
+pub struct Resolver<'a, ArtCan, BCan: CanStrong, DynState = ()> {
 	user: &'a BuilderEntry<BCan>,
 	cache: &'a mut RawCache<ArtCan, BCan>,
 	#[cfg(feature = "diagnostics")]
 	diag_builder: &'a BuilderHandle<BCan>,
-	_b: PhantomData<Doc>,
+	_b: PhantomData<DynState>,
 }
 
-impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtCan, BCan, Doc> {
+impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
+	where
+		ArtCan: Debug,
+		BCan: CanStrong,
+		DynState: 'static, {
 
 	fn track_dependency<AP, B: ?Sized>(
 			&mut self,
@@ -549,7 +553,7 @@ impl<'a, ArtCan: Debug, BCan: CanStrong + Debug, Doc: 'static> Resolver<'a, ArtC
 
 	/// Returns the dynamic state of the owning builder.
 	///
-	pub fn my_state(&mut self) -> &mut Doc {
+	pub fn my_state(&mut self) -> &mut DynState {
 		// The unwrap is safe here, because Cache ensures that a DynState exists
 		// before we comme here.
 		self.cache.dyn_state_cast_mut(self.user.id()).unwrap()
