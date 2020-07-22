@@ -249,6 +249,16 @@ impl<BCan> Eq for BuilderHandle<BCan> {
 ///
 pub struct NoopDoctor;
 
+impl NoopDoctor {
+	/// Create a new dummy doctor
+	///
+	/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
+	///
+	pub fn new() -> Self {
+		Self::default()
+	}
+}
+
 impl<ArtCan, BCan> Doctor<ArtCan, BCan> for NoopDoctor {
 	// Use default impl
 }

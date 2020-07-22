@@ -352,6 +352,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		// Since the user chose to use `mut` instead of `ref` he intends to
 		// modify the artifact consequently invalidating all dependent builders
+		// TODO reconsider where the automatic invalidation is such a good idea
 		self.invalidate_dependents(&id);
 
 		// If an artifact exists, ensure that the builder is known too.
@@ -569,6 +570,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan> {
+
+		self.make_builder_known(promise);
 
 		self.dyn_states
 			.entry(promise.id())
@@ -863,9 +866,11 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::prelude::*;
 	use crate::Blueprint;
 	use crate::test::*;
 	use std::rc::Rc;
+	use std::sync::Arc;
 
 	fn init_entry() -> (BuilderEntry<Rc<dyn Any>>, BuilderId) {
 		let builder = BuilderLeaf::new();
@@ -922,6 +927,248 @@ mod test {
 
 		assert_eq!(hasher1.finish(), hasher2.finish());
 	}
+
+
+	cfg_if! {
+		if #[cfg(feature = "diagnostics")] {
+			use crate::diagnostics::NoopDoctor;
+			fn new_cache_rc() -> RawCache<Rc<dyn Any>, Rc<dyn Any>, NoopDoctor> {
+				RawCache::new_with_doctor(NoopDoctor::new())
+			}
+		}
+		else {
+			fn new_cache_rc() -> RawCache<Rc<dyn Any>, Rc<dyn Any>> {
+				RawCache::new()
+			}
+		}
+	}
+
+	cfg_if! {
+		if #[cfg(feature = "diagnostics")] {
+			fn new_cache_box() -> RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>, NoopDoctor> {
+				RawCache::new_with_doctor(NoopDoctor::new())
+			}
+		}
+		else {
+			fn new_cache_box() -> RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>> {
+				RawCache::new()
+			}
+		}
+	}
+
+	#[test]
+	fn contains_artifact() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+		//let id = bp.id();
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		cache.build(&bp).unpack();
+
+		assert!(cache.contains_artifact(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(!cache.contains_artifact(&bp));
+	}
+
+	#[test]
+	fn is_builder_known() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+		//let id = bp.id();
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.is_builder_known(&bp));
+
+		cache.build(&bp).unpack();
+
+		assert!(cache.is_builder_known(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(cache.is_builder_known(&bp));
+
+		cache.purge(&bp);
+
+		assert!(!cache.is_builder_known(&bp));
+	}
+
+	#[test]
+	fn is_builder_known_by_id() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+		let id = bp.id();
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.is_builder_known_by_id(id));
+
+		cache.dyn_state(&bp);
+
+		assert!(cache.is_builder_known_by_id(id));
+
+		cache.purge(&bp);
+
+		assert!(!cache.is_builder_known_by_id(id));
+
+		cache.invalidate(&bp);
+
+		assert!(!cache.is_builder_known_by_id(id));
+
+		cache.lookup(&bp);
+
+		assert!(!cache.is_builder_known_by_id(id));
+	}
+
+	#[test]
+	fn lookup() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.lookup(&bp).is_none());
+
+		cache.dyn_state(&bp);
+
+		assert!(cache.lookup(&bp).is_none());
+
+		let value = cache.build(&bp).unpack().clone().downcast_can().unwrap();
+
+		assert!(cache.lookup(&bp).is_some());
+		assert_eq!(cache.lookup(&bp), cache.lookup(&bp));
+		assert!(Rc::ptr_eq(&value, &cache.lookup(&bp).unwrap()));
+		assert_eq!(Some(value), cache.lookup(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(cache.lookup(&bp).is_none());
+	}
+
+	#[test]
+	fn lookup_ref() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(cache.lookup_ref(&bp).is_none());
+
+		cache.dyn_state(&bp);
+
+		assert!(cache.lookup_ref(&bp).is_none());
+
+		let value = cache.build(&bp).unpack().clone();
+		let value = value.downcast_ref().unwrap();
+
+		assert!(cache.lookup_ref(&bp).is_some());
+		assert_eq!(cache.lookup_ref(&bp), cache.lookup_ref(&bp));
+		assert_eq!(
+			cache.lookup_ref(&bp).unwrap() as *const Leaf,
+			cache.lookup_ref(&bp).unwrap() as *const Leaf,
+		);
+		assert_eq!(Some(value), cache.lookup_ref(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(cache.lookup_ref(&bp).is_none());
+	}
+
+	#[test]
+	fn lookup_mut() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_box();
+		let cache: &mut RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>> = &mut cache_owned;
+
+		assert!(cache.lookup_mut(&bp).is_none());
+
+		cache.dyn_state(&bp);
+
+		assert!(cache.lookup_mut(&bp).is_none());
+
+		let mut value = cache.build(&bp).unpack().downcast_mut::<Leaf>().unwrap().clone();
+
+		assert!(cache.lookup_mut(&bp).is_some());
+		assert_eq!(
+			cache.lookup_mut(&bp).unwrap().clone(),
+			cache.lookup_mut(&bp).unwrap().clone(),
+		);
+		assert_eq!(
+			cache.lookup_mut(&bp).unwrap() as *const Leaf,
+			cache.lookup_mut(&bp).unwrap() as *const Leaf,
+		);
+		assert_eq!(Some(&mut value), cache.lookup_mut(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(cache.lookup_mut(&bp).is_none());
+	}
+
+	#[test]
+	fn lookup_cloned() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_box();
+		let cache: &mut RawCache<Box<dyn Any>, Arc<dyn Any + Send + Sync>> = &mut cache_owned;
+
+		assert!(cache.lookup_cloned(&bp).is_none());
+
+		cache.dyn_state(&bp);
+
+		assert!(cache.lookup_cloned(&bp).is_none());
+
+		let value = cache.build(&bp).unpack().downcast_ref::<Leaf>().unwrap().clone();
+
+		assert!(cache.lookup_cloned(&bp).is_some());
+		assert_eq!(cache.lookup_cloned(&bp), cache.lookup_cloned(&bp));
+		assert_eq!(Some(value), cache.lookup_cloned(&bp));
+
+		cache.invalidate(&bp);
+
+		assert!(cache.lookup_cloned(&bp).is_none());
+	}
+
+	#[test]
+	fn build() {
+		let builder = BuilderLeaf::new();
+		let bp = Blueprint::new(builder);
+
+		let mut cache_owned = new_cache_rc();
+		let cache: &mut RawCache<Rc<dyn Any>, Rc<dyn Any>> = &mut cache_owned;
+
+		assert!(!cache.contains_artifact(&bp));
+
+		let value_1 = cache.build(&bp).unpack().clone().downcast_can().unwrap();
+
+		assert!(cache.contains_artifact(&bp));
+		assert!(Rc::ptr_eq(&value_1, &cache.lookup(&bp).unwrap()));
+
+		cache.invalidate(&bp);
+		assert!(!cache.contains_artifact(&bp));
+		let value_2 = cache.build(&bp).unpack().clone().downcast_can().unwrap();
+		assert!(cache.contains_artifact(&bp));
+
+		assert!(Rc::ptr_eq(&value_2, &cache.lookup(&bp).unwrap()));
+
+		assert!(!Rc::ptr_eq(&value_1, &value_2));
+	}
+
+	// track_depenedncy
+
+
 
 }
 
