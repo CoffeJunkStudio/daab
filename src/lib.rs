@@ -60,6 +60,8 @@
 //!
 //! ## Detailed Concept
 //!
+//! **TODO**
+//!
 //! The basic principal on which this crate is build, suggests two levels of
 //! abstraction, the builder level and the artifact level. Each builder type has
 //! one specific artifact type. The builders are represented by any struct,

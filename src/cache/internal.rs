@@ -314,7 +314,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		)
 	}
 
-	/// Get and stored artifact by reference if it exists.
+	/// Get the stored artifact by reference if it exists.
 	///
 	pub fn lookup_ref<AP, B: ?Sized>(
 			&self,

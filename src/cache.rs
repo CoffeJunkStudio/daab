@@ -1,4 +1,26 @@
-
+//!
+//! Artifact caching structures
+//!
+//! This module contains the [`Cache`] and its pendant for Builders the
+//! [`Resolver`]. The cache is the entrance point to retrieve the Artifacts from
+//! Builders. It ensures the correct building of Artifacts if not known yet
+//! and keeping them to allow looking them up repeatedly, without rebuilding
+//! them.
+//!
+//! Notice: both types here are generic over their Artifact-Can (`ArtCan`) and
+//! Builder-Can (`BCan`), for details about this advanced concept refer to
+//! [crate description], for details about Cans see the [`canning`] module,
+//! for simplified aliases (those with preset `ArtCan` & `BCan`) see any of the
+//! alias modules: [`rc`], [`arc`], [`boxed`].
+//!
+//![`Cache`]: struct.Cache.html
+//![`Resolver`]: struct.Resolver.html
+//![crate description]: ../index.html#detailed-concept
+//![`canning`]: ../canning/index.html
+//![`rc`]: ../rc/index.html
+//![`arc`]: ../arc/index.html
+//![`boxed`]: ../boxed/index.html
+//!
 
 
 use std::fmt;
@@ -23,36 +45,117 @@ use internal::RawCache;
 
 
 
-/// Structure for caching and looking up artifacts.
+/// Structure for building, caching and dependency tracking of artifacts.
 ///
 /// The `Cache` is the central structure of this crate. It helps to
-/// avoid dependency duplication when multiple `Builder`s depend on the same
-/// artifact.
+/// avoid dependency duplication when multiple Builders depend on the same
+/// Artifact.
 ///
 /// Since all `Builder`s in the context of this crate are supposed to be wrapped
-/// within `ArtifactPromise`s, the `Cache` is the only way of acquiring
+/// within `Blueprint`, the `Cache` is the only way of acquiring
 /// an artifact in the first place.
 ///
 /// Notice In the debugging version (when the **`diagnostics`** feature is active),
-/// this struct contains a debuger `Doctor`, which
+/// this struct contains a debugger `Doctor`, which
 /// allows run-time inspection of various events.
 /// In order to store it, the **`diagnostics`** `Cache` is generic to
 /// some `Doctor`.
-/// The `new()` method then returns a `Cache<NoopDoctor>`
-/// and `new_with_doctor()` returns some `Cache<Doc>`.
+/// The `new` method then returns a `Cache<NoopDoctor>`
+/// and `new_with_doctor` returns some `Cache<T>`.
 ///
-/// Only an `Cache<Doc>` with `Doc: Sized` can be store in variables.
+/// Only an `Cache<T>` with `T: Sized` can be store in variables.
 /// However, since most of the code does not care about the concrete
-/// `Doctor` the default generic is `dyn Doctor`, on which all other methods are
+/// Doctor the default generic is `dyn Doctor`, on which all other methods are
 /// defined.
 /// An `Cache<dyn Doctor>` can not be stored, but it can be passed
 /// on by reference (e.g. as `&mut Cache`). This prevents the use of
-/// additional generics in **`diagnostics`** mode, and allows to easier achive
+/// additional generics in **`diagnostics`** mode, and allows to easier achieve
 /// compatibility between **`diagnostics`** and non-**`diagnostics`** mode.
-/// To ease conversion between `Cache<Doc>` and
+/// To ease conversion between `Cache<T>` and
 /// `Cache<dyn Doctor>` (aka `Cache`), all creatable
-/// `Cache`s (i.e. not `Cache<dyn Doctor>`) implement `DerefMut`
+/// `Cache<T>`s (with `T: Sized`) implement `DerefMut`
 /// to `Cache<dyn Doctor>`.
+///
+///
+///
+/// ## Artifact Accessors
+///
+/// The `Cache` provides the following set of accessors:
+///
+/// Basically there are the `get*` and the `lookup*` methods. The former will
+/// create the artifact if it does not exist, but may return a build-error.
+/// The latter directly returns `Some` Artifact or `None` if it is not in cache.
+///
+/// Each `get*` and `lookup*`, come in 4 different variants depending offering
+/// different access semantics to the artifact.
+/// - `Bin<T>` variant (`get` & `lookup`) returns a clone of the respective Bin
+///    of the Artifact that is e.g. an `Rc<T>` when using `Rc<dyn Any>` as Can.
+/// - `&T` variant (`get_ref` & `lookup_ref`) returns a reference to artifact
+///   within this `Cache`.
+/// - `&mut T` variant (`get_mut` & `lookup_mut`) returns a mutable reference
+///   to artifact within this `Cache`.
+///
+/// |           |`Bin<T>`| `&T`       | `&mut T`   | `T`           |
+/// |-----------|--------|------------|------------|---------------|
+/// |`Option`   |`lookup`|`lookup_ref`|`lookup_mut`|`lookup_cloned`|
+/// |`Result`   |`get`   |`get_ref`   |`get_mut`   |`get_cloned`   |
+/// |usable with|`rc`,`arc`,`ap`|`rc`,`arc`,`boxed`|`boxed`|`rc`,`arc`,`boxed`|
+///
+/// _`Bin<T>` means `<ArtCan as Can<T>>::Bin` \
+/// e.g. `Rc<T>` for types in `rc` module_
+///
+///
+///
+/// ## Caching Duration
+///
+/// Since this struct is a cache, it might keep the artifacts indefinitely,
+/// which could cause memory-leak-like issues. In the following the precise
+/// duration for storing Artifacts, dynamic states and Builders are described.
+///
+/// The `dyn_state` and `dyn_state_mut` will create a dynamic state for the
+/// respective Builder if it does not exist yet in the `Cache`, thus
+/// allocating memory.
+///
+/// Similarly, `get`, `get_ref`, `get_mut`, and `get_cloned` will produce the
+/// Artifact with all dependent Artifacts, it will also allocate the dynamic
+/// state for all Builders of those Artifacts, if it does not exist yet.
+///
+/// On the other hand, `get_dyn_state`, `lookup`, `lookup_ref`, `lookup_mut`,
+/// and `lookup_cloned` methods will never add anything to the `Cache`.
+///
+/// With [`invalidate`], a specific Artifact can be removed from the `Cache`,
+/// which will invalidate (means remove) all Artifacts that depended on it.
+/// But this will never remove any dynamic state.
+///
+/// Whenever there is dynamic state or Artifact of an Builder in the cache,
+/// the respective Builder will be kept too in a "weak" Can, that is
+/// `std::rc::Weak<dyn Any>` when using the `rc` module. This will however keep
+/// the entire memory of the respective Builder allocated, even when all
+/// "strong" Cans are out of scope.
+///
+/// In order to remove also the dynamic state and thus the Builder Can form the
+/// Cache there exists the [`purge`] method. However, it will only purge the
+/// given builder, and invalidate the depending Artifact.
+///
+/// If there are (multiple) Builders go out of scope, they will not be removed
+/// form this `Cache`. In order to remove _unreachable_ Builders including their
+/// Artifacts and dynamic state, there is the [`garbage_collection`] method,
+/// which will go through all the cached "weak" Builders and purge all that
+/// became unreachable.
+///
+/// For diagnostics there are the [`is_builder_known`] and
+/// [`number_of_known_builders`] methods.
+///
+/// To clear all Artifacts there is the [`clear_artifacts`] method. And to
+/// purge all Builders from the `Cache` there is the [`clear_all`] method.
+///
+/// [`invalidate`]: struct.Cache.html#method.invalidate
+/// [`purge`]: struct.Cache.html#method.purge
+/// [`garbage_collection`]: struct.Cache.html#method.garbage_collection
+/// [`clear_artifacts`]: struct.Cache.html#method.clear_artifacts
+/// [`clear_all`]: struct.Cache.html#method.clear_all
+/// [`is_builder_known`]: struct.Cache.html#method.is_builder_known
+/// [`number_of_known_builders`]: struct.Cache.html#method.number_of_known_builders
 ///
 pub struct Cache<
 	ArtCan,
@@ -70,7 +173,7 @@ pub struct Cache<
 
 /// The ownable and storable variant of the Cache.
 ///
-/// This is a simple type-def to Cache, which gurantees independent of
+/// This is a simple type-def to Cache, which guarantees independent of
 /// whether the `diagnostics` feature is enabled or not that this type is
 /// storable as owned value.
 ///
@@ -83,7 +186,7 @@ pub type CacheOwned<ArtCan, BCan> =
 
 /// The ownable and storable variant of the Cache.
 ///
-/// This is a simple type-def to Cache, which gurantees independent of
+/// This is a simple type-def to Cache, which guarantees independent of
 /// whether the `diagnostics` feature is enabled or not that this type is
 /// storable as owned value.
 ///
@@ -200,7 +303,45 @@ cfg_if! {
 
 impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 
-	/// Get and cast the stored artifact if it exists.
+	/// Tests whether the artifact or dynamic state of the given builder is
+	/// recorded in this cache.
+	///
+	/// If this function returns `true`, the artifact or dynamic state or both
+	/// are kept in this `Cache` and additionally a "weak" Can to the Builder.
+	/// That is `rc::Weak<dyn Any>` when using the `rc` module.
+	/// If this function returns `false`, it is guaranteed that none of the
+	/// above are kept in this `Cache`.
+	///
+	/// [`number_of_known_builders`] returns the amount of Builders for,
+	/// which this methods returns `true`.
+	///
+	/// [`number_of_known_builders`]: struct.Cache.html#method.number_of_known_builders
+	///
+	pub fn is_builder_known<AP: ?Sized, B: ?Sized>(
+			&self,
+			promise: &AP
+		) -> bool
+			where
+				AP: Promise<B, BCan> {
+
+		self.inner.is_builder_known(promise)
+	}
+
+	/// Get the stored Artifact in its Bin, if it exists.
+	///
+	/// Returns the Artifact in its Bin. That is an `Rc<B::Artifact>` when using
+	/// the `rc` module. The Bin is useful to share an identical artifact
+	/// or one that is not `Clone` when an owned value is required or lifetime
+	/// errors occur using [`lookup_ref`].
+	///
+	/// This method will not attempt to build the Artifact if it does not exist
+	/// already, instead `None` will be returned then.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
 	///
 	pub fn lookup<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
@@ -214,7 +355,32 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup(promise)
 	}
 
-	/// Get and cast the stored artifact if it exists.
+	/// Get the stored Artifact by reference, if it exists.
+	///
+	/// Returns the Artifact as reference into this `Cache`. The reference is
+	/// useful to access artifact for short time, as it dose not incur any
+	/// cloning overhead, thus it is the cheapest way to access an Artifact, and
+	/// should be preferred where ever possible.
+	///
+	/// When an owned value is required instead or lifetime issues arise,
+	/// [`lookup`] and [`lookup_cloned`] are alternatives, which return a clone
+	/// of the Artifact Bin or of the Artifact itself, respectively.
+	///
+	/// Also notice, that using some special `ArtCan`s such as using the
+	/// [`boxed`] module there also exists a [`lookup_mut`] for mutable access
+	/// to the artifact stored within this `Cache`.
+	///
+	/// This method will not attempt to build the Artifact if it does not exist
+	/// already, instead `None` will be returned then.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`lookup`]: struct.Cache.html#method.lookup
+	/// [`boxed`]: ../boxed/index.html
+	/// [`lookup_cloned`]: struct.Cache.html#method.lookup_cloned
+	/// [`lookup_mut`]: struct.Cache.html#method.lookup_mut
 	///
 	pub fn lookup_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
@@ -227,8 +393,41 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_ref(promise)
 	}
 
-	/// Get and cast the stored artifact if it exists.
+	/// Get the stored Artifact by reference, if it exists.
 	///
+	/// Returns the Artifact as mutable reference into this `Cache`.
+	/// The mutable reference might be useful to access the Artifact in place
+	/// to mutate it.
+	///
+	/// Note: If mutation is not required [`lookup_ref`] should be
+	/// preferred. Also if mutation is conditional, first a shared reference
+	/// should be acquired via [`lookup_ref`] to test the condition and only
+	/// when necessary a mutable reference should be acquired.
+	///
+	/// **Currently, when using this method, all artifacts which depended on
+	/// accessed one will be invalidate!**
+	///
+	/// This method will not attempt to build the Artifact if it does not exist
+	/// already, instead `None` will be returned then.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// # Deprecated
+	///
+	/// This function is not actually deprecated, but should be only used with
+	/// care, because currently, this function will invalidate all depending
+	/// artifacts, **but this is subject to change**.
+	///
+	/// Therefore, **this method must be considered unstable!** The semantic of
+	/// this function might change in a breaking way within a non-breaking
+	/// version update!
+	///
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
+	///
+	#[deprecated = "Unstable, might be subject to breaking changes in a non-breaking version update, use with care"]
 	pub fn lookup_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
 			promise: &AP
@@ -240,7 +439,20 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_mut(promise)
 	}
 
-	/// Get and cast a clone of the stored artifact if it exists.
+	/// Get a clone of the stored Artifact, if it exists.
+	///
+	/// Returns a clone of the Artifact. The clone is useful when cloning the
+	/// Artifact itself is viable and an owned value is required or lifetime
+	/// errors occur using [`lookup_ref`].
+	///
+	/// This method will not attempt to build the Artifact if it does not exist
+	/// already, instead `None` will be returned then.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
 	///
 	pub fn lookup_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self,
@@ -446,6 +658,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// no more artifact promises to a used builder, the `garbage_collection`
 	/// method might also reduce this number.
 	///
+	/// [`is_builder_known`] can test whether individual Builders are stored in
+	/// this cache. `number_of_known_builders` returns exactly how many
+	/// Builders exist for which `is_builder_known` returns `true`.
+	///
+	/// [`is_builder_known`]: struct.Cache.html#method.is_builder_known
+	///
 	pub fn number_of_known_builders(&self) -> usize {
 		self.inner.number_of_known_builders()
 	}
@@ -559,9 +777,16 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 	}
 
 	/// Get the dynamic static of given artifact promise.
-	/// 
+	///
 	/// See `my_state` to return the dynamic state of the current builder.
 	///
+	/// # Deprecated
+	///
+	/// This method is deprecated because it might mislead using the dynamic
+	/// state to pass data between Builders, for which the Artifact should be
+	/// used.
+	///
+	#[deprecated = "will be remove, use the artifact to pass data between builders"]
 	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 		&mut self,
 		promise: &AP

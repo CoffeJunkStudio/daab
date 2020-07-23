@@ -82,6 +82,11 @@ cfg_if::cfg_if!{
 	}
 }
 
+/// The ownable and storable variant of the Cache.
+///
+pub type CacheOwned = crate::CacheOwned<CanType, CanType>;
+
+
 
 /// Allows to resolve any `Blueprint` into its artifact-builder.
 ///

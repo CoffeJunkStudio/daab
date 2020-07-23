@@ -73,6 +73,11 @@ cfg_if::cfg_if!{
 	}
 }
 
+/// The ownable and storable variant of the Cache.
+///
+pub type CacheOwned = crate::CacheOwned<CanType, BuilderCan>;
+
+
 
 /// Functional builder wrapper.
 ///
