@@ -94,12 +94,14 @@ use internal::RawCache;
 ///   within this `Cache`.
 /// - `&mut T` variant (`get_mut` & `lookup_mut`) returns a mutable reference
 ///   to artifact within this `Cache`.
+/// - `T` variant (`lookup_cloned` & `get_cloned`) returns a clone of the
+///   Artifact itself.
 ///
 /// |           |`Bin<T>`| `&T`       | `&mut T`   | `T`           |
 /// |-----------|--------|------------|------------|---------------|
 /// |`Option`   |`lookup`|`lookup_ref`|`lookup_mut`|`lookup_cloned`|
 /// |`Result`   |`get`   |`get_ref`   |`get_mut`   |`get_cloned`   |
-/// |usable with|`rc`,`arc`,`ap`|`rc`,`arc`,`boxed`|`boxed`|`rc`,`arc`,`boxed`|
+/// |usable with|`rc`,`arc`|`rc`,`arc`,`boxed`|`boxed`|`rc`,`arc`,`boxed`|
 ///
 /// _`Bin<T>` means `<ArtCan as Can<T>>::Bin` \
 /// e.g. `Rc<T>` for types in `rc` module_

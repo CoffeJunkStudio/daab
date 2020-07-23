@@ -36,6 +36,8 @@ pub type BuilderBinType<T> = crate::rc::BinType<T>;
 ///
 pub type BuilderCan = crate::rc::CanType;
 
+/// Wraps a Builder as a blueprint for its artifact from the `Cache`.
+///
 pub type Blueprint<B> = crate::rc::Blueprint<B>;
 
 /// The unsized variant of `Blueprint`.

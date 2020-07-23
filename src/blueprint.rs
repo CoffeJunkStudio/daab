@@ -1,4 +1,52 @@
-
+//!
+//! Blueprint wrapper for Builders.
+//!
+//! This module provides the opaque [`Blueprint`] and [`BlueprintUnsized`]
+//! wrappers, which are used to wrap Builders for using with the [`Cache`].
+//! This module also contains the [`Promise`] trait which is an abstraction
+//! over `Blueprint` and `BlueprintUnsized` used as trait bound in the
+//! `Cache`.
+//!
+//! The point of the `Blueprint` wrappers is that users can not interact with
+//! a Builder once it has been wrap in a `Blueprint`, and only use it to
+//! interact with the `Cache`. Thus enforcing encapsulation.
+//!
+//! `Blueprint`s typically use `Rc<dyn Any>` or `Arc<dyn Any>` as their
+//! Builder-Can. Thus `Blueprint`s are Clone with the semantic of an `Rc` or
+//! `Arc` respectively, i.e. you can clone `Blueprint` to get multiple owned
+//! values which semantically refer to the same Builder. Thus if these clones
+//! are used in turn in different Builders they will resolve it to the same
+//! Artifact. Thus allowing to create DAG dependencies.
+//!
+//!
+//! # Unsizedness
+//!
+//! An _unsized Builder_ refers here typically to a trait object Builder aka
+//! a `dyn Builder`. This kind of unsized Builder has some special restrictions,
+//! which are most important when trying to acquire a Blueprint referring to it.
+//!
+//! To enable conversion from a sized Blueprint to an unsized one, the `unsized`
+//! feature is required, which in turn requires a Nightly Rust Compiler!
+//! It enables the [`Blueprint::into_unsized`] and
+//! [`BlueprintUnsized::into_unsized`] functions.
+//!
+//! To allow also Stable Rust to use unsized Builders, there exist the
+//! [`BlueprintUnsized::new_unsized`] function, which is less general, but
+//! works on Stable Rust and without additional features.
+//!
+//! Since it is sometimes reasonable to use unsized Builders, is supported
+//! by the `BlueprintUnsized`, which in turn requires to store simultaneously a
+//! Can and a Bin of that Builder instead of just a Bin as the `Blueprint`
+//! dose. Thus the `Blueprint` should be preferred when using sized Builders.
+//!
+//! [`Cache`]: ../cache/struct.Cache.html
+//! [`Promise`]: trait.Promise.html
+//! [`Blueprint`]: struct.Blueprint.html
+//! [`Blueprint::into_unsized`]: struct.Blueprint.html#method.into_unsized
+//! [`BlueprintUnsized`]: struct.BlueprintUnsized.html
+//! [`BlueprintUnsized::new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
+//! [`BlueprintUnsized::into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
+//!
 
 
 use std::fmt;
@@ -16,13 +64,24 @@ use crate::CanSized;
 
 
 
-/// Generalized artifact promise of a builder.
+/// Generalized Promise for a Artifact from a Builder.
 ///
-/// Implemented by `Blueprint` and `BlueprintUnsized`.
+/// This Promise can be honored at the [`Cache`].
+///
+/// This trait is a generalization over [`Blueprint`] and [`BlueprintUnsized`],
+/// which are the two types implementing it.
+///
+/// [`Cache`]: ../cache/struct.Cache.html
+/// [`Blueprint`]: struct.Blueprint.html
+/// [`BlueprintUnsized`]: struct.BlueprintUnsized.html
 ///
 // typical bound: `where BCan: Can<B>`
 pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
 	/// Get the unique id of the inner builder.
+	///
+	/// All clones of the same `Promise` have the same id, thus
+	/// containing/sharing the same Builder and consequently will deliver the
+	/// same Artifact form a `Cache`.
 	///
 	fn id(&self) -> BuilderId;
 
@@ -43,39 +102,40 @@ pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
 	fn canned(&self) -> CannedAccessor<BCan>;
 }
 
-
 /// Opaque builder accessor, used internally.
+///
 pub struct BuilderAccessor<'a, B: ?Sized> {
 	pub(crate) builder: &'a B,
 }
 
 
 /// Opaque canned builder accessor, used internally.
+///
 pub struct CannedAccessor<BCan> {
 	pub(crate) can: BCan,
 }
 
 
-/// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
+/// Wraps a Builder as a blueprint for its artifact from the `Cache`.
 ///
-/// This struct is essentially a wrapper around `Rc<B>`, but it provides a
-/// `Hash` and `Eq` implementation based on the identity of the `Rc`s inner
-/// value. In other words the address of the allocation behind the Rc is
-/// compared instead of the semantics (also see [`Rc::ptr_eq()`]).
-/// Thus all clones of an `ArtifactPromise` are considered identical.
+/// This is a wrapper around the Bin of the Builder-Can containing the actual
+/// Builder _(i.e. it contains `<BCan as Can<B>>::Bin`, e.g. a `Rc<B>` when
+/// using the `rc` module)_. While it provides
+/// access to the inner Builder for the [`Cache`], it is not accessible for
+/// others. Thus enforcing that the Builder itself can not be accessed.
 ///
-/// An `ArtifactPromise` can be either resolved using the `ArtifactCache::get()`
-/// or `ArtifactResolver::resolve()`, whatever is available.
+/// The `Blueprint` can be used as [`Promise`] to access the inner Builder's
+/// Artifact and dynamic state through the [`Cache`].
 ///
-/// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
+/// [`Cache`]: ../cache/struct.Cache.html
+/// [`Promise`]: trait.Promise.html
 ///
 pub struct Blueprint<B, BCan: Can<B>> {
 	builder: BCan::Bin,
-	_dummy: (),
 }
 
 impl<B, BCan: CanSized<B>> Blueprint<B, BCan> {
-	/// Crates a new promise for the given builder.
+	/// Crates a new `Blueprint` for the given sized Builder.
 	///
 	pub fn new(builder: B) -> Self {
 		let bin = BCan::into_bin(builder);
@@ -85,16 +145,17 @@ impl<B, BCan: CanSized<B>> Blueprint<B, BCan> {
 }
 
 impl<B, BCan: Can<B>> Blueprint<B, BCan> {
-	/// Create a new promise for the given binned builder.
+	/// Create a new `Blueprint` for the given binned Builder.
+	///
+	/// Internal function only, it breaks encapsulation!
 	///
 	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
 		Blueprint {
 			builder: builder_bin,
-			_dummy: (),
 		}
 	}
 
-	/// Returns the pointer to the inner builder.
+	/// Returns the pointer to the inner Builder.
 	///
 	/// The returned pointer has a unspecific validity, thus it may only be used
 	/// for comparing with other pointers but dereferencing it can never be
@@ -107,10 +168,12 @@ impl<B, BCan: Can<B>> Blueprint<B, BCan> {
 
 
 impl<B, BCan: Can<B>> Blueprint<B, BCan> {
-	/// Returns the id of this artifact promise
-	/// This Id has the following property:
-	/// The ids of two artifact promises are the same if and only if
-	/// they point to the same builder.
+	/// Returns the id of the inner Builder.
+	///
+	/// All clones of the same `Blueprint` have the same id, thus
+	/// containing/sharing the same Builder and consequently will deliver the
+	/// same Artifact form a `Cache`.
+	///
 	pub fn id(&self) -> BuilderId {
 		BuilderId::new(BCan::bin_as_ptr(&self.builder))
 	}
@@ -146,15 +209,16 @@ cfg_if! {
 				BCan: CanSized<B>,
 				BCan::Bin: Clone, {
 
-			/// Makes this sized artifact promise into an unsized artifact
-			/// promise.
+			/// Converts this `Blueprint` with a sized Builder into an
+			/// `BlueprintUnsized` with an unsized Builder.
 			///
 			/// **Notice: This function is only available if the `unsized`
 			/// feature has been activated**.
 			///
-			/// An unsized artifact promise might represent for instance
-			/// a builder by trait object. This allows in some cases to support
-			/// multiple builders without adding additional type parameters.
+			/// An unsized Builder might represent for instance
+			/// a trait object Builder. This allows in some cases to support
+			/// multiple different Builders without adding additional type
+			/// parameters.
 			///
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
@@ -171,7 +235,6 @@ impl<B, BCan: Can<B>> Clone for Blueprint<B, BCan> where BCan::Bin: Clone {
 	fn clone(&self) -> Self {
 		Blueprint {
 			builder: self.builder.clone(),
-			_dummy: (),
 		}
 	}
 }
@@ -210,32 +273,42 @@ impl<B, BCan: CanSized<B>> From<B> for Blueprint<B, BCan> where BCan::Bin: fmt::
 }
 
 
-/// Encapsulates a `Builder` as promise for its artifact from the `ArtifactCache`.
+/// Wraps a Builder as a blueprint for its artifact from the `Cache` allowing
+/// unsized Builders.
 ///
-/// This struct is essentially a wrapper around two `Rc`s, but it provides a
-/// `Hash` and `Eq` implementation based on the identity of the `Rc`s inner
-/// value. In other words the address of the allocation behind the Rc is
-/// compared instead of the semantics (also see [`Rc::ptr_eq()`]).
-/// Thus all clones of an `ArtifactPromise` are considered identical.
+/// This is a wrapper around the Bin of the Builder-Can and additionally the
+/// Can itself containing the actual Builder _(i.e. it contains
+/// `<BCan as Can<B>>::Bin` & `BCan`, e.g. a `Rc<B>` & `Rc<dyn Any>` when using
+/// the `rc` module)_. While it provides access to the inner Builder for the
+/// [`Cache`], it is not accessible for others. Thus enforcing that the Builder
+/// itself can not be accessed.
 ///
-/// Also see `ArtifactPromise`, which only requires a single `Rc`. Therefore
-/// when ever possible `ArtifactPromise` should be preferred over this type.
-/// This type exists only to allow for unsized builders that is a builder as
-/// trait object (aka `dyn Builder`).
+/// The `BlueprintUnsized` can be used as [`Promise`] to access the inner
+/// Builder's Artifact and dynamic state through the [`Cache`].
 ///
-/// An `ArtifactPromise` can be either resolved using the `ArtifactCache::get()`
-/// or `ArtifactResolver::resolve()`, whatever is available.
+/// The `BlueprintUnsized` allows to use unsized Builders such as trait objects.
 ///
-/// [`Rc::ptr_eq()`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.ptr_eq
+/// [`Cache`]: ../cache/struct.Cache.html
+/// [`Promise`]: trait.Promise.html
 ///
 pub struct BlueprintUnsized<B: ?Sized, BCan: Can<B>> {
 	builder: BCan::Bin,
 	builder_canned: BCan,
-	_dummy: (),
 }
 
 impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
-	/// Crates a new promise for the given builder.
+	/// Crates a new `BlueprintUnsized` for the given sized builder.
+	///
+	/// Notice since here the Builder is given by value, it may not be unsized!
+	///
+	/// Instead, either use [`new_unsized`] to create directly a blueprint with
+	/// a trait object Builder. Or use this `new` and then use [`into_unsized`]
+	/// to turn it into a blueprint with an unsized Builder. The latter method
+	/// it more general but requires the `unsized` features which in turn
+	/// requires a Nightly Rust Compiler.
+	///
+	/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
+	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
 	///
 	pub fn new(builder: B) -> Self
 			where
@@ -250,11 +323,12 @@ impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
+	/// Internal function only, it breaks encapsulation!
+	///
 	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
 		BlueprintUnsized {
 			builder: builder_bin.clone(),
 			builder_canned: BCan::from_bin(builder_bin),
-			_dummy: (),
 		}
 	}
 }
@@ -264,28 +338,25 @@ cfg_if! {
 		impl<B: ?Sized, BCan> BlueprintUnsized<B, BCan> where
 				BCan: Can<B>, {
 
-			/// Converts this artifact promise from type `B` to `UB` via
-			/// unsizing.
+			/// Converts the generic parameter of this `BlueprintUnsized` from
+			/// type `B` to `UB` via unsizing.
 			///
 			/// **Notice: This function is only available if the `unsized`
 			/// feature has been activated**.
 			///
-			/// Unsizing is typically involved when using trait objects. Thus if
-			/// artifact promise of a `dyn Builder` is needed this function can
-			/// be used to convert an artifact promise of a specific builder to
-			/// an artifact promise of a trait object, if compatible.
+			/// An unsized Builder might represent for instance
+			/// a trait object Builder. This allows in some cases to support
+			/// multiple different Builders without adding additional type
+			/// parameters.
 			///
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
 					BCan: CanUnsized<B, UB> {
 
-				//let b: Rc<UB> = self.builder;
-
 				BlueprintUnsized {
 					builder: BCan::into_unsized(self.builder),
 					builder_canned: self.builder_canned,
-					_dummy: (),
 				}
 			}
 		}
@@ -293,15 +364,17 @@ cfg_if! {
 }
 
 impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
-	/// Returns the id of this artifact promise
-	/// This Id has the following property:
-	/// The ids of two artifact promises are the same if and only if
-	/// they point to the same builder.
+	/// Returns the id of the inner Builder.
+	///
+	/// All clones of the same `Blueprint` have the same id, thus
+	/// containing/sharing the same Builder and consequently will deliver the
+	/// same Artifact form a `Cache`.
+	///
 	pub fn id(&self) -> BuilderId {
 		BuilderId::new(BCan::can_as_ptr(&self.builder_canned))
 	}
 
-	/// Returns the pointer to the inner builder.
+	/// Returns the pointer to the inner Builder.
 	///
 	/// The returned pointer has a unspecific validity, thus it may only be used
 	/// for comparing with other pointers but dereferencing it can never be
@@ -322,22 +395,23 @@ impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 	/// This function can not absorb the builder itself so there might remain
 	/// e.g. `Rc`-clones keeping the inner builder accessible form the outside.
 	/// This avoids the effects of this type which is opaque encapsulation.
-	/// Therefore this function might be removed in the future when an
-	/// alternative stable way to construct a truly unsized promise has been
-	/// found.
+	/// Therefore this function will be removed in the future.
 	///
-	// TODO: This is currently the only way to instantiate a truly unsized AP,
-	// however, it breaks encapsulation, as the inner Builder might be still
+	/// Use [`new_unsized`] or [`into_unsized`] instead.
+	///
+	/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
+	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
+	///
+	// TODO: It breaks encapsulation, as the inner Builder might be still
 	// accessible from the outside. Therefore, it should be removed as soon as
 	// `unsize` becomes stable.
-	#[deprecated = "breaks encapsulation, will be removed"]
+	#[deprecated = "will be removed, use new_unsized or into_unsized instead"]
 	pub fn from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
 		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
 			Some(
 				BlueprintUnsized {
 					builder: builder_bin,
 					builder_canned: builder_can,
-					_dummy: (),
 				}
 			)
 		} else {
@@ -349,7 +423,17 @@ impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan> where
 	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
 
-	/// Creates an trait object artifact promise from given builder.
+	/// Creates an `BlueprintUnsized` with a trait object Builder with the given
+	/// Builder.
+	///
+	/// An more general approach is to use [`new`] and then [`into_unsized`],
+	/// but the latter requires the `unsized` features which in turn
+	/// requires a Nightly Rust Compiler. Thus this `new_unsized` function
+	/// is provided as means to generate a trait object Builder using only
+	/// Stable Rust.
+	///
+	/// [`new`]: struct.BlueprintUnsized.html#method.new
+	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
 	///
 	pub fn new_unsized<B>(builder: B) -> Self
 		where
@@ -360,7 +444,6 @@ impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan,
 		BlueprintUnsized {
 			builder: bin_dyn,
 			builder_canned: can,
-			_dummy: (),
 		}
 	}
 }
@@ -394,7 +477,6 @@ impl<B: ?Sized, BCan: Can<B>> Clone for BlueprintUnsized<B, BCan> where BCan::Bi
 		BlueprintUnsized {
 			builder: self.builder.clone(),
 			builder_canned: self.builder_canned.clone(),
-			_dummy: (),
 		}
 	}
 }

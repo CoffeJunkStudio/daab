@@ -21,22 +21,22 @@
 //!
 //! ## Basic Concept
 //!
-//! The basic concept of daab revolves around Builders, which are user provided
+//! The basic concept of daab revolves around _Builders_, which are user provided
 //! structs that implement the [`Builder`] trait. That trait essentially has an
 //! associated type [`Artifact`] and method [`build`] where the latter will
 //! produce a value of the `Artifact` type, which will be subsequently be
-//! referred to as Artifact. In order to be able to depend on the Artifact of
+//! referred to as _Artifact_. In order to be able to depend on the Artifact of
 //! other Builders, the `build` method also gets a [`Resolver`] that allows
 //! to retrieve the Artifacts of others.
 //!
 //! In order to allow Builders and Artifacts to form a directed acyclic graph
-//! thi crate provides at its heart a Artifact [`Cache`] which keeps the
+//! this crate provides at its heart an Artifact [`Cache`] which keeps the
 //! Artifacts of Builders in order to prevent the Builders to produce multiple
 //! equal Artifacts. Thus different Builders may depend on same Builder and
 //! getting the same Artifact from the `Cache`.
 //!
 //! To be able to share Builders and Artifacts this crate also provides a
-//! concept of Cans and Bins, which in the most basic case are simply an opaque
+//! concept of _Cans_ and _Bins_, which in the most basic case are simply an opaque
 //! `Rc<dyn Any>` and a transparent `Rc<T>`, respectively. These are referred to
 //! by the generic arguments of e.g. the `Cache`. For more details consult the
 //! [`canning`] module.
@@ -50,7 +50,8 @@
 //!
 //! ### Getting started
 //!
-//! For basic concept (explained above) there exists simplified traits which skip over the more
+//! For the basic concept (explained above) there exists simplified traits
+//! which skip over the more
 //! advanced features. One such simplified trait is the [`SimpleBuilder`] of the
 //! [`rc`] module, which uses `Rc`s for canning and has simplified aliases
 //! (minimal generic arguments) for all the above types. For getting started
