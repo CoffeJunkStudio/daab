@@ -6,15 +6,59 @@
 //! DAG Aware Artifact Builder
 //! ==========================
 //!
-//! Rust crate for managing the building of artifacts by builders which are
-//! connected in a directed acyclic graph (DAG) like manner.
+//! Rust crate for managing the building and caching of artifacts which are
+//! connected in a directed acyclic graph (DAG) like manner, i.e. artifacts may
+//! depend on others.
 //!
-//! This crate provides essentially a cache which keeps artifacts of builders in
-//! order to prevent the same builder to produce multiple equal artifacts.
-//! This could be useful if the builders use consumable resources to create their
-//! artifacts, the building is a heavyweight procedure, or a given DAG dependency
-//! structure among the builders shall be properly preserved among their
-//! artifacts.
+//! The caching provided by this crate could be especially useful if the
+//! artifact builders use consumable resources, the building process is a
+//! heavyweight procedure, or a given DAG dependency structure among the
+//! builders shall be properly preserved among their artifacts.
+//!
+//! Minimal Rust version: **1.40**
+//!
+//!
+//!
+//! ## Basic Concept
+//!
+//! The basic concept of daab revolves around Builders, which are user provided
+//! structs that implement the [`Builder`] trait. That trait essentially has an
+//! associated type [`Artifact`] and method [`build`] where the latter will
+//! produce a value of the `Artifact` type, which will be subsequently be
+//! referred to as Artifact. In order to be able to depend on the Artifact of
+//! other Builders, the `build` method also gets a [`Resolver`] that allows
+//! to retrieve the Artifacts of others.
+//!
+//! In order to allow Builders and Artifacts to form a directed acyclic graph
+//! thi crate provides at its heart a Artifact [`Cache`] which keeps the
+//! Artifacts of Builders in order to prevent the Builders to produce multiple
+//! equal Artifacts. Thus different Builders may depend on same Builder and
+//! getting the same Artifact from the `Cache`.
+//!
+//! To be able to share Builders and Artifacts this crate also provides a
+//! concept of Cans and Bins, which in the most basic case are simply an opaque
+//! `Rc<dyn Any>` and a transparent `Rc<T>`, respectively. These are referred to
+//! by the generic arguments of e.g. the `Cache`. For more details consult the
+//! [`canning`] module.
+//!
+//! Additional to the canning, the `Cache` expects Builders to wrapped in a
+//! opaque [`Blueprint`] enforcing encapsulation, i.e. it prevents users from
+//! accessing the inner struct (the one which implements the `Builder` trait),
+//! while only allowing the `Cache` itself to call its `build` method.
+//!
+//!
+//!
+//! ### Getting started
+//!
+//! For basic concept (explained above) there exists simplified traits which skip over the more
+//! advanced features. One such simplified trait is the [`SimpleBuilder`] of the
+//! [`rc`] module, which uses `Rc`s for canning and has simplified aliases
+//! (minimal generic arguments) for all the above types. For getting started
+//! that `rc` module is probably the best place to start.
+//!
+//!
+//!
+//! ## Detailed Concept
 //!
 //! The basic principal on which this crate is build, suggests two levels of
 //! abstraction, the builder level and the artifact level. Each builder type has
@@ -51,11 +95,14 @@
 //! used the invalidated one).
 //!
 //![`Builder`]: trait.Builder.html
-//![`Blueprint`]: struct.Blueprint.html
-//![`Resolver`]: struct.Resolver.html
-//![`Cache`]: struct.Cache.html
-//!
-//! Minimal Rust version: **1.40**
+//![`Artifact`]: trait.Builder.html#associatedtype.Artifact
+//![`build`]: trait.Builder.html#tymethod.build
+//![`SimpleBuilder`]: rc/trait.SimpleBuilder.html
+//![`rc`]: rc/index.html
+//![`canning`]: canning/index.html
+//![`Blueprint`]: blueprint/struct.Blueprint.html
+//![`Resolver`]: cache/struct.Resolver.html
+//![`Cache`]: cache/struct.Cache.html
 //!
 //!
 //!
@@ -223,7 +270,12 @@
 //!   `Doctor`s, hence it is only useful in connection with the `diagnostics`
 //!   feature.
 //!
+//! - **`unsized`** enables better conversion between unsized Builders with
+//!   [`BlueprintUnsized::into_unsized`]. **This feature requires Nightly
+//!   Rust**.
+//!
 //![`tynm`]: https://crates.io/crates/tynm
+//![`BlueprintUnsized::into_unsized`]: blueprint/struct.BlueprintUnsized.html#method.into_unsized
 //!
 
 // prevents compilation with broken Deref impl causing nasty stack overflows.
