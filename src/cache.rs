@@ -312,7 +312,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// If this function returns `false`, it is guaranteed that none of the
 	/// above are kept in this `Cache`.
 	///
-	/// [`number_of_known_builders`] returns the amount of Builders for,
+	/// [`number_of_known_builders`] returns the amount of Builders for
 	/// which this methods returns `true`.
 	///
 	/// [`number_of_known_builders`]: struct.Cache.html#method.number_of_known_builders
@@ -327,7 +327,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.is_builder_known(promise)
 	}
 
-	/// Get the stored Artifact in its Bin, if it exists.
+	/// Gets the stored Artifact in its Bin, if it exists.
 	///
 	/// Returns the Artifact in its Bin. That is an `Rc<B::Artifact>` when using
 	/// the `rc` module. The Bin is useful to share an identical artifact
@@ -355,7 +355,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup(promise)
 	}
 
-	/// Get the stored Artifact by reference, if it exists.
+	/// Gets the stored Artifact by reference, if it exists.
 	///
 	/// Returns the Artifact as reference into this `Cache`. The reference is
 	/// useful to access artifact for short time, as it dose not incur any
@@ -393,7 +393,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_ref(promise)
 	}
 
-	/// Get the stored Artifact by reference, if it exists.
+	/// Gets the stored Artifact by mutable reference, if it exists.
 	///
 	/// Returns the Artifact as mutable reference into this `Cache`.
 	/// The mutable reference might be useful to access the Artifact in place
@@ -412,6 +412,8 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// For an overview of different accessor methods see [Artifact Accessors]
 	/// section of `Cache`.
+	///
+	///
 	///
 	/// # Deprecated
 	///
@@ -439,7 +441,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_mut(promise)
 	}
 
-	/// Get a clone of the stored Artifact, if it exists.
+	/// Gets a clone of the stored Artifact, if it exists.
 	///
 	/// Returns a clone of the Artifact. The clone is useful when cloning the
 	/// Artifact itself is viable and an owned value is required or lifetime
@@ -466,21 +468,23 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_cloned(promise)
 	}
 
-	/// Gets the artifact of the given builder.
+	/// Gets the Artifact in its Bin.
 	///
-	/// This method looks up whether the artifact for the given builder is still
-	/// present in the cache, or it will use the builder to build a fresh
-	/// artifact and store it in the cache for later reuse.
+	/// Returns the Artifact in its Bin. That is an `Rc<B::Artifact>` when using
+	/// the `rc` module. The Bin is useful to share an identical artifact
+	/// or one that is not `Clone` when an owned value is required or lifetime
+	/// errors occur using [`get_ref`].
 	///
-	/// Notice the given promise as well as the artifact will be stored in the
-	/// cache, until `clear()` or `invalidate()` with that promise are called.
-	/// The promise is kept to prevent it from deallocating, which is important
-	/// for correctness of the pointer comparison, internally done by the
-	/// promise.
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
 	///
-	/// If all strong references of the respective builder are out of scope, the
-	/// `garbage_collection()` method can be used to get rid of the cached
-	/// promise including the possibly still cached artifact and dyn state.
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
 	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -494,7 +498,34 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get(promise)
 	}
 
-	/// Gets a reference to the artifact of the given builder.
+	/// Gets the Artifact by reference.
+	///
+	/// Returns the Artifact as reference into this `Cache`. The reference is
+	/// useful to access artifact for short time, as it dose not incur any
+	/// cloning overhead, thus it is the cheapest way to access an Artifact, and
+	/// should be preferred where ever possible.
+	///
+	/// When an owned value is required instead or lifetime issues arise,
+	/// [`get`] and [`get_cloned`] are alternatives, which return a clone
+	/// of the Artifact Bin or of the Artifact itself, respectively.
+	///
+	/// Also notice, that using some special `ArtCan`s such as using the
+	/// [`boxed`] module there also exists a [`get_mut`] for mutable access
+	/// to the artifact stored within this `Cache`.
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`get`]: struct.Cache.html#method.get
+	/// [`get_cloned`]: struct.Cache.html#method.get_cloned
+	/// [`boxed`]: ../boxed/index.html
+	/// [`get_mut`]: struct.Cache.html#method.get_mut
 	///
 	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -507,10 +538,43 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_ref(promise)
 	}
 
-	/// Gets a mutable reference to the artifact of the given builder.
+	/// Gets the Artifact by mutable reference.
 	///
-	/// As opposed to `get_ref`, this method will invalidate all dependents of
-	/// the given builder.
+	/// Returns the Artifact as mutable reference into this `Cache`.
+	/// The mutable reference might be useful to access the Artifact in place
+	/// to mutate it.
+	///
+	/// Note: If mutation is not required [`get_ref`] should be
+	/// preferred. Also if mutation is conditional, first a shared reference
+	/// should be acquired via [`get_ref`] to test the condition and only
+	/// when necessary a mutable reference should be acquired.
+	///
+	/// **Currently, when using this method, all artifacts which depended on
+	/// accessed one will be invalidate!**
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	///
+	///
+	/// # Deprecated
+	///
+	/// This function is not actually deprecated, but should be only used with
+	/// care, because currently, this function will invalidate all depending
+	/// artifacts, **but this is subject to change**.
+	///
+	/// Therefore, **this method must be considered unstable!** The semantic of
+	/// this function might change in a breaking way within a non-breaking
+	/// version update!
+	///
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
 	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -523,7 +587,22 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_mut(promise)
 	}
 
-	/// Get a clone of the artifact of the given builder.
+	/// Get a clone of the Artifact.
+	///
+	/// Returns a clone of the Artifact. The clone is useful when cloning the
+	/// Artifact itself is viable and an owned value is required or lifetime
+	/// errors occur using [`get_ref`].
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// For an overview of different accessor methods see [Artifact Accessors]
+	/// section of `Cache`.
+	///
+	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
 	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -537,7 +616,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_cloned(promise)
 	}
 
-	/// Gets the dynamic state of the given builder if any.
+	/// Gets the dynamic state of the given builder, if any.
+	///
+	/// To initialize the dynamic state when it does not exist, use the
+	/// [`dyn_state`] method instead.
+	///
+	/// [`dyn_state`]: struct.Cache.html#method.dyn_state
 	///
 	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&self, promise: &AP
@@ -548,8 +632,17 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_dyn_state(promise)
 	}
 
-	/// Gets the dynamic state of the given builder, it will be initalized if
-	/// it didn't exist yet.
+	/// Gets the dynamic state of the given Builder.
+	///
+	/// This method will initialize the dynamic state if
+	/// it didn't exist yet in this `Cache`.
+	///
+	/// Alternatively, [`dyn_state_mut`] can be used to acquire mutable access
+	/// to the dynamic state in order to "reconfigure" the Builder. Or
+	/// [`get_dyn_state`] to only access the dynamic state if it already exists.
+	///
+	/// [`get_dyn_state`]: struct.Cache.html#method.get_dyn_state
+	/// [`dyn_state_mut`]: struct.Cache.html#method.dyn_state_mut
 	///
 	pub fn dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self, promise: &AP
@@ -560,11 +653,15 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.dyn_state(promise)
 	}
 
-	/// Gets the mutable dynamic state of the given builder, it will be
-	/// initalized if it didn't exist yet.
-	/// 
-	/// As opposed to `dyn_state`, this function will invalidate the given
-	/// builder and cause its artifact to be rebuilded when next requested.
+	/// Gets the mutable dynamic state of the given Builder.
+	///
+	/// This method will initialize the dynamic state if
+	/// it didn't exist yet in this `Cache`.
+	///
+	/// As opposed to [`dyn_state`], this method will invalidate the Artifact of
+	/// the given Builder, including all depending Artifacts.
+	///
+	/// [`dyn_state`]: struct.Cache.html#method.dyn_state
 	///
 	pub fn dyn_state_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self, promise: &AP
@@ -575,28 +672,31 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.dyn_state_mut(promise)
 	}
 
-	/// Deletes all cached artifacts in this cache, but keeps dynamic states.
+	/// Deletes all cached Artifacts in this cache, but keeps dynamic states.
 	///
 	pub fn clear_artifacts(&mut self) {
 		self.inner.clear_artifacts()
 	}
 
-	/// Clears the entire cache including all kept promise, artifacts and
+	/// Clears the entire cache including all kept Builders, Artifacts and
 	/// dynamic states.
 	///
 	pub fn clear_all(&mut self) {
 		self.inner.clear_all()
 	}
-	
+
 	/// Deletes the artifact and the dynamic state of the given builder.
-	/// 
+	///
 	/// This function has the effect that all references of the given builder
-	/// in this cache will be removed.
-	/// 
-	/// As a consequence, all dependent builders (if any) will be invalidated,
+	/// held by this cache will be removed.
+	///
+	/// As a consequence, all depending Artifacts (if any) will be invalidated,
 	/// but their dynamic states will be kept.
-	/// 
-	/// If you only want to remove the artifact see `invalidate()`.
+	///
+	/// If you only want to remove the artifact you can use [`invalidate`]
+	/// instead.
+	///
+	/// [`invalidate`]: struct.Cache.html#method.invalidate
 	///
 	pub fn purge<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -608,12 +708,19 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.purge(promise)
 	}
 
-	/// Removes the given promise with its cached artifact from the cache and
-	/// all depending artifacts (with their promises).
+	/// Removes the Artifact of the given Builder from the `Cache` and
+	/// all depending Artifacts, but keep their dynamic states.
 	///
-	/// Depending artifacts are all artifacts which used the former during
-	/// its building. The dependencies are automatically tracked via the
-	/// `Resolver`.
+	/// Depending Artifacts are all Artifacts, which used the former during
+	/// their building. The dependencies are automatically tracked via the
+	/// [`Resolver`] provided to the [`build`] method of a Builder.
+	///
+	/// In order to remove also the dynamic state of the given builder use the
+	/// [`purge`] method.
+	///
+	/// [`purge`]: struct.Cache.html#method.purge
+	/// [`Resolver`]: struct.Resolver.html
+	/// [`build`]: ../trait.Builder.html#tymethod.build
 	///
 	pub fn invalidate<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
 			&mut self,
@@ -628,20 +735,26 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// Invalidates all builders and their dyn state which can not be builded
 	/// any more, because there are no more references to them.
 	///
-	/// This function has the complexity of O(n) with n being the number of
-	/// used builders. Thus this function is not light weight but should be
+	/// This function has the complexity of `O(n)` with `n` being the [number of
+	/// known builders]. Thus this function is not light-weight, but should be
 	/// called regularly at appropriate locations, i.e. where many builders
 	/// go out of scope.
 	///
-	/// If builders and dynamic states are explicitly invalidated and removed
-	/// before going out of scope, this function has no effect.
+	/// If builders and dynamic states are explicitly removed before going out
+	/// of scope e.g. via [`purge`] or [`clean_all`], this method is not needed
+	/// to be called in order to prevent memory leakage. Also notice, this
+	/// method only takes efforts to reduce resource leakage, but can't give
+	/// any guarantees, nor has any functional impact.
 	///
-	/// Notice, that under normal circumstances this function only cleans up
-	/// old builders which can not be used any more by the user. However, it is
-	/// possible to create dependent builders without the dependent holding a
-	/// strong reference to its dependency. Is such a case the dependent would
-	/// get invalidate too nonetheless it might still be used. Therefor, any
-	/// dependent builder should hold a strong reference to its builder.
+	/// Only those Builders will be cleaned up, for which all Cans and Bins
+	/// (e.g. `Rc`s) have been dropped. If Artifacts or dynamic states refers to
+	/// Builders, those Builders might need additional GC cycles to be cleaned
+	/// up, or in case of cyclic dependencies (e.g. between dynamic states and
+	/// Artifacts) might never be cleaned by this GC.
+	///
+	/// [number of known builders]: struct.Cache.html#method.number_of_known_builders
+	/// [`purge`]: struct.Cache.html#method.purge
+	/// [`clean_all`]: struct.Cache.html#method.clean_all
 	///
 	pub fn garbage_collection(&mut self) {
 		self.inner.garbage_collection()
@@ -650,19 +763,20 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// Returns the number of currently kept artifact promises.
 	///
 	/// This method is offered as kind of debugging or analysis tool for
-	/// keeping track about the number of active builders.
+	/// keeping track of the number of active Builders.
 	///
 	/// When adding dynamic state or issuing the building of a promise may
-	/// increase the returned number. Like wise the invalidation and removal of
-	/// dynamic state might decrement this count. Additionally, if there are
-	/// no more artifact promises to a used builder, the `garbage_collection`
-	/// method might also reduce this number.
+	/// increase the returned number. Like wise the purging of Builders
+	/// may decrement this count. Additionally, if there are
+	/// no more usable references to a Builder, the [`garbage_collection`]
+	/// method may reduce this number.
 	///
 	/// [`is_builder_known`] can test whether individual Builders are stored in
 	/// this cache. `number_of_known_builders` returns exactly how many
 	/// Builders exist for which `is_builder_known` returns `true`.
 	///
 	/// [`is_builder_known`]: struct.Cache.html#method.is_builder_known
+	/// [`garbage_collection`]: struct.Cache.html#method.garbage_collection
 	///
 	pub fn number_of_known_builders(&self) -> usize {
 		self.inner.number_of_known_builders()
