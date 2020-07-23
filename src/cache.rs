@@ -343,13 +343,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
 	///
-	pub fn lookup<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<ArtCan::Bin>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.lookup(promise)
@@ -360,7 +361,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// Returns the Artifact as reference into this `Cache`. The reference is
 	/// useful to access artifact for short time, as it dose not incur any
 	/// cloning overhead, thus it is the cheapest way to access an Artifact, and
-	/// should be preferred where ever possible.
+	/// should be preferred wherever possible.
 	///
 	/// When an owned value is required instead or lifetime issues arise,
 	/// [`lookup`] and [`lookup_cloned`] are alternatives, which return a clone
@@ -382,12 +383,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [`lookup_cloned`]: struct.Cache.html#method.lookup_cloned
 	/// [`lookup_mut`]: struct.Cache.html#method.lookup_mut
 	///
-	pub fn lookup_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_ref<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<&B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.lookup_ref(promise)
@@ -430,12 +432,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
 	///
 	#[deprecated = "Unstable, might be subject to breaking changes in a non-breaking version update, use with care"]
-	pub fn lookup_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Option<&mut B::Artifact>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.lookup_mut(promise)
@@ -456,12 +459,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
 	///
-	pub fn lookup_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn lookup_cloned<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<B::Artifact>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
 				AP: Promise<B, BCan>  {
 
@@ -477,7 +481,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// This method will try to build the Artifact if it is not stored in the
 	/// `Cache`. The building using the Builder's `build` method could fail,
-	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// thus a `Result` is returned. An `Err` will be returned only, if the
 	/// Artifact was not cached and the Builder returned an `Err`.
 	///
 	/// For an overview of different accessor methods see [Artifact Accessors]
@@ -486,13 +490,14 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
-	pub fn get<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<ArtCan::Bin, B::Err>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.get(promise)
@@ -503,7 +508,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// Returns the Artifact as reference into this `Cache`. The reference is
 	/// useful to access artifact for short time, as it dose not incur any
 	/// cloning overhead, thus it is the cheapest way to access an Artifact, and
-	/// should be preferred where ever possible.
+	/// should be preferred wherever possible.
 	///
 	/// When an owned value is required instead or lifetime issues arise,
 	/// [`get`] and [`get_cloned`] are alternatives, which return a clone
@@ -527,12 +532,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [`boxed`]: ../boxed/index.html
 	/// [`get_mut`]: struct.Cache.html#method.get_mut
 	///
-	pub fn get_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_ref<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.get_ref(promise)
@@ -576,12 +582,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
-	pub fn get_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&mut B::Artifact, B::Err>
 			where
 				ArtCan: CanRefMut<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.get_mut(promise)
@@ -595,7 +602,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// This method will try to build the Artifact if it is not stored in the
 	/// `Cache`. The building using the Builder's `build` method could fail,
-	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// thus a `Result` is returned. An `Err` will be returned only, if the
 	/// Artifact was not cached and the Builder returned an `Err`.
 	///
 	/// For an overview of different accessor methods see [Artifact Accessors]
@@ -604,12 +611,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
-	pub fn get_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_cloned<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
 				AP: Promise<B, BCan>  {
 
@@ -623,10 +631,11 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// [`dyn_state`]: struct.Cache.html#method.dyn_state
 	///
-	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_dyn_state<AP, B: ?Sized>(
 			&self, promise: &AP
 		) -> Option<&B::DynState>
 			where
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.get_dyn_state(promise)
@@ -644,10 +653,11 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [`get_dyn_state`]: struct.Cache.html#method.get_dyn_state
 	/// [`dyn_state_mut`]: struct.Cache.html#method.dyn_state_mut
 	///
-	pub fn dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn dyn_state<AP, B: ?Sized>(
 			&mut self, promise: &AP
 		) -> &B::DynState
 			where
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.dyn_state(promise)
@@ -663,10 +673,11 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// [`dyn_state`]: struct.Cache.html#method.dyn_state
 	///
-	pub fn dyn_state_mut<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn dyn_state_mut<AP, B: ?Sized>(
 			&mut self, promise: &AP
 		) -> &mut B::DynState
 			where
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.dyn_state_mut(promise)
@@ -698,11 +709,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// [`invalidate`]: struct.Cache.html#method.invalidate
 	///
-	pub fn purge<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn purge<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)
 			where
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.inner.purge(promise)
@@ -722,11 +734,12 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [`Resolver`]: struct.Resolver.html
 	/// [`build`]: ../trait.Builder.html#tymethod.build
 	///
-	pub fn invalidate<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn invalidate<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)
 			where
+				B: Debug + 'static,
 				AP: Promise<B, BCan>  {
 
 		self.inner.invalidate(promise)
@@ -787,16 +800,25 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 
 
 
-/// Resolves any `ArtifactPromise` to the artifact of the inner builder.
+/// Resolves dependent Artifacts for Builders.
 ///
-/// This struct is only available to `Builder`s within their `build()` method.
-/// It gives certain access to the `Cache`, such as resolving
-/// `ArtifactPromise`s.
+/// This struct is only available to the [`build`] method of Builders. It is
+/// specific to that Builder, which will be referred to as the _owning
+/// Builder_. The `Resolver` provides limited access to the [`Cache`] for which
+/// the owning Builder builds its Artifact. This access is limited to the
+/// dynamic state of the owning Builder and the Artifacts of other builders.
 ///
-/// The `Resolver` records each resolution of an `ArtifactPromise`
-/// in order to keep track of dependencies between builders.
-/// This dependency information is used for correct invalidation of dependants
-/// on cache invalidation via `Cache::invalidate()`.
+/// This concept of a specific `Resolver` serves the important purpose of
+/// tracking dependencies between Artifacts. Thus all Artifacts which are
+/// retrieved through a `Resolver` create a _dependency_ of the Artifact of
+/// the owning Builder upon the resolved Artifact.
+///
+/// These tracked dependencies are used to correctly implement the Artifact
+/// invalidation of the `Cache` through [`Cache::invalidate`].
+///
+/// [`build`]: ../trait.Builder.html#tymethod.build
+/// [`Cache`]: struct.Cache.html
+/// [`Cache::invalidate`]: struct.Cache.html#method.invalidate
 ///
 pub struct Resolver<'a, ArtCan, BCan: CanStrong, DynState = ()> {
 	user: &'a BuilderEntry<BCan>,
@@ -812,6 +834,8 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 		BCan: CanStrong,
 		DynState: 'static, {
 
+	/// Record a dependency upon the given promise.
+	///
 	fn track_dependency<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
@@ -832,9 +856,22 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 	}
 
 
-	/// Resolves the given `ArtifactPromise` into its artifact either by
-	/// looking up the cached value in the associated `Cache` or by
-	/// building it.
+	/// Resolves an Artifact to its Bin.
+	///
+	/// Returns the Artifact in its Bin. That is an `Rc<B::Artifact>` when using
+	/// the `rc` module. The Bin is useful to share an identical artifact
+	/// or one that is not `Clone` when an owned value is required or lifetime
+	/// errors occur using [`resolve_ref`].
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// corresponding `Cache`. The building using that Builder's `build` method
+	/// could fail, thus a `Result` is returned. An `Err` will be returned
+	/// only, if the Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// Also see the corresponding [`get`] method of `Cache`.
+	///
+	/// [`resolve_ref`]: struct.Resolver.html#method.resolve_ref
+	/// [`get`]: struct.Cache.html#method.get
 	///
 	pub fn resolve<AP, B: ?Sized>(
 			&mut self,
@@ -843,38 +880,71 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 			where
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan> {
 
 		self.track_dependency(promise);
 		self.cache.get(promise)
 	}
 
-	/// Resolves the given `ArtifactPromise` into its artifact reference either
-	/// by looking up the cached value in the associated `Cache` or by
-	/// building it.
+	/// Resolves an Artifact by reference.
 	///
-	pub fn resolve_ref<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	/// Returns the Artifact as reference into the corresponding `Cache`. The
+	/// reference is useful to access artifact for short time, as it dose not
+	/// incur any cloning overhead, thus it is the cheapest way to access an
+	/// Artifact, and should be preferred wherever possible.
+	///
+	/// When an owned value is required instead or lifetime issues arise,
+	/// [`resolve`] and [`resolve_cloned`] are alternatives, which return a
+	/// clone of the Artifact Bin or of the Artifact itself, respectively.
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	///  thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// Also see the corresponding [`get_ref`] method of `Cache`.
+	///
+	/// [`resolve`]: struct.Resolver.html#method.resolve
+	/// [`resolve_cloned`]: struct.Resolver.html#method.resolve_cloned
+	/// [`get_ref`]: struct.Cache.html#method.get_ref
+	///
+	pub fn resolve_ref<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.track_dependency(promise);
 		self.cache.get_ref(promise)
 	}
 
-	/// Resolves the given `ArtifactPromise` into a clone of its artifact by
-	/// using `resolve_ref()` and `clone().
+	/// Resolves an Artifact into a clone of it.
 	///
-	pub fn resolve_cloned<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	/// Returns a clone of the Artifact. The clone is useful when cloning the
+	/// Artifact itself is viable and an owned value is required or lifetime
+	/// errors occur using [`resolve_ref`].
+	///
+	/// This method will try to build the Artifact if it is not stored in the
+	/// `Cache`. The building using the Builder's `build` method could fail,
+	/// thus a `Result` is returned. An `Err` will be returned only, if the
+	/// Artifact was not cached and the Builder returned an `Err`.
+	///
+	/// Also see the corresponding [`get_cloned`] method of `Cache`.
+	///
+	/// [`resolve_ref`]: struct.Resolver.html#method.resolve_ref
+	/// [`get_cloned`]: struct.Cache.html#method.get_cloned
+	///
+	pub fn resolve_cloned<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<B::Artifact, B::Err>
 			where
 				ArtCan: CanRef<B::Artifact>,
+				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
 				AP: Promise<B, BCan>  {
 
@@ -882,7 +952,14 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 		self.cache.get_cloned(promise)
 	}
 
-	/// Returns the dynamic state of the owning builder.
+	/// Returns the dynamic state of the owning Builder.
+	///
+	/// Notice, when an Artifact needs to be builded, the dynamic state of the
+	/// respective Builder will be initialized preventively, thus this method
+	/// wan always return a dynamic state without the need to create it. In
+	/// other words when an Artifact is build, it will get an dynamic state,
+	/// regardless wether this method or and other dynamic state accessor is
+	/// ever called.
 	///
 	pub fn my_state(&mut self) -> &mut DynState {
 		// The unwrap is safe here, because Cache ensures that a DynState exists
@@ -890,22 +967,23 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 		self.cache.dyn_state_cast_mut(self.user.id()).unwrap()
 	}
 
-	/// Get the dynamic static of given artifact promise.
+	/// Get the dynamic state of given Builder.
 	///
-	/// See `my_state` to return the dynamic state of the current builder.
+	/// See `my_state` to return the dynamic state of the owning builder.
 	///
 	/// # Deprecated
 	///
 	/// This method is deprecated because it might mislead using the dynamic
 	/// state to pass data between Builders, for which the Artifact should be
-	/// used.
+	/// used. Thus this method will be removed.
 	///
 	#[deprecated = "will be remove, use the artifact to pass data between builders"]
-	pub fn get_dyn_state<AP, B: ?Sized + Builder<ArtCan, BCan> + 'static>(
+	pub fn get_dyn_state<AP, B: ?Sized>(
 		&mut self,
 		promise: &AP
 	) -> &B::DynState
 			where
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>, {
 
 		self.track_dependency(promise);

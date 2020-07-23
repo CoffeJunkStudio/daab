@@ -653,7 +653,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			&mut self, promise: &AP
 		) -> &mut B::DynState
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan> {
 
 		// Since the user choses `mut` he intends to modify the dyn state this
@@ -672,7 +672,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			&mut self, promise: &AP
 		) -> &B::DynState
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		// Here, no invalidation, because we do not allow the user to modify the
@@ -688,7 +688,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			&self, promise: &AP
 		) -> Option<&B::DynState>
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Builder<ArtCan, BCan>,
 				AP: Promise<B, BCan>  {
 
 		self.dyn_state_cast_ref(promise.id())
@@ -701,7 +701,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			promise: &AP
 		)
 			where
-				B: Builder<ArtCan, BCan> + 'static,
+				B: Debug + 'static,
 				AP: Promise<B, BCan>  {
 
 		let bid = promise.id();
