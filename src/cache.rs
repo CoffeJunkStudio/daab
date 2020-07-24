@@ -584,6 +584,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
 	/// [`get_ref`]: struct.Cache.html#method.get_ref
 	///
+	#[deprecated = "Unstable, might be subject to breaking changes in a non-breaking version update, use with care"]
 	pub fn get_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
