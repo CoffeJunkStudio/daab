@@ -61,43 +61,10 @@
 //!
 //! ## Detailed Concept
 //!
-//! Also see the [Advanced Feature section of `Builder`].
+//! See the [Advanced Feature section of `Builder`].
 //!
-//! **TODO**
+//! Also see [`Cache`], [`Builder`], [`blueprint`], [`canning`]
 //!
-//! The basic principal on which this crate is build, suggests two levels of
-//! abstraction, the builder level and the artifact level. Each builder type has
-//! one specific artifact type. The builders are represented by any struct,
-//! which implements the [`Builder`] trait, which in turn has an associate type
-//! that specifies the artifact type.
-//!
-//! `Builder`s are supposed to be wrapped in [`Blueprint`]s, which prevents
-//! to call its `Builder::build()` method directly. In other respects, the
-//! `Blueprint` acts a lot like an `Rc` and thus allows to share one
-//! instance among several dependants.
-//! This `Rc`-like structure creates naturally a DAG.
-//!
-//! For building a `Builder`s artifact, its `Builder::build()` method is
-//! provided with a [`Resolver`] that allows to resolve depending
-//! `Blueprint`s into their respective artifacts, which is,
-//! in order to form a DAG, wrapped behind a `Rc`.
-//!
-//! As entry point serves the [`Cache`], which allows outside of a
-//! `Builder` to resolve any `Blueprint` to its artifact. The
-//! `Cache` is essentially a cache for artifacts. It can be used to
-//! translate any number of `Blueprint`s to their respective artifact,
-//! while sharing their common dependencies.
-//! Consequently, resolving the same `Blueprint` using the same
-//! `Cache` results in the same `Rc`ed artifact.
-//! However, using different `Cache`s results in different artifacts.
-//!
-//! The `Cache` has a `clear()` method to reset the cache.
-//! This could be useful to free the resources kept by all artifacts and
-//! builders, which are cached in it, or when artifacts shall be explicitly
-//! recreated, e.g. to form a second independent artifact DAG.
-//! Additionally, `Cache` has an `invalidate()` method to remove a single
-//! builder and artifact including its dependants (i.e. those artifacts which had
-//! used the invalidated one).
 //!
 //![`Builder`]: trait.Builder.html
 //![`Artifact`]: trait.Builder.html#associatedtype.Artifact
@@ -105,6 +72,7 @@
 //![`SimpleBuilder`]: rc/trait.SimpleBuilder.html
 //![`rc`]: rc/index.html
 //![`canning`]: canning/index.html
+//![`blueprint`]: blueprint/index.html
 //![`Blueprint`]: blueprint/struct.Blueprint.html
 //![`Resolver`]: cache/struct.Resolver.html
 //![`Cache`]: cache/struct.Cache.html
