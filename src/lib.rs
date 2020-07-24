@@ -61,6 +61,8 @@
 //!
 //! ## Detailed Concept
 //!
+//! Also see the [Advanced Feature section of `Builder`].
+//!
 //! **TODO**
 //!
 //! The basic principal on which this crate is build, suggests two levels of
@@ -106,7 +108,7 @@
 //![`Blueprint`]: blueprint/struct.Blueprint.html
 //![`Resolver`]: cache/struct.Resolver.html
 //![`Cache`]: cache/struct.Cache.html
-//!
+//![Advanced Feature section of `Builder`]: trait.Builder.html#advanced-features
 //!
 //!
 //! ## Example
@@ -362,7 +364,7 @@ fn unpack<T>(res: Result<T,Never>) -> T {
 
 /// Unpacking a composite type into its inner value.
 ///
-/// This trait is use in contexts where `Never` appears. For instance this
+/// This trait is use in contexts where [`Never`] appears. For instance this
 /// trait is implemented on `Result<T,Never>` to unpack `T`, which is its only
 /// value as `Never` is uninhabited i.e. can never exist.
 ///
@@ -370,13 +372,27 @@ fn unpack<T>(res: Result<T,Never>) -> T {
 /// alternative to unwrapping. Therefore, if unpacking is available it should
 /// be preferred over unwrapping.
 ///
+/// # Example
+///
+/// ```
+/// use daab::Never;
+/// use daab::Unpacking;
+///
+/// let res: Result<u32, Never> = Ok(42);
+/// // The error Never can never exist, thus we can unpack the result directly
+/// // into the u32, compile-time guaranteed panic-free.
+/// assert_eq!(42, res.unpack())
+/// ```
+///
+/// [`Never`]: enum.Never.html
+///
 pub trait Unpacking {
 	/// The type to be unpacked.
     type Inner;
 
 	/// Unpacking into its inner value.
 	///
-	/// This function guarantees to never fail nor panic.
+	/// This function is guaranteed to never fail nor panic.
 	///
     fn unpack(self) -> Self::Inner;
 }
@@ -390,13 +406,88 @@ impl<T> Unpacking for Result<T,Never> {
 
 
 
-/// Represents a builder for an artifact.
+/// Represents a Builder for an Artifact.
 ///
-/// Each builder is supposed to contain all direct dependencies such as other
-/// builders.
-/// In the `build()` function, `resolver` gives access to the `Cache`
-/// in order to resolve depending builders (aka `Blueprint`s) into their
-/// respective artifacts.
+/// The `Builder` is the central trait of this crate. It defines the
+/// _Builders_ (the structs implementing this trait) which are referred to
+/// throughout this crate, as well as the _Artifacts_, which are the values
+/// build by a Builder, and defined via the [`Artifact`] associate type.
+///
+/// To be usable within this crate, a Builder has to be wrapped in a
+/// [`Blueprint`]. Then it can be used to with a [`Cache`] to build and get
+/// its Artifact.
+///
+/// When `Blueprint` (containing a `Builder`) is resolved at a `Cache`, the
+/// `Cache` will call the [`build`] method of that `Builder` as needed (i.e.
+/// whenever there is no cached Artifact available),
+/// providing it with a [`Resolver`], which allows to resolve its depending
+/// Builders to their Artifacts.
+///
+/// An important concept is that a Builder may depend on other Builders (i.e.
+/// it may use their Artifacts to construct its own Artifact). Thus constituting
+/// existential dependencies between Artifacts.
+/// The depending Builders are supposed to be stored in the `Builder` struct
+/// which is then accessible from the `build` method to resolve them.
+///
+///
+///
+/// # Advanced Features
+///
+/// Unlike various `SimpleBuilder`s this `Builder` offers additionally more
+/// advanced features than described above. These are explained in the
+/// following.
+///
+///
+/// ## Dynamic State
+///
+/// Each `Builder` may define a dynamic state, default is the unit type `()`.
+/// That is a value that will be stored in a `Box` in the `Cache`, which will
+/// be accessible even mutably for anyone from the `Cache`, as opposed to the
+/// `Builder` itself, which will become inaccessible once wrapped in a
+/// `Blueprint`.
+///
+/// If a `Builder` is encountered by a `Cache` for the first time, the `Cache`
+/// will use the `Builder`'s `init_dyn_state` method to initialize the stored
+/// dynamic state. It can then be accessed by the `Builder` itself from its
+/// `build` method thought [`Resolver::my_state`] of the provided `Resolver`.
+///
+/// The dynamic state might be used for various purposes, the simples is as a
+/// kind of variable configuration of the respective `Builder`. Notice that the
+/// Artifact conceptional depends on the dynamic state, thus altering the
+/// dynamic state (i.e. if access thought [`Cache::dyn_state_mut`])
+/// will invalidate the Artifact of the respective `Builder`.
+///
+/// Another use-case of the dynamic state is to keep some state between builds.
+/// An extreme example of this is the [`RedeemingBuilder`], which will replay
+/// entire Artifacts of its inner Builder, when it fails to produce a new one.
+///
+///
+/// ## Failure
+///
+/// `Builder`s are generally allowed to fail. Thus returning a `Result`
+/// with the defined [`Err`] type,
+/// which can be returned by the `build` method.
+///
+/// The infallible `SimpleBuilder`s use the [`Never`]-type (a stable variation
+/// of the yet unstable `!`, the official `never`-type) as `Err`, because that
+/// `Never` type allows simple [unpacking] of the `Result`s returned by the
+/// `Cache`.
+/// Thus if a Builder can always produce an Artifact, its `Err` type should be
+/// that [`Never`] type.
+///
+///
+///
+/// [`Artifact`]: trait.Builder.html#associatedtype.Artifact
+/// [`Blueprint`]: blueprint/struct.Blueprint.html
+/// [`Cache`]: cache/struct.Cache.html
+/// [`build`]: trait.Builder.html#tymethod.build
+/// [`Resolver`]: cache/struct.Resolver.html
+/// [`Resolver::my_state`]: cache/struct.Resolver.html#method.my_state
+/// [`Cache::dyn_state_mut`]: cache/struct.Cache.html#method.dyn_state_mut
+/// [`RedeemingBuilder`]: utils/struct.RedeemingBuilder.html
+/// [`Never`]: enum.Never.html
+/// [`Err`]: trait.Builder.html#associatedtype.Err
+/// [unpacking]: trait.Unpacking.html
 ///
 pub trait Builder<ArtCan, BCan>: Debug + 'static
 		where
@@ -423,11 +514,11 @@ pub trait Builder<ArtCan, BCan>: Debug + 'static
 	fn build(&self, cache: &mut Resolver<ArtCan, BCan, Self::DynState>)
 		-> Result<Self::Artifact, Self::Err>;
 
-	/// Return an inital dynamic state for this builder.
-	/// 
+	/// Return an initial dynamic state for this builder.
+	///
 	/// When a builder is first seen by a `Cache` the cache will use this method
-	/// to obtain an inital value for the dynamic state of this builder.
-	/// 
+	/// to obtain an initial value for the dynamic state of this builder.
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
