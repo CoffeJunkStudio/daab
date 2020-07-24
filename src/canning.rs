@@ -2,14 +2,49 @@
 //!
 //! Module for canning values.
 //!
-//! Canning means wrapping values in some package type, which is better for
-//! storing. Thus these Can types contain some `dyn Any` value to allow casting
-//! various values into cans.
-//! In order to keep them more usable, a Can can be downcasted back to some `T`.
+//! This module essentially fulfils the need of this crate to store various
+//! types of Artifacts and Builders within the same structure. This is
+//! essentially achieved by casting to some `dyn Any` (which is why Builders and
+//! Artifacts have to be `'static`). Since `dyn Any` is unsized, it cannot be
+//! stored per-se and requires some container such as `Rc`, `Arc`, or `Box`.
 //!
-//! This module also contains a notion for Bins which are 'open' Cans. For
-//! instance an `Rc<dyn Any>` as one kind of Can, and its respective Bin is
-//! `Rc<T>` for every `T`.
+//! Originally `daab` had simply used `Rc`s. But there is no good reason for
+//! not using any of the other container types. Thus the current `daab`
+//! implementation is generic over this container type, and this canning
+//! infrastructure traits have been conceived to to allow the required
+//! operations (most importantly downcasting) on them while keeping it as open
+//! and generic as reasonable.
+//!
+//! The afore mentioned container types for some `dyn Any` is here referred to
+//! as _Can_. Because the `dyn Any` type is opaque but uniform, allowing the
+//! store various value of different internal type using the same Can-type.
+//! Other words various `T`-values may be casted to same Can-type such as
+//! `Rc<dyn Any>`.
+//!
+//! In the above example, the `T`-value has to wrapped in an `Rc<T>` first. This
+//! `Rc<T>` as opposed to the Can, is specific and transparent and will be
+//! following referred to as _Bin_-type of a Can-type for some `T`.
+//!
+//! This completes the basics this module is based on. Can (such as
+//! `Rc<dyn Any>`) are supposed to implement the [`Can`] trait, which is
+//! generic `T` for all the values which may be contained (e.g. restricted to
+//! `T: 'static`). `Can` then has the associated type [`Bin`], which defines
+//! for the implementing Can what the transparent wrapper for the specific `T`
+//! is, for instance the Can `Rc<dyn Any>` simply defines the Bin as `Rc<T>`
+//! for each `T`.
+//!
+//! The further traits simply define various properties which may or may not be
+//! implemented for a specific Can and `T`. For instance the `CanRefMut` trait
+//! is only implemented for `Box<dyn Any>` as it is the only one (of the std
+//! types) which allows mutable access to the wrapped value. While `CanSized`
+//! can only be implemented for `T: Sized` (as opposed to `T: ?Sized`).
+//!
+//! Notice in addition to the implementations for `Rc`, `Arc`, `Box` and
+//! `BuilderArtifact`, which are provided as part of this crate, it is possible
+//! to implement the various Can-Trait for any custom container type.
+//!
+//! [`Can`]: trait.Can.html
+//! [`Bin`]: trait.Can.html#associatedtype.Bin
 //!
 
 use std::ops::Deref;
@@ -30,10 +65,24 @@ cfg_if! {
 
 /// Represents an opaque wrapper for `dyn Any`.
 ///
-/// This type reperesents a wrapper for a `dyn Any`. It is basis for the `Can`
-/// type which allows to be downcasted.
+/// This trait represents an opaque wrapper for some `dyn Any`. It is basis for
+/// the [`Can`] trait which is further implemented for various `T` specifying a
+/// respective [`Bin`] type.
 ///
-/// See `Can`.
+/// A `CanBase` is implemented for instance by `Rc<dyn Any>`, `Arc<dyn Any>`, or
+/// `Box<dyn Any>`.
+///
+/// Since a Can is typically a smart-pointer as the examples above are, Cans &
+/// Bins (as defined by the sub-trait [`Can`]) are supposed to produce a pointer
+/// to the inner value (e.g. via [`can_as_ptr`] or [`bin_as_ptr`]), which has to
+/// be the same regardless of whether it is retrieved from the `Can` or `Bin`.
+///
+/// Also see [`Can`].
+///
+/// [`Can`]: trait.Can.html
+/// [`Bin`]: trait.Can.html#associatedtype.Bin
+/// [`can_as_ptr`]: trait.CanBase.html#tymethod.can_as_ptr
+/// [`bin_as_ptr`]: trait.Can.html#tymethod.bin_as_ptr
 ///
 // Impl for Rc, Arc, Box, Bp
 pub trait CanBase: Debug + Sized + 'static {
@@ -42,21 +91,43 @@ pub trait CanBase: Debug + Sized + 'static {
 	fn can_as_ptr(&self) -> *const dyn Any;
 }
 
-/// Represents an opaque wrapper for `dyn Any` which can be casted to `T`.
+/// Represents an opaque wrapper for `dyn Any` which has a transparent
+/// representation for `T`.
 ///
-/// Since `dyn Any` can't be stored, a `Can` encapsules a `dyn Any` while
-/// allowing it to be casted to specific wrapper `Bin` for `T`.
+/// A `CanBase` is for instance a `Rc<dyn Any>`, `Arc<dyn Any>`, or
+/// `Box<dyn Any>`, which has transparent representation (a [`Bin`]) for any `T`
+/// as `Rc<T>`, `Arc<T>`, or `Box<T>`, respectively.
 ///
-/// A good example for a `Can` is `Rc<dyn Any>`. Which for `T` can be casted
-/// to a `Rc<T>` which would be the `Bin` type.
+/// The `Can` is the essential basis trait, which defines the `Bin` for its `T`.
+/// This `Bin` than is used by various sub-traits to define specific methods
+/// and functions on it. For instance the [`CanSized`] trait defines conversion
+/// functions from `T` to `Bin` to `Can` and with its [`downcast_can`] method an
+/// important way-back from a `Can` to a `Bin`.
+///
+/// Since a Can is typically a smart-pointer as the examples above are, Cans &
+/// Bins are supposed to produce a pointer
+/// to the inner value (e.g. via [`can_as_ptr`] or [`bin_as_ptr`]), which has to
+/// be the same (i.e. same numeric value) regardless of whether it is retrieved
+/// from the `Can` or `Bin`.
+///
+/// [`Bin`]: trait.Can.html#associatedtype.Bin
+/// [`CanSized`]: trait.CanSized.html
+/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
+/// [`can_as_ptr`]: trait.CanBase.html#tymethod.can_as_ptr
+/// [`bin_as_ptr`]: trait.Can.html#tymethod.bin_as_ptr
 ///
 // Impl for Rc, Arc, Box, Bp for <T: ?Sized>
 pub trait Can<T: ?Sized>: CanBase {
-	/// A specific wrapper for `T` which can be casted from `Self`.
+	/// A specific transparent wrapper for `T` convertible to and from `Self`.
+	///
+	/// For instance `Rc<dyn Any>`, which implements this trait, defines this
+	/// `Bin` for any `T` as `Rc<T>`. That `Rc<T>` can easily coerced to
+	/// `Rc<dyn Any>`, and casted back to `Rc<T>`.
 	///
 	type Bin: Debug + 'static;
 
-	/// Gets the pointer to
+	/// Returns the pointer to inner value.
+	///
 	fn bin_as_ptr(b: &Self::Bin) -> *const ();
 }
 
@@ -80,29 +151,50 @@ cfg_if! {
 ///
 // Impl for Rc, Arc, Box, Bp for <T: Sized>
 pub trait CanSized<T>: Can<T> {
-	/// Create a `Bin` for `T`.
+	/// Create a `Bin` from `T`.
 	///
 	fn into_bin(t: T) -> Self::Bin;
 
 	/// Create `Self` directly from `T`.
+	///
 	fn from_inner(t: T) -> Self {
 		Self::from_bin(Self::into_bin(t))
 	}
 
 	/// Creates Self form a `Bin`.
 	///
-	/// This is a upcast and can not fail.
+	/// This is a upcast and may not fail, as opposed to [`downcast_can`].
 	///
-	// NOTICE this function might not require T: Sized, but as of know casting
+	/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
+	///
+	// NOTICE this function might not require T: Sized, but as of now casting
 	// (up & down) requires it in the implementation anyway
 	fn from_bin(b: Self::Bin) -> Self;
 
 	/// Tries to downcast the opaque `Can` to an specific `Bin`.
 	///
-	/// Because `Can`s are supposed to be alike `Any` allowing various `T`s to
-	/// be casted to the same `Can`, this operation inherently may fail.
+	/// Because `Can`s are supposed to contain `dyn Any` allowing various `T`s
+	/// to be casted to the same `Can`, this operation inherently may fail if
+	/// the wrong `T` has been chosen, thus returning `None` is these cases.
 	///
-	// NOTICE this function might not require T: Sized, but as of know casting
+	/// However the following is supposed to work for any `CanType` (if it
+	/// implements `CanSized`):
+	/// ```
+	/// # use std::rc::Rc;
+	/// # use std::any::Any;
+	/// # type CanType = Rc<dyn Any>;
+	/// use daab::canning::CanSized;
+	/// #[derive(Debug)]
+	/// struct Foo;
+	///
+	/// // Up cast some `Foo`, and then downcast it back
+	/// let can = <CanType as CanSized<Foo>>::from_inner(Foo);
+	/// let bin = <CanType as CanSized<Foo>>::downcast_can(can);
+	/// // This is supposed to work, because the can does contain a `Foo`
+	/// assert!(bin.is_some());
+	/// ```
+	///
+	// NOTICE this function might not require T: Sized, but as of now casting
 	// (up & down) requires it in the implementation anyway
 	fn downcast_can(self) -> Option<Self::Bin>;
 }
@@ -110,12 +202,13 @@ pub trait CanSized<T>: Can<T> {
 /// Can that has a weak representation.
 ///
 /// In the context of reference counting, a weak representation is supposed to
-/// only allow access if there is at least one strong representation. It is a
-/// good representation for caching, since it can be used to determine whether
-/// there is any active user left (which has to have a strong representation).
+/// only allow access if there is at least one strong representation left.
+/// This is a good representation for caching, since it can be used to
+/// determine whether there is any active user left (who has to have a strong
+/// representation).
 ///
-/// Again the `Rc` type is a good example here, it is the `CanStrong` here and
-/// the `std::rc::Weak` is the `CanWeak` in this regards.
+/// For instance `Rc<dyn Any>`, which implements `CanStrong`, defines
+/// `std::rc::Weak` as its `CanWeak`.
 ///
 // Impl for Rc, Arc
 pub trait CanStrong: CanBase {
@@ -130,10 +223,16 @@ pub trait CanStrong: CanBase {
 	fn upgrade_from_weak(weak: &Self::CanWeak) -> Option<Self>;
 }
 
-/// Transparent variant of `Can`.
+/// Can with reference access.
 ///
-/// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
-/// this `Can` to `T`.
+/// This trait allows to get `T` by reference out of the Can though
+/// [`downcast_can_ref`]. The reference is feed from the Can itself, thus
+/// eliminating any cloning as it is might be needed when using
+/// [`downcast_can`]. Thus if reference access is sufficient and available,
+/// `downcast_can_ref` should be preferred over `downcast_can`.
+///
+/// [`downcast_can_ref`]: trait.CanRef.html#tymethod.downcast_can_ref
+/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
 ///
 // NOTICE: Can<T> would be sufficient as trait bound, but in this crate,
 // CanRef<T> is always used together with CanSized<T>, and this way, the latter
@@ -145,17 +244,53 @@ pub trait CanStrong: CanBase {
 // Impl for Rc, Arc, Box for <T: Sized>
 pub trait CanRef<T>: CanSized<T> {
 
-	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
-	/// `Bin` and cloning.
+	/// Tries to downcast the opaque `Can` to a reference to inner value.
+	///
+	/// Because `Can`s are supposed to contain `dyn Any` allowing various `T`s
+	/// to be casted to the same `Can`, this operation inherently may fail if
+	/// the wrong `T` has been chosen, thus returning `None` is these cases.
+	///
+	/// This is analogue to [`downcast_can`]. In fact, if for a Can-type
+	/// both methods are available, then for a specific `self` and
+	/// `T` they should either both fail, or both work.
+	///
+	/// The following is supposed to work for any `CanType` (if it
+	/// implements `CanRef`):
+	/// ```
+	/// # use std::rc::Rc;
+	/// # use std::any::Any;
+	/// # type CanType = Rc<dyn Any>;
+	/// use daab::canning::CanSized;
+	/// use daab::canning::CanRef;
+	/// #[derive(Debug)]
+	/// struct Foo;
+	///
+	/// // Up cast some `Foo`, and then downcast it back
+	/// let can = <CanType as CanSized<Foo>>::from_inner(Foo);
+	/// let bin = <CanType as CanRef<Foo>>::downcast_can_ref(&can);
+	/// // This is supposed to work, because the can does contain a `Foo`
+	/// assert!(bin.is_some());
+	/// ```
+	///
+	/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
 	///
 	fn downcast_can_ref(&self) -> Option<&T>;
 
 }
 
-/// Mutable transparent variant of `Can`.
+/// Can with mutable reference access.
 ///
-/// It allows additional to `Can` to get `T` from `Bin` and directly downcasting
-/// this `Can` to `T`.
+/// This trait allows to get `T` by mutable reference out of the Can though
+/// [`downcast_can_mut`]. The reference is feed from the Can itself, thus
+/// eliminating any cloning as it is might be needed when using
+/// [`downcast_can`]. This is the mutable pendant to [`CanRef`].
+///
+/// Notice this is a special trait that is not widely implemented (here it is
+/// only implemented for `Box<dyn Any>`).
+///
+/// [`downcast_can_mut`]: trait.CanRefMut.html#tymethod.downcast_can_mut
+/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
+/// [`CanRef`]: trait.CanRef.html
 ///
 // NOTICE: Can<T> would be sufficient as trait bound, but in this crate,
 // CanRef<T> is always used together with CanSized<T>, and this way, the latter
@@ -166,13 +301,47 @@ pub trait CanRef<T>: CanSized<T> {
 //
 // Impl for Rc, Arc, Box for <T: Sized>
 pub trait CanRefMut<T>: CanSized<T> {
-	/// Tries to downcast the opaque `Can` to an specific `T`, by passing the
-	/// `Bin` and cloning.
+	/// Tries to downcast the opaque `Can` to a reference to inner value.
+	///
+	/// Because `Can`s are supposed to contain `dyn Any` allowing various `T`s
+	/// to be casted to the same `Can`, this operation inherently may fail if
+	/// the wrong `T` has been chosen, thus returning `None` is these cases.
+	///
+	/// This is analogue to [`downcast_can`]. In fact, if for a Can-type
+	/// both methods are available, then for a specific `self` and
+	/// `T` they should either both fail, or both work.
+	///
+	/// The following is supposed to work for any `CanType` (if it
+	/// implements `CanRef`):
+	/// ```
+	/// # use std::any::Any;
+	/// # type CanType = Box<dyn Any>;
+	/// use daab::canning::CanSized;
+	/// use daab::canning::CanRefMut;
+	/// #[derive(Debug)]
+	/// struct Foo;
+	///
+	/// // Up cast some `Foo`, and then downcast it back
+	/// let mut can = <CanType as CanSized<Foo>>::from_inner(Foo);
+	/// let bin = <CanType as CanRefMut<Foo>>::downcast_can_mut(&mut can);
+	/// // This is supposed to work, because the can does contain a `Foo`
+	/// assert!(bin.is_some());
+	/// ```
+	///
+	/// [`downcast_can`]: trait.CanSized.html#tymethod.downcast_can
 	///
 	fn downcast_can_mut(&mut self) -> Option<&mut T>;
 }
 
-/// A can that can hold and convert a given builder into a can of `dyn Builder`
+/// A Can that can hold and convert a given builder into a Can of `dyn Builder`.
+///
+/// This is a specialized trait used to create unsized Builder Cans with
+/// Stable Rust, as opposed to a more general approach that requires
+/// Nightly Rust.
+///
+/// See [`BlueprintUnsized::new_unsized`] for its usage.
+///
+/// [`BlueprintUnsized::new_unsized`]: blueprint/struct.BlueprintUnsized.html#method.new_unsized
 ///
 pub trait CanBuilder<ArtCan, Artifact, DynState, Err, B>:
 		CanStrong +
@@ -185,7 +354,15 @@ pub trait CanBuilder<ArtCan, Artifact, DynState, Err, B>:
 	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin, Self);
 }
 
-/// A can that can hold and convert a given builder into a can of `dyn Builder`
+/*
+TODO this is yet total unused!!!
+
+/// A Can that can hold and convert a given builder into a Can of
+/// `dyn Builder`, `Sync` variant.
+///
+/// This is a specialized trait used to create unsized and `Sync` Builder Cans.
+/// See [`BlueprintUnsized::new_unsized`] usage of it.
+///
 ///
 pub trait CanBuilderSync<ArtCan, Artifact, DynState, Err, B>:
 		CanStrong +
@@ -197,7 +374,7 @@ pub trait CanBuilderSync<ArtCan, Artifact, DynState, Err, B>:
 	///
 	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync>>::Bin, Self);
 }
-
+*/
 
 
 //
@@ -424,6 +601,7 @@ impl<T: Debug + Send + Sync + 'static> CanSized<T> for Arc<dyn Any + Send + Sync
 	}
 }
 
+/*
 impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilderSync<ArtCan, Artifact, DynState, Err, B> for Arc<dyn Any + Send + Sync>
 	where
 		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync + 'static,
@@ -448,7 +626,7 @@ impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilderSync<ArtCan
 		)
 	}
 }
-
+*/
 
 
 //
@@ -459,7 +637,12 @@ use crate::Blueprint as Bp;
 use crate::BlueprintUnsized as Bpu;
 use crate::Promise;
 
-/// A can type that can be used as an artifact can for builders.
+/// A Can-type that allows Builders produced as Artifacts.
+///
+/// This is a special container type that allows to can `Blueprints`.
+/// That enables them to be used as Artifact type of Builders.
+/// These Builders of Builders are also referred to as _Super Builders_.
+///
 #[derive(Debug, Clone)]
 pub struct BuilderArtifact<BCan>(BCan);
 
