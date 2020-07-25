@@ -14,17 +14,17 @@ static COUNTER: AtomicU32 = AtomicU32::new(0);
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Leaf {
+pub(crate) struct Leaf {
 	id: u32,
 }
 
 #[derive(Debug)]
-pub struct BuilderLeaf {
+pub(crate) struct BuilderLeaf {
 	// empty
 }
 
 impl BuilderLeaf {
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			// empty
 		}
@@ -53,12 +53,12 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 
 
 #[derive(Debug)]
-pub struct BuilderLeafFallible {
+pub(crate) struct BuilderLeafFallible {
 	// empty
 }
 
 impl BuilderLeafFallible {
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			// empty
 		}
@@ -91,19 +91,19 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeafFallible
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SimpleNode<Bin> {
+pub(crate) struct SimpleNode<Bin> {
 	id: u32,
 	leaf: Bin,
 }
 
 #[derive(Debug)]
-pub struct BuilderSimpleNode<AP> {
+pub(crate) struct BuilderSimpleNode<AP> {
 	leaf: AP,
 }
 
 impl<AP> BuilderSimpleNode<AP> {
 
-	pub fn new<BCan: Debug>(leaf: AP) -> Self
+	pub(crate) fn new<BCan: Debug>(leaf: AP) -> Self
 		where
 			AP: Promise<BuilderLeaf, BCan>,
 			BCan: Can<BuilderLeaf>, {
@@ -144,14 +144,14 @@ impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 }
 
 #[derive(Debug)]
-pub struct BuilderVariableNode<B,AP> {
+pub(crate) struct BuilderVariableNode<B,AP> {
 	leaf: AP,
 	_b: PhantomData<B>,
 }
 
 impl<B, AP> BuilderVariableNode<B, AP> {
 
-	pub fn new<ArtCan, BCan: Debug>(leaf: AP) -> Self
+	pub(crate) fn new<ArtCan, BCan: Debug>(leaf: AP) -> Self
 		where
 			B: Builder<ArtCan, BCan>,
 			B::Err: Into<()>,
@@ -208,7 +208,7 @@ impl<B, AP, ArtCan, BCan> Builder<ArtCan, BCan> for BuilderVariableNode<B, AP>
 
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ComplexNode<L,R> {
+pub(crate) struct ComplexNode<L,R> {
 	id: u32,
 	left: L,
 	right: R,
@@ -216,7 +216,7 @@ pub struct ComplexNode<L,R> {
 
 
 #[derive(Debug)]
-pub struct BuilderComplexNode<ApL,ApR,LB,RB> {
+pub(crate) struct BuilderComplexNode<ApL,ApR,LB,RB> {
 	left: ApL,
 	right: ApR,
 	_l_t: PhantomData<LB>,
@@ -225,7 +225,7 @@ pub struct BuilderComplexNode<ApL,ApR,LB,RB> {
 
 impl<ApL,ApR,LB,RB> BuilderComplexNode<ApL,ApR,LB,RB> {
 
-	pub fn new(
+	pub(crate) fn new(
 		left: ApL,
 		right: ApR,
 	) -> Self {
@@ -271,7 +271,7 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for Bui
 	}
 }
 
-pub trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Never> where BCan: CanStrong {}
+pub(crate) trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Never> where BCan: CanStrong {}
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
@@ -300,12 +300,12 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 
 
 #[derive(Debug)]
-pub struct BuilderLeafBox {
+pub(crate) struct BuilderLeafBox {
 	// empty
 }
 
 impl BuilderLeafBox {
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			// empty
 		}

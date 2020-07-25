@@ -27,7 +27,7 @@ struct BuilderLeaf {
 }
 
 impl BuilderLeaf {
-	pub fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
 			// empty
 		}
@@ -57,7 +57,7 @@ struct BuilderSimpleNode {
 }
 
 impl BuilderSimpleNode {
-	pub fn new(leaf: Blueprint<BuilderLeaf>) -> Self {
+	pub(crate) fn new(leaf: Blueprint<BuilderLeaf>) -> Self {
 		Self {
 			leaf,
 		}
@@ -124,7 +124,7 @@ struct ComplexNode {
 }
 
 impl ComplexNode {
-	pub fn leaf(&self) -> Option<&Leaf> {
+	pub(crate) fn leaf(&self) -> Option<&Leaf> {
 		if let LeafOrNodes::Leaf(ref l) = *self.inner {
 			Some(l)
 		} else {
@@ -132,7 +132,7 @@ impl ComplexNode {
 		}
 	}
 
-	pub fn left(&self) -> Option<&ComplexNode> {
+	pub(crate) fn left(&self) -> Option<&ComplexNode> {
 		if let LeafOrNodes::Nodes{ref left, ..} = *self.inner {
 			Some(left)
 		} else {
@@ -140,7 +140,7 @@ impl ComplexNode {
 		}
 	}
 
-	pub fn right(&self) -> Option<&ComplexNode> {
+	pub(crate) fn right(&self) -> Option<&ComplexNode> {
 		if let LeafOrNodes::Nodes{ref right, ..} = *self.inner {
 			Some(right)
 		} else {
@@ -155,13 +155,13 @@ struct BuilderComplexNode {
 }
 
 impl BuilderComplexNode {
-	pub fn new_leaf(leaf: Blueprint<BuilderLeaf>) -> Self {
+	pub(crate) fn new_leaf(leaf: Blueprint<BuilderLeaf>) -> Self {
 		Self {
 			inner: BuilderLeafOrNodes::Leaf(leaf),
 		}
 	}
 
-	pub fn new_nodes(left: Blueprint<BuilderComplexNode>, right: Blueprint<BuilderComplexNode>) -> Self {
+	pub(crate) fn new_nodes(left: Blueprint<BuilderComplexNode>, right: Blueprint<BuilderComplexNode>) -> Self {
 		Self {
 			inner: BuilderLeafOrNodes::Nodes{left, right},
 		}

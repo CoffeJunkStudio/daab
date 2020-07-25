@@ -254,6 +254,7 @@
 // prevents compilation with broken Deref impl causing nasty stack overflows.
 #![deny(unconditional_recursion)]
 
+#![warn(unreachable_pub)]
 #![warn(missing_docs)]
 
 

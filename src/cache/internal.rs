@@ -30,14 +30,14 @@ use super::Resolver;
 /// `dyn Any`) ArtifactPromise.
 ///
 #[derive(Clone, Debug)]
-pub struct BuilderEntry<BCan> {
+pub(crate) struct BuilderEntry<BCan> {
 	builder: BCan,
 }
 
 impl<BCan: CanStrong> BuilderEntry<BCan> {
 	/// Constructs a new entry from given Promise.
 	///
-	pub fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
+	pub(crate) fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
 			where AP: Promise<B, BCan> {
 
 		BuilderEntry {
@@ -49,7 +49,7 @@ impl<BCan: CanStrong> BuilderEntry<BCan> {
 	///
 	/// The id uniquely identifies the underlying builder.
 	///
-	pub fn id(&self) -> BuilderId {
+	pub(crate) fn id(&self) -> BuilderId {
 		BuilderId::new(self.builder.can_as_ptr())
 	}
 }
@@ -86,7 +86,7 @@ impl<BCan: CanStrong> fmt::Pointer for BuilderEntry<BCan> {
 /// When ever an id is used in any mapping here, its builder must be present in
 /// the `known_builders` map.
 ///
-pub struct RawCache<
+pub(crate) struct RawCache<
 	ArtCan,
 	BCan,
 	#[cfg(feature = "diagnostics")] Doc: ?Sized = dyn Doctor<ArtCan, BCan>
@@ -132,7 +132,7 @@ pub struct RawCache<
 
 	/// The doctor for error diagnostics.
 	#[cfg(feature = "diagnostics")]
-	pub doctor: Doc,
+	pub(crate) doctor: Doc,
 }
 
 cfg_if! {
@@ -160,7 +160,7 @@ cfg_if! {
 			///
 			/// **Notice: This function is only available if the `diagnostics` feature has been activated**.
 			///
-			pub fn new_with_doctor(doctor: Doc) -> Self {
+			pub(crate) fn new_with_doctor(doctor: Doc) -> Self {
 				Self {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
@@ -190,7 +190,7 @@ cfg_if! {
 
 			/// Creates a new empty cache.
 			///
-			pub fn new() -> Self {
+			pub(crate) fn new() -> Self {
 				Self {
 					artifacts: HashMap::new(),
 					dyn_states: HashMap::new(),
@@ -212,7 +212,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	///
 	/// The `user` must be already listed in `known_builders`.
 	///
-	pub(crate) fn track_dependency<AP, B: ?Sized>(
+	pub(super) fn track_dependency<AP, B: ?Sized>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
@@ -253,7 +253,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// `lookup*` functions, but this one does no cast and has fewer
 	/// generic requirements.
 	///
-	pub fn contains_artifact<AP: ?Sized, B: ?Sized>(
+	pub(crate) fn contains_artifact<AP: ?Sized, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> bool
@@ -266,7 +266,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Tests whether the artifact or dyn state of the given builder is
 	/// recorded in this cache.
 	///
-	pub fn is_builder_known<AP: ?Sized, B: ?Sized>(
+	pub(crate) fn is_builder_known<AP: ?Sized, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> bool
@@ -289,7 +289,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get the stored artifact by its bin if it exists.
 	///
-	pub fn lookup<AP, B: ?Sized>(
+	pub(crate) fn lookup<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<ArtCan::Bin>
@@ -316,7 +316,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get the stored artifact by reference if it exists.
 	///
-	pub fn lookup_ref<AP, B: ?Sized>(
+	pub(crate) fn lookup_ref<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<&B::Artifact>
@@ -342,7 +342,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get the stored artifact by mutable reference if it exists.
 	///
-	pub fn lookup_mut<AP, B: ?Sized>(
+	pub(crate) fn lookup_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Option<&mut B::Artifact>
@@ -377,7 +377,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get a clone of the stored artifact if it exists.
 	///
-	pub fn lookup_cloned<AP, B: ?Sized>(
+	pub(crate) fn lookup_cloned<AP, B: ?Sized>(
 			&self,
 			promise: &AP
 		) -> Option<B::Artifact>
@@ -475,7 +475,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets the bin with the artifact of the given builder.
 	///
-	pub fn get<AP, B: ?Sized>(
+	pub(crate) fn get<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<ArtCan::Bin, B::Err>
@@ -499,7 +499,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets a reference to the artifact of the given builder.
 	///
-	pub fn get_ref<AP, B: ?Sized>(
+	pub(crate) fn get_ref<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&B::Artifact, B::Err>
@@ -524,7 +524,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets a mutable reference to the artifact of the given builder.
 	///
-	pub fn get_mut<AP, B: ?Sized>(
+	pub(crate) fn get_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<&mut B::Artifact, B::Err>
@@ -549,7 +549,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get a clone of the artifact of the given builder.
 	///
-	pub fn get_cloned<AP, B: ?Sized>(
+	pub(crate) fn get_cloned<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		) -> Result<B::Artifact, B::Err>
@@ -597,7 +597,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// `T` must be the correct type of the dynamic state of `bid`,
 	/// or this panics.
 	///
-	pub(crate) fn dyn_state_cast_mut<T: 'static>(
+	pub(super) fn dyn_state_cast_mut<T: 'static>(
 			&mut self,
 			bid: BuilderId
 		) -> Option<&mut T> {
@@ -629,7 +629,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// `T` must be the correct type of the dynamic state of `bid`,
 	/// or this panics.
 	///
-	pub(crate) fn dyn_state_cast_ref<T: 'static> (
+	pub(super) fn dyn_state_cast_ref<T: 'static> (
 			&self,
 			bid: BuilderId
 		) -> Option<&T> {
@@ -649,7 +649,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets the mutable dynamic state of the given builder and invalidate it.
 	///
-	pub fn dyn_state_mut<AP, B: ?Sized>(
+	pub(crate) fn dyn_state_mut<AP, B: ?Sized>(
 			&mut self, promise: &AP
 		) -> &mut B::DynState
 			where
@@ -668,7 +668,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets the dynamic state of the given builder.
 	///
-	pub fn dyn_state<AP, B: ?Sized>(
+	pub(crate) fn dyn_state<AP, B: ?Sized>(
 			&mut self, promise: &AP
 		) -> &B::DynState
 			where
@@ -684,7 +684,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets the dynamic state of the given builder, if it exists.
 	///
-	pub fn get_dyn_state<AP, B: ?Sized>(
+	pub(crate) fn get_dyn_state<AP, B: ?Sized>(
 			&self, promise: &AP
 		) -> Option<&B::DynState>
 			where
@@ -696,7 +696,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Deletes the artifact and dynamic state of the given builder.
 	///
-	pub fn purge<AP, B: ?Sized>(
+	pub(crate) fn purge<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)
@@ -723,7 +723,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Deletes all artifacts of this cache.
 	///
-	pub fn clear_artifacts(&mut self) {
+	pub(crate) fn clear_artifacts(&mut self) {
 		self.artifacts.clear();
 		self.dependents.clear();
 		self.dependencies.clear();
@@ -732,7 +732,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Clears the entire cache including all kept promise, artifacts and
 	/// dynamic states.
 	///
-	pub fn clear_all(&mut self) {
+	pub(crate) fn clear_all(&mut self) {
 		self.artifacts.clear();
 		self.dyn_states.clear();
 		self.dependents.clear();
@@ -807,7 +807,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Removes the given promise with its cached artifact from the cache and
 	/// all depending artifacts (with their promises).
 	///
-	pub fn invalidate<AP, B: ?Sized>(
+	pub(crate) fn invalidate<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
 		)
@@ -826,7 +826,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Invalidates all builders and their dyn state which can not be builded
 	/// any more, because there are no more references to them.
 	///
-	pub fn garbage_collection(&mut self) {
+	pub(crate) fn garbage_collection(&mut self) {
 
 		let unreachable_builder_ids: Vec<_> = self.known_builders.iter()
 			// Only retain those which can't be upgraded (i.e. no strong
@@ -860,7 +860,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Returns the number of currently kept artifact promises.
 	///
-	pub fn number_of_known_builders(&self) -> usize {
+	pub(crate) fn number_of_known_builders(&self) -> usize {
 		self.known_builders.len()
 	}
 }

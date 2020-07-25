@@ -28,7 +28,7 @@ impl Builder for FooBuilder {
 	type DynState = ();
 	type Err = ();
 
-	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
+	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
 		println!("Building FooArtifact...");
 		Ok(FooArtifact.into())
 	}
@@ -45,7 +45,7 @@ impl Builder for BazBuilder {
 	type DynState = ();
 	type Err = Never;
 
-	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, Never> {
+	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, Never> {
 		println!("Building BazArtifact...");
 		Ok(BazArtifact.into())
 	}
