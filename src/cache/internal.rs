@@ -1213,13 +1213,21 @@ mod test {
 		*cache.dyn_state_mut(&bp) = false;
 
 		// Building must fail
-		assert!(matches!(cache.build(&bp), Err(())));
+		if let Err(()) = cache.build(&bp) {
+			// fine
+		} else {
+			panic!("builder returned unexpectedly something");
+		}
 
 		// No artifact will be recorded
 		assert!(!cache.contains_artifact(&bp));
 
 		// And it continues to fail
-		assert!(matches!(cache.build(&bp), Err(())));
+		if let Err(()) = cache.build(&bp) {
+			// fine
+		} else {
+			panic!("builder returned unexpectedly something");
+		}
 		assert!(!cache.contains_artifact(&bp));
 
 		// Set the builder to produce an artifact
