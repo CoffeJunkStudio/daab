@@ -138,6 +138,7 @@ cfg_if! {
 		/// **Notice: This trait is only available if the `unsized`
 		/// feature has been activated**.
 		///
+		#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
 		pub trait CanUnsized<T: ?Sized, UT: ?Sized>: Can<T> + Can<UT> {
 
 			/// Convert the inner type in accordance with unsized.

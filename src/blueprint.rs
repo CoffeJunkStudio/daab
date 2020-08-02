@@ -220,6 +220,7 @@ cfg_if! {
 			/// multiple different Builders without adding additional type
 			/// parameters.
 			///
+			#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,
@@ -349,6 +350,7 @@ cfg_if! {
 			/// multiple different Builders without adding additional type
 			/// parameters.
 			///
+			#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
 			pub fn into_unsized<UB: ?Sized + 'static>(self) -> BlueprintUnsized<UB, BCan>
 				where
 					B: 'static + std::marker::Unsize<UB>,

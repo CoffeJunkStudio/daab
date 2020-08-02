@@ -1,6 +1,7 @@
 
 
 #![cfg_attr(feature = "unsized", feature(unsize))]
+#![cfg_attr(feature = "doc_cfg", feature(doc_cfg))]
 
 //!
 //! DAG Aware Artifact Builder
@@ -294,6 +295,7 @@ cfg_if! {
 	}
 }
 
+#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "diagnostics")))]
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
 
