@@ -334,6 +334,12 @@ pub trait CanRefMut<T>: CanSized<T> {
 	fn downcast_can_mut(&mut self) -> Option<&mut T>;
 }
 
+
+/// Referes to the Bin type of given BCan, if BCan is a `CanBuilder`.
+///
+pub type DynBuilderBin<ArtCan, BCan, Artifact, DynState, Err> =
+	<BCan as Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin;
+
 /// A Can that can hold and convert a given builder into a Can of `dyn Builder`.
 ///
 /// This is a specialized trait used to create unsized Builder Cans with
@@ -352,7 +358,7 @@ pub trait CanBuilder<ArtCan, Artifact, DynState, Err, B>:
 
 	/// Create a unsized bin from given builder.
 	///
-	fn can_unsized(builder: B) -> (<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin, Self);
+	fn can_unsized(builder: B) -> (DynBuilderBin<ArtCan, Self, Artifact, DynState, Err>, Self);
 }
 
 /*
@@ -458,7 +464,7 @@ impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilder<ArtCan, Ar
 		 {
 
 	fn can_unsized(builder: B) -> (
-			<Self as Can<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>>>::Bin, Self) {
+			DynBuilderBin<ArtCan, Self, Artifact, DynState, Err>, Self) {
 
 		let rc = Rc::new(builder);
 

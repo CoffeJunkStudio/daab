@@ -241,7 +241,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		// Diagnostics
 		#[cfg(feature = "diagnostics")]
-		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise.clone()));
+		self.doctor.resolve(diag_builder, &BuilderHandle::new(promise));
 
 	}
 
@@ -421,7 +421,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		// Create Resolver prerequisites
 		let ent = BuilderEntry::new(promise);
 		#[cfg(feature = "diagnostics")]
-		let diag_builder = BuilderHandle::new(promise.clone());
+		let diag_builder = BuilderHandle::new(promise);
 
 		// Create a temporary resolver
 		let mut resolver = Resolver {
@@ -869,6 +869,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 #[cfg(test)]
 mod test {
+
 	use super::*;
 	use crate::prelude::*;
 	use crate::Blueprint;
@@ -883,6 +884,7 @@ mod test {
 
 		(BuilderEntry::new(&bp), id)
 	}
+	#[allow(clippy::type_complexity)]
 	fn init_two_entries() -> (BuilderEntry<Rc<dyn Any>>, BuilderEntry<Rc<dyn Any>>) {
 		let builder = BuilderLeaf::new();
 		let bp = Blueprint::<_, Rc<dyn Any>>::new(builder);
@@ -1353,7 +1355,7 @@ mod test {
 
 		assert!(cache.dyn_states.get(&bp.id()).is_none());
 
-		let value = cache.ensure_dyn_state(&bp).clone();
+		let value = *cache.ensure_dyn_state(&bp);
 		assert_eq!(value, *cache.dyn_state(&bp));
 
 		// `ensure` may not change the value!

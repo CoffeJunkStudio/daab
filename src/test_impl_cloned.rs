@@ -98,7 +98,9 @@ enum BuilderLeafOrNodes {
 // Fixes in the Arc case:
 // error[E0275]: overflow evaluating the requirement
 // `std::sync::Arc<(dyn std::any::Any + std::marker::Send + std::marker::Sync + 'static)>: canning::Can<test_arc::BuilderComplexNode>`
+#[allow(unsafe_code)]
 unsafe impl Send for BuilderLeafOrNodes {}
+#[allow(unsafe_code)]
 unsafe impl Sync for BuilderLeafOrNodes {}
 
 impl BuilderLeafOrNodes {

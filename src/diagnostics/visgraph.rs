@@ -19,8 +19,8 @@ use std::io::Write;
 /// # use daab::diagnostics::VisgraphDocOptions;
 /// // Value of default()
 /// let opts = VisgraphDocOptions {
-///	    show_builder_values: false,
-///	    show_artifact_values: true,
+///     show_builder_values: false,
+///     show_artifact_values: true,
 /// };
 /// assert_eq!(opts, VisgraphDocOptions::default());
 /// ```

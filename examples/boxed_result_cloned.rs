@@ -30,7 +30,7 @@ impl Builder for FooBuilder {
 
 	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
 		println!("Building FooArtifact...");
-		Ok(FooArtifact.into())
+		Ok(FooArtifact)
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -47,7 +47,7 @@ impl Builder for BazBuilder {
 
 	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, Never> {
 		println!("Building BazArtifact...");
-		Ok(BazArtifact.into())
+		Ok(BazArtifact)
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -72,7 +72,7 @@ impl Builder for BarBuilder {
 		Ok(BarArtifact {
 			foo_artifact,
 			baz_artifact
-		}.into())
+		})
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty

@@ -19,10 +19,10 @@ use cfg_if::cfg_if;
 /// # use daab::diagnostics::TextualDocOptions;
 /// // Value of default()
 /// let opts = TextualDocOptions {
-///	    show_builder_values: false,
-///	    show_artifact_values: false,
-///	    show_addresses: false,
-///	    tynm_m_n: Some((0,0)),
+///     show_builder_values: false,
+///     show_artifact_values: false,
+///     show_addresses: false,
+///     tynm_m_n: Some((0,0)),
 /// };
 /// assert_eq!(opts, TextualDocOptions::default());
 /// ```
@@ -102,8 +102,8 @@ impl Default for TextualDocOptions {
 ///         TextualDocOptions {
 ///             show_builder_values: false,
 ///             show_artifact_values: true,
-///	            show_addresses: false,
-///	            tynm_m_n: Some((0,0)),
+///             show_addresses: false,
+///             tynm_m_n: Some((0,0)),
 ///         },
 ///         stdout()
 ///     )
