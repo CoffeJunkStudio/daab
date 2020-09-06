@@ -1,8 +1,24 @@
-
+// Only warn about unsafe code in general (needed for some tests)
 #![warn(unsafe_code)]
+// If not in test mode, forbid it entirely!
 #![cfg_attr(not(test), forbid(unsafe_code))]
+
+// Enables casting of trait-objects behind a Can
 #![cfg_attr(feature = "unsized", feature(unsize))]
+
+// Enable annotating features requirements in docs
 #![cfg_attr(feature = "doc_cfg", feature(doc_cfg))]
+
+// prevents compilation with broken Deref impl causing nasty stack overflows.
+#![deny(unconditional_recursion)]
+
+// Ensures that `pub` means published in the public API.
+// This property is useful for reasoning about breaking API changes.
+#![deny(unreachable_pub)]
+
+// Prevents public API entries without a doc comment.
+#![deny(missing_docs)]
+
 
 //!
 //! DAG Aware Artifact Builder
@@ -253,11 +269,6 @@
 //![`BlueprintUnsized::into_unsized`]: blueprint/struct.BlueprintUnsized.html#method.into_unsized
 //!
 
-// prevents compilation with broken Deref impl causing nasty stack overflows.
-#![deny(unconditional_recursion)]
-
-#![warn(unreachable_pub)]
-#![warn(missing_docs)]
 
 
 use std::any::Any;
