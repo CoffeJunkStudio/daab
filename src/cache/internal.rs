@@ -71,7 +71,7 @@ impl<BCan: CanStrong> Eq for BuilderEntry<BCan> {
 
 impl<BCan: CanStrong> fmt::Pointer for BuilderEntry<BCan> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		writeln!(f, "{:p}", self.id().0)
+		writeln!(f, "{:p}", self.id().as_ptr())
 	}
 }
 
@@ -1288,7 +1288,6 @@ mod test {
 		cache.invalidate(&bp);
 
 		let art_n_ptr = ptr(cache.get_ref(&bp).unpack());
-		assert_ne!(old_art.as_ref(), unsafe{&(*art_n_ptr)});
 		assert_ne!(ptr(old_art.as_ref()), art_n_ptr);
 
 		assert_eq!(Some(art_n_ptr), cache.lookup_ref(&bp).map(|l| ptr(l)));

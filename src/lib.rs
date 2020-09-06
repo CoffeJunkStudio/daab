@@ -1,5 +1,6 @@
 
-
+#![warn(unsafe_code)]
+#![cfg_attr(not(test), forbid(unsafe_code))]
 #![cfg_attr(feature = "unsized", feature(unsize))]
 #![cfg_attr(feature = "doc_cfg", feature(doc_cfg))]
 
@@ -502,30 +503,21 @@ pub trait Builder<ArtCan, BCan>: Debug + 'static
 /// the respective `Builder`.
 ///
 #[derive(Clone, Debug, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct BuilderId(*const ());
-
-// Requires Send&Sync for Arc. This safe because the pointer is never
-// dereference and only used for Hash and Eq.
-//
-// The unsafe could be eliminated by storing just an integer casted from the
-// pointer, but currently (1.40) it does not seem posible to cast an dyn ptr
-// to any int.
-unsafe impl Send for BuilderId {}
-unsafe impl Sync for BuilderId {}
+pub struct BuilderId(usize);
 
 impl BuilderId {
 	fn new(ptr: *const dyn Any) -> Self {
-		BuilderId(ptr as *const ())
+		BuilderId(ptr as *const () as usize)
 	}
 
 	fn as_ptr(&self) -> *const () {
-		self.0
+		self.0 as *const ()
 	}
 }
 
 impl fmt::Pointer for BuilderId {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		fmt::Pointer::fmt(&self.0, fmt)
+		fmt::Pointer::fmt(&self.as_ptr(), fmt)
 	}
 }
 
