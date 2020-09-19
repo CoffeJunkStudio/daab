@@ -195,3 +195,219 @@ impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCa
 	}
 }
 
+
+
+
+/// A static builder.
+///
+/// A builder which always builds a predetermined value as artifact.
+///
+pub struct ConstBuilder<ArtCan, BCan, T> {
+	inner: T,
+	_art_can: PhantomData<ArtCan>,
+	_b_can: PhantomData<BCan>,
+}
+
+impl<ArtCan, BCan, T: Debug> Debug for ConstBuilder<ArtCan, BCan, T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		write!(fmt, "FunctionalBuilder{{inner: {:?}}}", self.inner)
+	}
+}
+
+impl<ArtCan, BCan, T> ConstBuilder<ArtCan, BCan, T>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: 'static {
+
+	/// Wraps the given closure as Builder.
+	///
+	pub fn new(artifact: T) -> Self {
+		ConstBuilder {
+			inner: artifact,
+			_art_can: PhantomData,
+			_b_can: PhantomData,
+		}
+	}
+}
+
+impl<ArtCan, BCan, T> From<T> for Blueprint<ConstBuilder<ArtCan, BCan, T>, BCan>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		BCan: CanSized<ConstBuilder<ArtCan, BCan, T>>,
+		ArtCan: 'static {
+
+	fn from(t: T) -> Self {
+		Blueprint::new(
+			ConstBuilder::new(t)
+		)
+	}
+}
+
+impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConstBuilder<ArtCan, BCan, T>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: 'static {
+
+	type Artifact = T;
+	type DynState = ();
+	type Err = Never;
+
+	fn build(&self, _resolver: &mut Resolver<ArtCan, BCan>)
+			 -> Result<Self::Artifact, Never> {
+
+		Ok(self.inner.clone())
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
+}
+
+
+
+
+/// A dynamic builder.
+///
+/// A `ConfigurableBuilder` is a builder which's artifact can be reconfigured
+/// i.e. changed by changing it's dyn state.
+///
+pub struct ConfigurableBuilder<ArtCan, BCan, T> {
+	initial: T,
+	_art_can: PhantomData<ArtCan>,
+	_b_can: PhantomData<BCan>,
+}
+
+impl<ArtCan, BCan, T: Debug> Debug for ConfigurableBuilder<ArtCan, BCan, T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		write!(fmt, "FunctionalBuilder{{initial: {:?}}}", self.initial)
+	}
+}
+
+impl<ArtCan, BCan, T> ConfigurableBuilder<ArtCan, BCan, T>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: 'static {
+
+	/// Wraps the given closure as Builder.
+	///
+	pub fn new(artifact: T) -> Self {
+		ConfigurableBuilder {
+			initial: artifact,
+			_art_can: PhantomData,
+			_b_can: PhantomData,
+		}
+	}
+}
+
+impl<ArtCan, BCan, T> From<T> for Blueprint<ConfigurableBuilder<ArtCan, BCan, T>, BCan>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		BCan: CanSized<ConfigurableBuilder<ArtCan, BCan, T>>,
+		ArtCan: 'static {
+
+	fn from(t: T) -> Self {
+		Blueprint::new(
+			ConfigurableBuilder::new(t)
+		)
+	}
+}
+
+impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan, T>
+	where
+		T: Clone + Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: Debug + 'static {
+
+	type Artifact = T;
+	type DynState = T;
+	type Err = Never;
+
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, T>)
+			 -> Result<Self::Artifact, Never> {
+
+		Ok(resolver.my_state().clone())
+	}
+	fn init_dyn_state(&self) -> Self::DynState {
+		self.initial.clone()
+	}
+}
+
+
+
+
+/// A intermediate Builder without dyn state.
+///
+/// When different builder shall be hidden behind a `dyn Builder` it is required
+/// that all such builders have the same dyn state type. Thus, often non dyn
+/// state or the `()` unit type as dyn state is used. This wrapper build now
+/// allows to wrap arbitrary builders (e.g. those with a dyn state) into a
+/// builder that dose has the `()` unit type as dyn state. So that it may be
+/// use to create cast it into `dyn Builder` with the `()` unit type as dyn state.
+/// 
+/// However, in order to create a valid artifact, the artifact type must be
+/// `Clone`.
+///
+#[derive(Debug, Clone)]
+pub struct ClonedBuilder<AP, B: ?Sized> {
+	inner: AP,
+	_b: PhantomData<B>,
+}
+
+impl<AP, B: ?Sized> ClonedBuilder<AP, B>
+	where
+		B: Debug + 'static, {
+
+	/// Wrap given Builder cloing its artifact.
+	///
+	pub fn new<ArtCan, BCan>(
+		inner: AP,
+	) -> Blueprint<Self, BCan>
+		where
+			B: Builder<ArtCan, BCan>,
+			AP: Promise<B, BCan>,
+			ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
+			ArtCan::Bin: AsRef<B::Artifact>,
+			BCan: Clone + CanStrong,
+			BCan: CanSized<Self>,
+	{
+
+		Blueprint::new(
+			ClonedBuilder {
+				inner,
+				_b: PhantomData,
+			}
+		)
+	}
+}
+
+impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
+	where
+		B: Builder<ArtCan, BCan>,
+		AP: Promise<B, BCan>,
+		ArtCan: CanRef<B::Artifact>,
+		BCan: CanStrong,
+		B::Artifact: Clone,
+	{
+
+	type Artifact = B::Artifact;
+	type DynState = ();
+	type Err = B::Err;
+
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
+			-> Result<Self::Artifact, Self::Err> {
+
+		resolver.resolve_cloned(&self.inner)
+	}
+
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
+}
+
+
+
+
