@@ -289,7 +289,7 @@ impl<ArtCan, BCan, T> ConfigurableBuilder<ArtCan, BCan, T>
 	where
 		T: Clone + Debug + 'static,
 		BCan: CanStrong,
-		ArtCan: 'static {
+		ArtCan: Debug + 'static {
 
 	/// Wraps the given closure as Builder.
 	///
@@ -307,7 +307,7 @@ impl<ArtCan, BCan, T> From<T> for Blueprint<ConfigurableBuilder<ArtCan, BCan, T>
 		T: Clone + Debug + 'static,
 		BCan: CanStrong,
 		BCan: CanSized<ConfigurableBuilder<ArtCan, BCan, T>>,
-		ArtCan: 'static {
+		ArtCan: Debug + 'static {
 
 	fn from(t: T) -> Self {
 		Blueprint::new(
@@ -347,9 +347,11 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan
 /// allows to wrap arbitrary builders (e.g. those with a dyn state) into a
 /// builder that dose has the `()` unit type as dyn state. So that it may be
 /// use to create cast it into `dyn Builder` with the `()` unit type as dyn state.
-/// 
+///
 /// However, in order to create a valid artifact, the artifact type must be
 /// `Clone`.
+///
+/// Also see the `ForwardingBuilder` for an alternative.
 ///
 #[derive(Debug, Clone)]
 pub struct ClonedBuilder<AP, B: ?Sized> {
@@ -361,13 +363,14 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 	where
 		B: Debug + 'static, {
 
-	/// Wrap given Builder cloing its artifact.
+	/// Wrap given Builder cloning its artifact.
 	///
 	pub fn new<ArtCan, BCan>(
 		inner: AP,
 	) -> Blueprint<Self, BCan>
 		where
 			B: Builder<ArtCan, BCan>,
+			B::Artifact: Clone,
 			AP: Promise<B, BCan>,
 			ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
 			ArtCan::Bin: AsRef<B::Artifact>,
@@ -387,10 +390,10 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
 	where
 		B: Builder<ArtCan, BCan>,
+		B::Artifact: Clone,
 		AP: Promise<B, BCan>,
 		ArtCan: CanRef<B::Artifact>,
 		BCan: CanStrong,
-		B::Artifact: Clone,
 	{
 
 	type Artifact = B::Artifact;
@@ -407,6 +410,79 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
 		// empty
 	}
 }
+
+
+
+/// A intermediate Builder without dyn state.
+///
+/// When different builder shall be hidden behind a `dyn Builder` it is required
+/// that all such builders have the same dyn state type. Thus, often non dyn
+/// state or the `()` unit type as dyn state is used. This wrapper builder now
+/// allows to wrap arbitrary builders (e.g. those with a dyn state) into a
+/// builder that dose has the `()` unit type as dyn state. So that it may be
+/// use to create cast it into `dyn Builder` with the `()` unit type as dyn state.
+///
+/// However, in order to create a valid artifact, the artifact is kept in its bin-state.
+///
+/// Also see the `ClonedBuilder` for an alternative.
+///
+#[derive(Debug, Clone)]
+pub struct ForwardingBuilder<AP, B: ?Sized> {
+	inner: AP,
+	_b: PhantomData<B>,
+}
+
+impl<AP, B: ?Sized> ForwardingBuilder<AP, B>
+	where
+		B: Debug + 'static, {
+
+	/// Wrap given Builder forwarding its artifact.
+	///
+	pub fn new<ArtCan, BCan>(
+		inner: AP,
+	) -> Blueprint<Self, BCan>
+		where
+			B: Builder<ArtCan, BCan>,
+			AP: Promise<B, BCan>,
+			ArtCan: CanSized<B::Artifact>,
+			ArtCan: Clone,
+			BCan: CanStrong,
+			BCan: CanSized<Self>,
+	{
+
+		Blueprint::new(
+			ForwardingBuilder {
+				inner,
+				_b: PhantomData,
+			}
+		)
+	}
+}
+
+impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP, B>
+	where
+		B: Builder<ArtCan, BCan>,
+		AP: Promise<B, BCan>,
+		ArtCan: CanSized<B::Artifact>,
+		ArtCan: Clone,
+		BCan: CanStrong,
+	{
+
+	type Artifact = ArtCan::Bin;
+	type DynState = ();
+	type Err = B::Err;
+
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
+			-> Result<Self::Artifact, Self::Err> {
+
+		resolver.resolve(&self.inner)
+	}
+
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
+}
+
 
 
 
