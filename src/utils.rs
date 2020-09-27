@@ -120,78 +120,181 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 
 
 
-/// Functional builder wrapper.
+/// Functional leaf builder wrapper.
 ///
 /// A functional builder is a builder consisting of a single function
-/// `Fn(&mut Resolver) -> T`. Thus this type can be used to wrap a
-/// closure as `Builder`. The return type `T` will the artifact type of the
-/// resulting Builder.
+/// `Fn(&mut S) -> Result<T,E>`. Thus this type can be used to wrap a
+/// closure as `Builder` with type `T` as the artifact type, and type `E` as error type.
+/// The closure takes a mutable reference to a `S` (default `()`) which is the DynState
+/// of the builder. However, the closure will not have a `Resolver` thus it can not
+/// depend on other builders, making it a 'leaf' builder. So it is most useful as a
+/// 'provider' builder.
 ///
-pub struct FunctionalBuilder<ArtCan, BCan, F> {
+/// Also see `ConstBuilder` and `ConfigurableBuilder` for alternatives.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// use daab::utils::FunctionalBuilder;
+/// use daab::rc::Cache;
+/// use daab::rc::Blueprint;
+/// use daab::prelude::*;
+///
+/// let builder = FunctionalBuilder::new(
+///     |_| {
+///         Ok(42)
+///     }
+/// );
+/// let blueprint = Blueprint::new(builder);
+///
+/// let mut cache = Cache::new();
+///
+/// assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
+/// ```
+///
+/// Advanced usage with DynState:
+///
+/// ```
+/// use daab::utils::FunctionalBuilder;
+/// use daab::rc::Cache;
+/// use daab::rc::Blueprint;
+///
+/// let builder = FunctionalBuilder::with_state(0_u32, |st| {
+///     if *st < 2 {
+///         *st += 1;
+///         Ok(*st)
+///     } else {
+///         Err(false)
+///     }
+/// });
+/// let blueprint = Blueprint::new(builder);
+///
+/// let mut cache = Cache::new();
+///
+/// assert_eq!(Ok(1_u32), cache.get_cloned(&blueprint));
+/// # assert_eq!(Ok(1_u32), cache.get_cloned(&blueprint));
+/// cache.invalidate(&blueprint);
+/// assert_eq!(Ok(2_u32), cache.get_cloned(&blueprint));
+/// cache.invalidate(&blueprint);
+/// assert_eq!(Err(false), cache.get_cloned(&blueprint));
+/// ```
+///
+/// Real world scenario with `File`:
+///
+/// ```
+/// use std::fs::File;
+/// use daab::utils::FunctionalBuilder;
+/// use daab::rc::Cache;
+/// use daab::rc::CanType;
+/// use daab::rc::Blueprint;
+///
+/// let builder = FunctionalBuilder::new(
+///     |_| {
+///         File::open("some_path")
+///     }
+/// );
+/// let blueprint = Blueprint::new(builder);
+///
+/// let mut cache = Cache::new();
+///
+/// let file = cache.get(&blueprint);
+///
+/// # assert!(file.is_err());
+/// ```
+///
+pub struct FunctionalBuilder<ArtCan, BCan, F, S = ()> {
 	inner: F,
+	initial_state: S,
 	_art_can: PhantomData<ArtCan>,
 	_b_can: PhantomData<BCan>,
 }
 
-impl<ArtCan, BCan, F> Debug for FunctionalBuilder<ArtCan, BCan, F> {
+impl<ArtCan, BCan, F, S> Debug for FunctionalBuilder<ArtCan, BCan, F, S> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "FunctionalBuilder{{...}}")
 	}
 }
 
-impl<ArtCan, BCan, F, T> FunctionalBuilder<ArtCan, BCan, F>
+impl<ArtCan, BCan, F, E, T> FunctionalBuilder<ArtCan, BCan, F, ()>
 	where
-		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
+		F: (for<'r> Fn( &'r mut () ) -> Result<T,E>) + 'static,
+		E: Debug + 'static,
 		T: Debug + 'static,
 		BCan: CanStrong,
-		ArtCan: 'static {
+		ArtCan: Debug + 'static {
 
 	/// Wraps the given closure as Builder.
 	///
 	pub fn new(f: F) -> Self {
+		FunctionalBuilder::with_state( (), f )
+	}
+}
+
+impl<ArtCan, BCan, F, E, T, S> FunctionalBuilder<ArtCan, BCan, F, S>
+	where
+		F: (for<'r> Fn(&'r mut S) -> Result<T,E>) + 'static,
+		E: Debug + 'static,
+		T: Debug + 'static,
+		S: Clone + Debug + 'static,
+		BCan: CanStrong,
+		ArtCan: Debug + 'static {
+
+	/// Wraps the given closure as Builder.
+	///
+	pub fn with_state(initial_state: S, f: F) -> Self {
 		FunctionalBuilder {
 			inner: f,
+			initial_state,
 			_art_can: PhantomData,
 			_b_can: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, BCan, F: 'static, T: Debug + 'static> From<F> for Blueprint<FunctionalBuilder<ArtCan, BCan, F>, BCan>
+/*
+/// Convert a 'stateless' closure into a `FunctionalBuilder`
+impl<ArtCan, BCan, F, E, T> From<F> for FunctionalBuilder<ArtCan, BCan, F, ()>
 	where
-		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
+		F: (for<'r> Fn( &'r mut () ) -> Result<T,E>) + 'static,
+		E: Debug + 'static,
 		T: Debug + 'static,
 		BCan: CanStrong,
-		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F>>,
-		ArtCan: 'static {
+		BCan: CanSized<FunctionalBuilder<ArtCan, BCan, F, ()>>,
+		ArtCan: Debug + 'static,
+		Self: Builder<ArtCan, BCan> {
 
 	fn from(f: F) -> Self {
-		Blueprint::new(
-			FunctionalBuilder::new(f)
-		)
+		FunctionalBuilder::with_state((), f)
 	}
 }
+*/
 
-impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F>
+impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F, S>
 	where
-		F: (for<'r, 's> Fn(&'r mut Resolver<'s, ArtCan, BCan>) -> T) + 'static,
+		F: (for<'r> Fn( &'r mut S ) -> Result<T,E>) + 'static,
+		E: Debug + 'static,
 		T: Debug + 'static,
+		S: Clone + Debug + 'static,
 		BCan: CanStrong,
-		ArtCan: 'static {
+		ArtCan: Debug + 'static {
 
 	type Artifact = T;
-	type DynState = ();
-	type Err = Never;
+	type DynState = S;
+	type Err = E;
 
-	fn build(&self, resolver: &mut Resolver<ArtCan, BCan>)
-			 -> Result<Self::Artifact, Never> {
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
+			 -> Result<Self::Artifact, Self::Err> {
 
 		let f = &self.inner;
-		Ok(f(resolver))
+		let state = resolver.my_state();
+
+		f(state)
 
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
-		// empty
+		self.initial_state.clone()
 	}
 }
 
@@ -201,6 +304,28 @@ impl<ArtCan, BCan, F, T> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCa
 /// A static builder.
 ///
 /// A builder which always builds a predetermined value as artifact.
+///
+/// Also see `FunctionalBuilder` and `ConfigurableBuilder` for alternatives.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// use daab::utils::ConstBuilder;
+/// use daab::rc::Cache;
+/// use daab::rc::Blueprint;
+/// use daab::prelude::*;
+///
+/// let builder = ConstBuilder::new(42_u32);
+/// let blueprint = Blueprint::new(builder);
+///
+/// let mut cache = Cache::new();
+///
+/// assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
+/// # cache.invalidate(&blueprint);
+/// # assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
+/// ```
 ///
 pub struct ConstBuilder<ArtCan, BCan, T> {
 	inner: T,
@@ -272,6 +397,30 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConstBuilder<ArtCan, BCan, T>
 ///
 /// A `ConfigurableBuilder` is a builder which's artifact can be reconfigured
 /// i.e. changed by changing it's dyn state.
+///
+/// Also see `FunctionalBuilder` and `ConstBuilder` for alternatives.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// use daab::utils::ConfigurableBuilder;
+/// use daab::rc::Cache;
+/// use daab::rc::Blueprint;
+/// use daab::prelude::*;
+///
+/// let builder = ConfigurableBuilder::new(0_u32);
+/// let blueprint = Blueprint::new(builder);
+///
+/// let mut cache = Cache::new();
+///
+/// assert_eq!(0_u32, cache.get_cloned(&blueprint).unpack());
+/// *cache.dyn_state_mut(&blueprint) = 42;
+/// assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
+/// # cache.invalidate(&blueprint);
+/// # assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
+/// ```
 ///
 pub struct ConfigurableBuilder<ArtCan, BCan, T> {
 	initial: T,

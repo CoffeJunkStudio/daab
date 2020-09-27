@@ -110,8 +110,8 @@ pub type SuperCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::
 
 /// Functional builder wrapper.
 ///
-pub type FunctionalBuilder<F> =
-	crate::utils::FunctionalBuilder<CanType, BuilderCan, F>;
+pub type FunctionalBuilder<F, S = ()> =
+	crate::utils::FunctionalBuilder<CanType, BuilderCan, F, S>;
 
 
 /// A simplified builder interface, intended for implementing builders.

@@ -83,8 +83,8 @@ pub type CacheOwned = crate::CacheOwned<CanType, BuilderCan>;
 
 /// Functional builder wrapper.
 ///
-pub type FunctionalBuilder<F> =
-	crate::utils::FunctionalBuilder<CanType, BuilderCan, F>;
+pub type FunctionalBuilder<F, S = ()> =
+	crate::utils::FunctionalBuilder<CanType, BuilderCan, F, S>;
 
 
 
@@ -105,7 +105,7 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 	type Artifact = B::Artifact;
 
 	type DynState = ();
-	
+
 	type Err = Never;
 
 	fn build(&self, cache: &mut Resolver)
@@ -113,7 +113,7 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 		Ok(self.build(cache))
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		// Intensional empty, just return a fresh `()`
 	}
@@ -140,9 +140,9 @@ pub trait Builder: Debug + 'static {
 	///
 	fn build(&self, resolver: &mut Resolver<Self::DynState>)
 		-> Result<Self::Artifact, Self::Err>;
-	
+
 	/// Return an inital dynamic state for this builder.
-	/// 
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
@@ -156,7 +156,7 @@ impl<B: ?Sized + Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 
 		self.build(cache)
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.init_dyn_state()
 	}

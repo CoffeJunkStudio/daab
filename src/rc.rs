@@ -109,8 +109,8 @@ pub type SuperCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::
 
 /// Functional builder wrapper.
 ///
-pub type FunctionalBuilder<F> =
-	crate::utils::FunctionalBuilder<CanType, BuilderCan, F>;
+pub type FunctionalBuilder<F, S = ()> =
+	crate::utils::FunctionalBuilder<CanType, BuilderCan, F, S>;
 
 
 /// A simplified builder interface, intended for implementing builders.
@@ -141,7 +141,7 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 
 		Ok(self.build(cache))
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		// Intensional empty, just return a fresh `()`
 	}
@@ -154,9 +154,9 @@ pub trait Builder: Debug + 'static {
 	/// The artifact type as produced by this builder.
 	///
 	type Artifact : Debug + 'static;
-	
+
 	/// Type of the dynamic state of this builder.
-	/// 
+	///
 	type DynState : Debug + 'static;
 
 	/// Error type returned by this Builder in case of failure to produce an
@@ -170,7 +170,7 @@ pub trait Builder: Debug + 'static {
 		-> Result<Self::Artifact, Self::Err>;
 
 	/// Return an inital dynamic state for this builder.
-	/// 
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
@@ -184,14 +184,14 @@ impl<B: ?Sized + Builder> crate::Builder<CanType, CanType> for B {
 
 		self.build(cache)
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.init_dyn_state()
 	}
 }
 
 /// A builder of builders using `Rc`s.
-/// 
+///
 /// This cache uses `Rc` for storing builders and `Blueprint` for
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
@@ -200,9 +200,9 @@ pub trait SuperBuilder: Debug + 'static {
 	/// another `Builder` (or `SuperBuilder`).
 	///
 	type Artifact : Debug + 'static;
-	
+
 	/// Type of the dynamic state of this builder.
-	/// 
+	///
 	type DynState : Debug + 'static;
 
 	/// Error type returned by this Builder in case of failure to produce an
@@ -216,7 +216,7 @@ pub trait SuperBuilder: Debug + 'static {
 		-> Result<Self::Artifact, Self::Err>;
 
 	/// Return an inital dynamic state for this builder.
-	/// 
+	///
 	fn init_dyn_state(&self) -> Self::DynState;
 }
 
@@ -230,7 +230,7 @@ impl<B: ?Sized + SuperBuilder> crate::Builder<BuilderArtifact<CanType>, CanType>
 
 		self.build(cache)
 	}
-	
+
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.init_dyn_state()
 	}
