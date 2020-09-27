@@ -45,8 +45,8 @@ pub type Blueprint<B> = crate::Blueprint<B, CanType>;
 pub type BlueprintUnsized<B> = crate::BlueprintUnsized<B, CanType>;
 
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
-pub type DynamicBlueprint<Artifact> =
-	BlueprintUnsized<dyn Builder<Artifact=Artifact, DynState=(), Err=Never> + Send + Sync>;
+pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
+	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err> + Send + Sync>;
 
 
 

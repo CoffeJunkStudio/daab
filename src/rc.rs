@@ -45,8 +45,8 @@ pub type BlueprintUnsized<B> = crate::BlueprintUnsized<B, CanType>;
 
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 ///
-pub type DynamicBlueprint<Artifact> =
-	BlueprintUnsized<dyn Builder<Artifact=Artifact, DynState=(), Err=Never>>;
+pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
+	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err>>;
 
 
 /// Allows to resolve any `ArtifactPromis` into its artifact. Usable within a
