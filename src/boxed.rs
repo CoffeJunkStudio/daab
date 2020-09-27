@@ -49,6 +49,8 @@ pub type BlueprintUnsized<B> = crate::rc::BlueprintUnsized<B>;
 pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
 	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err>>;
 
+pub type ConstBuilder<T> = crate::utils::ConstBuilder<CanType, BuilderCan, T>;
+pub type ConfigurableBuilder<T> = crate::utils::ConfigurableBuilder<CanType, BuilderCan, T>;
 
 /// Allows to resolve any `Blueprint` into its artifact. Usable within a
 /// builders `build` function.

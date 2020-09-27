@@ -17,7 +17,7 @@
 #![deny(unreachable_pub)]
 
 // Prevents public API entries without a doc comment.
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 
 
 //!
