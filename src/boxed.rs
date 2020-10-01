@@ -49,7 +49,7 @@ pub type BlueprintUnsized<B> = crate::rc::BlueprintUnsized<B>;
 pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
 	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err>>;
 
-pub type ConstBuilder<T> = crate::utils::ConstBuilder<CanType, BuilderCan, T>;
+pub type ConstBuilder<T> = crate::utils::ConstBuilder<CanType, BuilderCan, BinType<T>, T>;
 pub type ConfigurableBuilder<T> = crate::utils::ConfigurableBuilder<CanType, BuilderCan, T>;
 
 /// Allows to resolve any `Blueprint` into its artifact. Usable within a
@@ -111,9 +111,9 @@ impl<B: ?Sized + SimpleBuilder> Builder for B {
 	type Err = Never;
 
 	fn build(&self, cache: &mut Resolver)
-			-> Result<Self::Artifact, Never> {
+			-> Result<BinType<Self::Artifact>, Never> {
 
-		Ok(self.build(cache))
+		Ok(BinType::new(self.build(cache)))
 	}
 
 	fn init_dyn_state(&self) -> Self::DynState {
@@ -141,7 +141,7 @@ pub trait Builder: Debug + 'static {
 	/// dependencies.
 	///
 	fn build(&self, resolver: &mut Resolver<Self::DynState>)
-		-> Result<Self::Artifact, Self::Err>;
+		-> Result<BinType<Self::Artifact>, Self::Err>;
 
 	/// Return an inital dynamic state for this builder.
 	///
@@ -154,7 +154,7 @@ impl<B: ?Sized + Builder> crate::Builder<CanType, crate::rc::CanType> for B {
 	type Err = B::Err;
 
 	fn build(&self, cache: &mut Resolver<Self::DynState>)
-			-> Result<Self::Artifact, Self::Err> {
+			-> Result<<CanType as crate::canning::Can<Self::Artifact>>::Bin, Self::Err> {
 
 		self.build(cache)
 	}

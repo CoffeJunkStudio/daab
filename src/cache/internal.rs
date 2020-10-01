@@ -439,8 +439,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 		// Add artifact to cache if it was successful, otherwise just return
 		// the error
-		art_res.map(move |art| {
-			let art_bin = ArtCan::into_bin(art);
+		art_res.map(move |art_bin| {
 
 			// diagnostics
 			cfg_if!(

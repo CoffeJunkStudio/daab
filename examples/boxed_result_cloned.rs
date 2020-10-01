@@ -2,7 +2,7 @@
 use daab::rc::Cache;
 use daab::rc::Resolver;
 use daab::rc::Blueprint as Bp;
-use daab::rc::Builder as Builder;
+use daab::rc::Builder;
 use daab::Never;
 use daab::prelude::*;
 
@@ -28,9 +28,9 @@ impl Builder for FooBuilder {
 	type DynState = ();
 	type Err = ();
 
-	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
+	fn build(&self, _resolver: &mut Resolver) -> Result<Rc<Self::Artifact>, ()> {
 		println!("Building FooArtifact...");
-		Ok(FooArtifact)
+		Ok(Rc::new(FooArtifact))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -45,9 +45,9 @@ impl Builder for BazBuilder {
 	type DynState = ();
 	type Err = Never;
 
-	fn build(&self, _resolver: &mut Resolver) -> Result<Self::Artifact, Never> {
+	fn build(&self, _resolver: &mut Resolver) -> Result<Rc<Self::Artifact>, Never> {
 		println!("Building BazArtifact...");
-		Ok(BazArtifact)
+		Ok(BazArtifact.into())
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -65,14 +65,14 @@ impl Builder for BarBuilder {
 	type DynState = ();
 	type Err = ();
 
-	fn build(&self, resolver: &mut Resolver) -> Result<Self::Artifact, ()> {
+	fn build(&self, resolver: &mut Resolver) -> Result<Rc<Self::Artifact>, ()> {
 		let foo_artifact = resolver.resolve(&self.foo_builder)?;
 		let baz_artifact = resolver.resolve(&self.baz_builder).unpack();
 		println!("Building BarArtifact...");
 		Ok(BarArtifact {
 			foo_artifact,
 			baz_artifact
-		})
+		}.into())
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty

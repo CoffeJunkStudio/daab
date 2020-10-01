@@ -159,7 +159,7 @@
 //!     type DynState = u8;
 //!     type Err = Never;
 //!
-//!     fn build(&self, resolver: &mut rc::Resolver<Self::DynState>) -> Result<Self::Artifact, Never> {
+//!     fn build(&self, resolver: &mut rc::Resolver<Self::DynState>) -> Result<Rc<Self::Artifact>, Never> {
 //!         // Resolve Blueprint to its artifact
 //!         // Unpacking because the Err type is Never.
 //!         let leaf = resolver.resolve(&self.builder_leaf).unpack();
@@ -168,7 +168,7 @@
 //!             leaf,
 //!             value: *resolver.my_state(),
 //!             // ...
-//!         })
+//!         }.into())
 //!     }
 //!     fn init_dyn_state(&self) -> Self::DynState {
 //!         42
@@ -181,8 +181,8 @@
 //! // Constructing builders
 //! let leaf_builder = rc::Blueprint::new(BuilderLeaf::new());
 //!
-//! let node_builder_1 = Blueprint::new(BuilderNode::new(leaf_builder.clone()));
-//! let node_builder_2 = Blueprint::new(BuilderNode::new(leaf_builder.clone()));
+//! let node_builder_1 = rc::Blueprint::new(BuilderNode::new(leaf_builder.clone()));
+//! let node_builder_2 = rc::Blueprint::new(BuilderNode::new(leaf_builder.clone()));
 //!
 //! // Using the cache to access the artifacts from the builders
 //!
@@ -294,12 +294,12 @@ use canning::CanSized;
 use canning::CanRef;
 use canning::CanRefMut;
 
-pub use blueprint::Promise;
-pub use blueprint::Blueprint;
-pub use blueprint::BlueprintUnsized;
-pub use cache::Cache;
-pub use cache::CacheOwned;
-pub use cache::Resolver;
+use blueprint::Promise;
+use blueprint::Blueprint;
+use blueprint::BlueprintUnsized;
+use cache::Cache;
+use cache::CacheOwned;
+use cache::Resolver;
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
@@ -330,7 +330,8 @@ cfg_if! {
 /// ```
 ///
 pub mod prelude {
-	pub use crate::Unpacking;
+	pub use crate::Unpacking as _;
+	pub use crate::blueprint::Promise as _;
 }
 
 
@@ -474,7 +475,7 @@ impl<T> Unpacking for Result<T,Never> {
 ///
 pub trait Builder<ArtCan, BCan>: Debug + 'static
 		where
-			BCan: CanStrong {
+			BCan: CanStrong, {
 
 	/// The artifact type as produced by this builder.
 	///
@@ -495,7 +496,9 @@ pub trait Builder<ArtCan, BCan>: Debug + 'static
 	/// dependencies.
 	///
 	fn build(&self, cache: &mut Resolver<ArtCan, BCan, Self::DynState>)
-		-> Result<Self::Artifact, Self::Err>;
+		-> Result<ArtCan::Bin, Self::Err>
+		where
+			ArtCan: Can<Self::Artifact>;
 
 	/// Return an initial dynamic state for this builder.
 	///
@@ -539,8 +542,8 @@ impl fmt::Pointer for BuilderId {
 #[cfg(test)]
 mod test;
 
-#[cfg(test)]
-mod multi_level_test;
+//#[cfg(test)]
+//mod multi_level_test;
 
 
 

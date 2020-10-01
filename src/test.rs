@@ -33,6 +33,7 @@ impl BuilderLeaf {
 
 impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 	where
+		ArtCan: CanSized<Leaf>,
 		BCan: CanStrong {
 
 	type Artifact = Leaf;
@@ -41,10 +42,10 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeaf
 
 	type Err = Never;
 
-	fn build(&self, _cache: &mut Resolver<ArtCan,BCan>) -> Result<Self::Artifact, Never> {
-		Ok(Leaf{
+	fn build(&self, _cache: &mut Resolver<ArtCan,BCan>) -> Result<ArtCan::Bin, Never> {
+		Ok(ArtCan::into_bin(Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		})
+		}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -68,6 +69,7 @@ impl BuilderLeafFallible {
 impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeafFallible
 	where
 		ArtCan: Debug,
+		ArtCan: CanSized<Leaf>,
 		BCan: CanStrong {
 
 	type Artifact = Leaf;
@@ -76,11 +78,11 @@ impl<ArtCan,BCan> Builder<ArtCan,BCan> for BuilderLeafFallible
 
 	type Err = ();
 
-	fn build(&self, cache: &mut Resolver<ArtCan,BCan,bool>) -> Result<Self::Artifact, ()> {
+	fn build(&self, cache: &mut Resolver<ArtCan,BCan,bool>) -> Result<ArtCan::Bin, ()> {
 		if *cache.my_state() {
-			Ok(Leaf{
+			Ok(ArtCan::into_bin(Leaf{
 				id: COUNTER.fetch_add(1, Ordering::SeqCst),
-			})
+			}))
 		} else {
 			Err(())
 		}
@@ -119,24 +121,25 @@ impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 		AP: Promise<BuilderLeaf, BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
+		ArtCan: CanSized<SimpleNode<<ArtCan as Can<Leaf>>::Bin>>,
 		BCan: CanStrong,
 		{
 
-	type Artifact = SimpleNode<ArtCan::Bin>;
+	type Artifact = SimpleNode<<ArtCan as Can<Leaf>>::Bin>;
 
 	type DynState = ();
 
 	type Err = Never;
 
 	fn build(&self, cache: &mut Resolver<ArtCan,BCan>)
-		-> Result<Self::Artifact, Never> {
+		-> Result<<ArtCan as Can<SimpleNode<<ArtCan as Can<Leaf>>::Bin>>>::Bin, Never> {
 
 		let leaf = cache.resolve(&self.leaf)?;
 
-		Ok(SimpleNode{
+		Ok(ArtCan::into_bin(SimpleNode{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			leaf
-		})
+		}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -174,26 +177,27 @@ impl<B, AP, ArtCan, BCan> Builder<ArtCan, BCan> for BuilderVariableNode<B, AP>
 		AP: Promise<B, BCan> + Clone,
 		ArtCan: Clone,
 		ArtCan: CanSized<B::Artifact>,
+		ArtCan: CanSized<SimpleNode<<ArtCan as Can<B::Artifact>>::Bin>>,
 		BCan: CanStrong,
 		{
 
-	type Artifact = SimpleNode<ArtCan::Bin>;
+	type Artifact = SimpleNode<<ArtCan as Can<B::Artifact>>::Bin>;
 
 	type DynState = (AP, bool);
 
 	type Err = ();
 
 	fn build(&self, cache: &mut Resolver<ArtCan,BCan,(AP,bool)>)
-		-> Result<Self::Artifact, ()> {
+		-> Result<<ArtCan as Can<SimpleNode<<ArtCan as Can<B::Artifact>>::Bin>>>::Bin, ()> {
 
 		let dyn_ap = cache.my_state().0.clone();
 		let leaf = cache.resolve(&dyn_ap)?;
 
 		if cache.my_state().1 {
-			Ok(SimpleNode{
+			Ok(ArtCan::into_bin(SimpleNode{
 				id: COUNTER.fetch_add(1, Ordering::SeqCst),
 				leaf
-			})
+			}))
 		} else {
 			Err(())
 		}
@@ -238,6 +242,11 @@ impl<ApL,ApR,LB,RB> BuilderComplexNode<ApL,ApR,LB,RB> {
 	}
 }
 
+type ComplexNodeByAp<ArtCan,BCan,LB,RB> = ComplexNode<
+	<ArtCan as Can<<LB as Builder<ArtCan,BCan>>::Artifact>>::Bin,
+	<ArtCan as Can<<RB as Builder<ArtCan,BCan>>::Artifact>>::Bin,
+>;
+
 impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for BuilderComplexNode<ApL, ApR, LB, RB>
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
@@ -247,24 +256,28 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for Bui
 		ArtCan: Clone,
 		ArtCan: CanSized<LB::Artifact>,
 		ArtCan: CanSized<RB::Artifact>,
+		ArtCan: CanSized<ComplexNodeByAp<ArtCan, BCan, LB, RB>>,
 		BCan: CanStrong,
 		{
 
+	/*
 	type Artifact = ComplexNode<
 		<ArtCan as Can<LB::Artifact>>::Bin,
 		<ArtCan as Can<RB::Artifact>>::Bin,
 	>;
+	*/
+	type Artifact = ComplexNodeByAp<ArtCan, BCan, LB, RB>;
 
 	type DynState = ();
 
 	type Err = Never;
 
-	fn build(&self, cache: &mut Resolver<ArtCan, BCan>) -> Result<Self::Artifact, Never> {
-		Ok(ComplexNode {
+	fn build(&self, cache: &mut Resolver<ArtCan, BCan>) -> Result<<ArtCan as Can<ComplexNodeByAp<ArtCan, BCan, LB, RB>>>::Bin, Never> {
+		Ok(ArtCan::into_bin(ComplexNode {
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
 			left: cache.resolve(&self.left)?,
 			right: cache.resolve(&self.right)?,
-		})
+		}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty
@@ -278,6 +291,7 @@ impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 		AP: Promise<BuilderLeaf, BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
+		ArtCan: CanSized<SimpleNode<<ArtCan as Can<Leaf>>::Bin>>,
 		BCan: CanStrong,
 	{
 
@@ -292,6 +306,7 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 		ArtCan: Clone,
 		ArtCan: CanSized<LB::Artifact>,
 		ArtCan: CanSized<RB::Artifact>,
+		ArtCan: CanSized<ComplexNodeByAp<ArtCan, BCan, LB, RB>>,
 		BCan: CanStrong,
 	{
 
@@ -317,10 +332,10 @@ impl crate::boxed::Builder for BuilderLeafBox {
 	type DynState = ();
 	type Err = Never;
 
-	fn build(&self, _cache: &mut crate::boxed::Resolver) -> Result<Self::Artifact, Never> {
-		Ok(Leaf{
+	fn build(&self, _cache: &mut crate::boxed::Resolver) -> Result<Box<Self::Artifact>, Never> {
+		Ok(Box::new(Leaf{
 			id: COUNTER.fetch_add(1, Ordering::SeqCst),
-		})
+		}))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		// empty

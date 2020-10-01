@@ -11,6 +11,7 @@ use crate::Builder;
 use crate::CanRef;
 use crate::CanStrong;
 use crate::CanSized;
+use crate::Can;
 use crate::Never;
 
 use std::fmt;
@@ -40,31 +41,31 @@ use std::marker::PhantomData;
 /// builder failed and the `default_value` has been set to `None`.
 ///
 #[derive(Debug, Clone)]
-pub struct RedeemingBuilder<AP, B: ?Sized, T> {
+pub struct RedeemingBuilder<AP, B: ?Sized, ArtBin> {
 	inner: AP,
-	default_value: Option<T>,
+	default_value: Option<ArtBin>,
 	_b: PhantomData<B>,
 }
 
-impl<AP, B: ?Sized, T> RedeemingBuilder<AP, B, T>
+impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
 	where
-		T: Clone,
-		B: Debug + 'static, {
+		B: Debug + 'static,
+		ArtBin: Debug + 'static, {
 
 	/// Wrap given Builder and fill missing recreations with a previous value.
 	///
 	/// **Use with care**
 	///
-	pub fn new<ArtCan, BCan>(
+	pub fn new<ArtCan, BCan, T>(
 		inner: AP,
-		default_value: Option<T>
+		default_value: Option<ArtBin>
 	) -> Blueprint<Self, BCan>
 		where
 			B: Builder<ArtCan, BCan, Artifact=Option<T>>,
 			AP: Promise<B, BCan>,
-			T: Clone + Debug + 'static,
-			ArtCan: CanSized<Option<T>> + CanRef<Option<T>>,
-			ArtCan::Bin: AsRef<Option<T>>,
+			T: Debug + 'static,
+			ArtCan: Clone + CanSized<T,Bin=ArtBin>,
+			ArtBin: Clone,
 			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
 	{
@@ -79,24 +80,24 @@ impl<AP, B: ?Sized, T> RedeemingBuilder<AP, B, T>
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<AP, B, T>
+impl<ArtCan, AP, B: ?Sized, BCan, ArtBin, T> Builder<ArtCan, BCan> for RedeemingBuilder<AP, B, ArtBin>
 	where
 		B: Builder<ArtCan, BCan, Artifact=T>,
 		AP: Promise<B, BCan>,
-		T: Clone + Debug + 'static,
-		ArtCan: CanSized<T> + CanRef<T>,
-		ArtCan::Bin: AsRef<T>,
+		T: Debug + 'static,
+		ArtCan: Clone + CanSized<T,Bin=ArtBin>,
+		ArtBin: Clone + Debug + 'static,
 		BCan: Clone + CanStrong,
 	{
 
 	type Artifact = T;
-	type DynState = Option<T>;
+	type DynState = Option<ArtCan::Bin>;
 	type Err = Never;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
-			-> Result<Self::Artifact, Never> {
+			-> Result<ArtCan::Bin, Never> {
 
-		let value = resolver.resolve_cloned(&self.inner);
+		let value = resolver.resolve(&self.inner);
 
 		if let Ok(v) = value {
 			*resolver.my_state() = Some(v.clone());
@@ -123,7 +124,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 /// Functional leaf builder wrapper.
 ///
 /// A functional builder is a builder consisting of a single function
-/// `Fn(&mut S) -> Result<T,E>`. Thus this type can be used to wrap a
+/// `Fn(&mut S) -> Result<ArtCan::Bin,E>`. Thus this type can be used to wrap a
 /// closure as `Builder` with type `T` as the artifact type, and type `E` as error type.
 /// The closure takes a mutable reference to a `S` (default `()`) which is the DynState
 /// of the builder. However, the closure will not have a `Resolver` thus it can not
@@ -137,6 +138,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 /// Basic usage:
 ///
 /// ```
+/// use std::rc::Rc;
 /// use daab::utils::FunctionalBuilder;
 /// use daab::rc::Cache;
 /// use daab::rc::Blueprint;
@@ -144,7 +146,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 ///
 /// let builder = FunctionalBuilder::new(
 ///     |_| {
-///         Ok(42)
+///         Ok(Rc::new(42))
 ///     }
 /// );
 /// let blueprint = Blueprint::new(builder);
@@ -157,6 +159,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 /// Advanced usage with DynState:
 ///
 /// ```
+/// use std::rc::Rc;
 /// use daab::utils::FunctionalBuilder;
 /// use daab::rc::Cache;
 /// use daab::rc::Blueprint;
@@ -164,7 +167,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 /// let builder = FunctionalBuilder::with_state(0_u32, |st| {
 ///     if *st < 2 {
 ///         *st += 1;
-///         Ok(*st)
+///         Ok(Rc::new(*st))
 ///     } else {
 ///         Err(false)
 ///     }
@@ -185,6 +188,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 ///
 /// ```
 /// use std::fs::File;
+/// use std::rc::Rc;
 /// use daab::utils::FunctionalBuilder;
 /// use daab::rc::Cache;
 /// use daab::rc::CanType;
@@ -192,7 +196,7 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 ///
 /// let builder = FunctionalBuilder::new(
 ///     |_| {
-///         File::open("some_path")
+///         File::open("some_path").map(Rc::new)
 ///     }
 /// );
 /// let blueprint = Blueprint::new(builder);
@@ -204,25 +208,27 @@ impl<ArtCan, AP, B: ?Sized, BCan, T> Builder<ArtCan, BCan> for RedeemingBuilder<
 /// # assert!(file.is_err());
 /// ```
 ///
-pub struct FunctionalBuilder<ArtCan, BCan, F, S = ()> {
+pub struct FunctionalBuilder<ArtCan, BCan, F, T, S = ()> {
 	inner: F,
 	initial_state: S,
 	_art_can: PhantomData<ArtCan>,
 	_b_can: PhantomData<BCan>,
+	_t: PhantomData<T>,
 }
 
-impl<ArtCan, BCan, F, S> Debug for FunctionalBuilder<ArtCan, BCan, F, S> {
+impl<ArtCan, BCan, F, T, S> Debug for FunctionalBuilder<ArtCan, BCan, F, T, S> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "FunctionalBuilder{{...}}")
 	}
 }
 
-impl<ArtCan, BCan, F, E, T> FunctionalBuilder<ArtCan, BCan, F, ()>
+impl<ArtCan, BCan, F, E, T> FunctionalBuilder<ArtCan, BCan, F, T, ()>
 	where
-		F: (for<'r> Fn( &'r mut () ) -> Result<T,E>) + 'static,
+		F: (for<'r> Fn( &'r mut () ) -> Result<ArtCan::Bin,E>) + 'static,
 		E: Debug + 'static,
 		T: Debug + 'static,
 		BCan: CanStrong,
+		ArtCan: Can<T>,
 		ArtCan: Debug + 'static {
 
 	/// Wraps the given closure as Builder.
@@ -232,13 +238,14 @@ impl<ArtCan, BCan, F, E, T> FunctionalBuilder<ArtCan, BCan, F, ()>
 	}
 }
 
-impl<ArtCan, BCan, F, E, T, S> FunctionalBuilder<ArtCan, BCan, F, S>
+impl<ArtCan, BCan, F, E, T, S> FunctionalBuilder<ArtCan, BCan, F, T, S>
 	where
-		F: (for<'r> Fn(&'r mut S) -> Result<T,E>) + 'static,
+		F: (for<'r> Fn(&'r mut S) -> Result<ArtCan::Bin,E>) + 'static,
 		E: Debug + 'static,
 		T: Debug + 'static,
 		S: Clone + Debug + 'static,
 		BCan: CanStrong,
+		ArtCan: Can<T>,
 		ArtCan: Debug + 'static {
 
 	/// Wraps the given closure as Builder.
@@ -249,6 +256,7 @@ impl<ArtCan, BCan, F, E, T, S> FunctionalBuilder<ArtCan, BCan, F, S>
 			initial_state,
 			_art_can: PhantomData,
 			_b_can: PhantomData,
+			_t: PhantomData,
 		}
 	}
 }
@@ -271,13 +279,14 @@ impl<ArtCan, BCan, F, E, T> From<F> for FunctionalBuilder<ArtCan, BCan, F, ()>
 }
 */
 
-impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F, S>
+impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCan, BCan, F, T, S>
 	where
-		F: (for<'r> Fn( &'r mut S ) -> Result<T,E>) + 'static,
+		F: (for<'r> Fn( &'r mut S ) -> Result<ArtCan::Bin,E>) + 'static,
 		E: Debug + 'static,
 		T: Debug + 'static,
 		S: Clone + Debug + 'static,
 		BCan: CanStrong,
+		ArtCan: Can<T>,
 		ArtCan: Debug + 'static {
 
 	type Artifact = T;
@@ -285,7 +294,7 @@ impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCa
 	type Err = E;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
-			 -> Result<Self::Artifact, Self::Err> {
+			 -> Result<ArtCan::Bin, Self::Err> {
 
 		let f = &self.inner;
 		let state = resolver.my_state();
@@ -312,12 +321,13 @@ impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCa
 /// Basic usage:
 ///
 /// ```
+/// use std::rc::Rc;
 /// use daab::utils::ConstBuilder;
 /// use daab::rc::Cache;
 /// use daab::rc::Blueprint;
 /// use daab::prelude::*;
 ///
-/// let builder = ConstBuilder::new(42_u32);
+/// let builder = ConstBuilder::new(Rc::new(42_u32));
 /// let blueprint = Blueprint::new(builder);
 ///
 /// let mut cache = Cache::new();
@@ -327,61 +337,69 @@ impl<ArtCan, BCan, F, E, T, S> Builder<ArtCan, BCan> for FunctionalBuilder<ArtCa
 /// # assert_eq!(42_u32, cache.get_cloned(&blueprint).unpack());
 /// ```
 ///
-pub struct ConstBuilder<ArtCan, BCan, T> {
-	inner: T,
+pub struct ConstBuilder<ArtCan, BCan, ArtBin, T> {
+	inner: ArtBin,
 	_art_can: PhantomData<ArtCan>,
 	_b_can: PhantomData<BCan>,
+	_t: PhantomData<T>,
 }
 
-impl<ArtCan, BCan, T: Debug> Debug for ConstBuilder<ArtCan, BCan, T> {
+impl<ArtCan, BCan, ArtBin: Debug, T> Debug for ConstBuilder<ArtCan, BCan, ArtBin, T> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "FunctionalBuilder{{inner: {:?}}}", self.inner)
 	}
 }
 
-impl<ArtCan, BCan, T> ConstBuilder<ArtCan, BCan, T>
+impl<ArtCan, BCan, ArtBin, T> ConstBuilder<ArtCan, BCan, ArtBin, T>
 	where
-		T: Clone + Debug + 'static,
 		BCan: CanStrong,
-		ArtCan: 'static {
+		ArtCan: Can<T,Bin=ArtBin>,
+		ArtCan: 'static,
+		ArtBin: Clone + Debug + 'static, {
 
 	/// Wraps the given closure as Builder.
 	///
-	pub fn new(artifact: T) -> Self {
+	pub fn new(artifact_bin: ArtBin) -> Self {
+		
 		ConstBuilder {
-			inner: artifact,
+			inner: artifact_bin,
 			_art_can: PhantomData,
 			_b_can: PhantomData,
+			_t: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, BCan, T> From<T> for Blueprint<ConstBuilder<ArtCan, BCan, T>, BCan>
+impl<ArtCan, BCan, ArtBin, T> From<T> for Blueprint<ConstBuilder<ArtCan, BCan, ArtBin, T>, BCan>
 	where
 		T: Clone + Debug + 'static,
 		BCan: CanStrong,
-		BCan: CanSized<ConstBuilder<ArtCan, BCan, T>>,
-		ArtCan: 'static {
+		BCan: CanSized<ConstBuilder<ArtCan, BCan, ArtBin, T>>,
+		ArtCan: CanSized<T,Bin=ArtBin>,
+		ArtCan: 'static,
+		ArtBin: Clone + Debug + 'static, {
 
 	fn from(t: T) -> Self {
 		Blueprint::new(
-			ConstBuilder::new(t)
+			ConstBuilder::new(ArtCan::into_bin(t))
 		)
 	}
 }
 
-impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConstBuilder<ArtCan, BCan, T>
+impl<ArtCan, BCan, ArtBin, T> Builder<ArtCan, BCan> for ConstBuilder<ArtCan, BCan, ArtBin, T>
 	where
-		T: Clone + Debug + 'static,
+		T: Debug + 'static,
 		BCan: CanStrong,
-		ArtCan: 'static {
+		ArtCan: Can<T,Bin=ArtBin>,
+		ArtCan: 'static,
+		ArtBin: Clone + Debug + 'static, {
 
 	type Artifact = T;
 	type DynState = ();
 	type Err = Never;
 
 	fn build(&self, _resolver: &mut Resolver<ArtCan, BCan>)
-			 -> Result<Self::Artifact, Never> {
+			 -> Result<ArtBin, Never> {
 
 		Ok(self.inner.clone())
 	}
@@ -469,6 +487,7 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan
 	where
 		T: Clone + Debug + 'static,
 		BCan: CanStrong,
+		ArtCan: CanSized<T>,
 		ArtCan: Debug + 'static {
 
 	type Artifact = T;
@@ -476,9 +495,9 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan
 	type Err = Never;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, T>)
-			 -> Result<Self::Artifact, Never> {
+			 -> Result<ArtCan::Bin, Never> {
 
-		Ok(resolver.my_state().clone())
+		Ok(ArtCan::into_bin(resolver.my_state().clone()))
 	}
 	fn init_dyn_state(&self) -> Self::DynState {
 		self.initial.clone()
@@ -498,7 +517,7 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan
 /// use to create cast it into `dyn Builder` with the `()` unit type as dyn state.
 ///
 /// However, in order to create a valid artifact, the artifact type must be
-/// `Clone`.
+/// `Clone`. Thus the original and the 'cloned' artifact are not identical.
 ///
 /// Also see the `ForwardingBuilder` for an alternative.
 ///
@@ -521,8 +540,7 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 			B: Builder<ArtCan, BCan>,
 			B::Artifact: Clone,
 			AP: Promise<B, BCan>,
-			ArtCan: CanSized<B::Artifact> + CanRef<B::Artifact>,
-			ArtCan::Bin: AsRef<B::Artifact>,
+			ArtCan: CanRef<B::Artifact>,
 			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
 	{
@@ -550,9 +568,10 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
 	type Err = B::Err;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
-			-> Result<Self::Artifact, Self::Err> {
+			-> Result<ArtCan::Bin, Self::Err> {
 
 		resolver.resolve_cloned(&self.inner)
+			.map(ArtCan::into_bin)
 	}
 
 	fn init_dyn_state(&self) -> Self::DynState {
@@ -617,12 +636,12 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP
 		BCan: CanStrong,
 	{
 
-	type Artifact = ArtCan::Bin;
+	type Artifact = B::Artifact;
 	type DynState = ();
 	type Err = B::Err;
 
 	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
-			-> Result<Self::Artifact, Self::Err> {
+			-> Result<ArtCan::Bin, Self::Err> {
 
 		resolver.resolve(&self.inner)
 	}
