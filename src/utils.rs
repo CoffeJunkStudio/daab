@@ -647,5 +647,68 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP
 
 
 
+/// A intermediate Builder which wraps a builder with `Err=Never` with a arbitrary error type.
+///
+#[derive(Debug, Clone)]
+pub struct FeigningBuilder<AP, B: ?Sized, Err> {
+	inner: AP,
+	_b: PhantomData<B>,
+	_err: PhantomData<Err>,
+}
+
+impl<AP, B: ?Sized, Err> FeigningBuilder<AP, B, Err>
+	where
+		B: Debug + 'static, {
+
+	/// Wrap given Builder forwarding its artifact.
+	///
+	pub fn new<ArtCan, BCan>(
+		inner: AP,
+	) -> Self
+		where
+			B: Builder<ArtCan, BCan, Err=Never>,
+			AP: Promise<B, BCan>,
+			Err: Debug + 'static,
+			ArtCan: CanSized<B::Artifact>,
+			ArtCan: Clone,
+			BCan: CanStrong,
+			BCan: CanSized<Self>,
+	{
+
+		FeigningBuilder {
+			inner,
+			_b: PhantomData,
+			_err: PhantomData,
+		}
+	}
+}
+
+impl<ArtCan, AP, B: ?Sized, BCan, Err> Builder<ArtCan, BCan> for FeigningBuilder<AP, B, Err>
+	where
+		B: Builder<ArtCan, BCan, Err=Never>,
+		AP: Promise<B, BCan>,
+		Err: Debug + 'static,
+		ArtCan: CanSized<B::Artifact>,
+		ArtCan: Clone,
+		BCan: CanStrong,
+	{
+
+	type Artifact = B::Artifact;
+	type DynState = ();
+	type Err = Err;
+
+	fn build(&self, resolver: &mut Resolver<ArtCan, BCan, Self::DynState>)
+			-> Result<ArtCan::Bin, Self::Err> {
+
+		resolver.resolve(&self.inner).map_err(|n| n.into_any())
+	}
+
+	fn init_dyn_state(&self) -> Self::DynState {
+		// empty
+	}
+}
+
+
+
 
 
