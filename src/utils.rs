@@ -59,7 +59,7 @@ impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
 	pub fn new<ArtCan, BCan, T>(
 		inner: AP,
 		default_value: Option<ArtBin>
-	) -> Blueprint<Self, BCan>
+	) -> Self
 		where
 			B: Builder<ArtCan, BCan, Artifact=Option<T>>,
 			AP: Promise<B, BCan>,
@@ -70,13 +70,11 @@ impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
 			BCan: CanSized<Self>,
 	{
 
-		Blueprint::new(
-			RedeemingBuilder {
-				inner,
-				default_value,
-				_b: PhantomData,
-			}
-		)
+		RedeemingBuilder {
+			inner,
+			default_value,
+			_b: PhantomData,
+		}
 	}
 }
 
@@ -535,7 +533,7 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 	///
 	pub fn new<ArtCan, BCan>(
 		inner: AP,
-	) -> Blueprint<Self, BCan>
+	) -> Self
 		where
 			B: Builder<ArtCan, BCan>,
 			B::Artifact: Clone,
@@ -545,12 +543,10 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 			BCan: CanSized<Self>,
 	{
 
-		Blueprint::new(
-			ClonedBuilder {
-				inner,
-				_b: PhantomData,
-			}
-		)
+		ClonedBuilder {
+			inner,
+			_b: PhantomData,
+		}
 	}
 }
 
@@ -608,7 +604,7 @@ impl<AP, B: ?Sized> ForwardingBuilder<AP, B>
 	///
 	pub fn new<ArtCan, BCan>(
 		inner: AP,
-	) -> Blueprint<Self, BCan>
+	) -> Self
 		where
 			B: Builder<ArtCan, BCan>,
 			AP: Promise<B, BCan>,
@@ -618,12 +614,10 @@ impl<AP, B: ?Sized> ForwardingBuilder<AP, B>
 			BCan: CanSized<Self>,
 	{
 
-		Blueprint::new(
-			ForwardingBuilder {
-				inner,
-				_b: PhantomData,
-			}
-		)
+		ForwardingBuilder {
+			inner,
+			_b: PhantomData,
+		}
 	}
 }
 
