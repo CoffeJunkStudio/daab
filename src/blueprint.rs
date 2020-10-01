@@ -321,6 +321,15 @@ impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	}
 }
 
+impl<B, BCan: CanSized<B>> From<Blueprint<B, BCan>> for BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+	fn from(sized_bp: Blueprint<B, BCan>) -> Self {
+		Self {
+			builder: sized_bp.builder.clone(),
+			builder_canned: BCan::from_bin(sized_bp.builder),
+		}
+	}
+}
+
 impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
