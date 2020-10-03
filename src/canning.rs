@@ -358,7 +358,7 @@ pub trait CanBuilder<ArtCan, Artifact, DynState, Err, B>:
 
 	/// Create a unsized bin from given builder.
 	///
-	fn can_unsized(builder: B) -> (DynBuilderBin<ArtCan, Self, Artifact, DynState, Err>, Self);
+	fn can_unsized(builder: <Self as Can<B>>::Bin) -> (DynBuilderBin<ArtCan, Self, Artifact, DynState, Err>, Self);
 }
 
 /*
@@ -455,7 +455,7 @@ impl<T: Debug + 'static> CanSized<T> for Rc<dyn Any> {
 	}
 }
 
-impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilder<ArtCan, Artifact, DynState, Err, B> for Rc<dyn Any>
+impl<ArtCan: 'static, Artifact, DynState, Err, B> CanBuilder<ArtCan, Artifact, DynState, Err, B> for Rc<dyn Any>
 	where
 		B: Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err> + 'static,
 		Artifact: Debug + 'static,
@@ -463,10 +463,10 @@ impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilder<ArtCan, Ar
 		Err: Debug + 'static,
 		 {
 
-	fn can_unsized(builder: B) -> (
+	fn can_unsized(builder: Rc<B>) -> (
 			DynBuilderBin<ArtCan, Self, Artifact, DynState, Err>, Self) {
 
-		let rc = Rc::new(builder);
+		let rc = builder;
 
 		let rc_dyn: Rc<dyn Builder<ArtCan, Self, Artifact=Artifact, DynState=DynState, Err=Err>> =
 			rc.clone();

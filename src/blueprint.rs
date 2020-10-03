@@ -321,15 +321,6 @@ impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	}
 }
 
-impl<B, BCan: CanSized<B>> From<Blueprint<B, BCan>> for BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
-	fn from(sized_bp: Blueprint<B, BCan>) -> Self {
-		Self {
-			builder: sized_bp.builder.clone(),
-			builder_canned: BCan::from_bin(sized_bp.builder),
-		}
-	}
-}
-
 impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
 	/// Create a new promise for the given binned builder.
 	///
@@ -448,9 +439,40 @@ impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan,
 	///
 	pub fn new_unsized<B>(builder: B) -> Self
 		where
+			BCan: CanSized<B>,
 			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
 
-		let (bin_dyn, can) = BCan::can_unsized(builder);
+		let (bin_dyn, can) = BCan::can_unsized(BCan::into_bin(builder));
+
+		BlueprintUnsized {
+			builder: bin_dyn,
+			builder_canned: can,
+		}
+	}
+
+	/// Creates an `BlueprintUnsized` with a trait object Builder from the given
+	/// 'sized' `BlueprintUnsized`.
+	///
+	pub fn from_sized<B>(blueprint: BlueprintUnsized<B,BCan>) -> Self
+		where
+			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+
+		let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
+
+		BlueprintUnsized {
+			builder: bin_dyn,
+			builder_canned: can,
+		}
+	}
+
+	/// Creates an `BlueprintUnsized` with a trait object Builder with the given
+	/// 'sized' `Blueprint`.
+	///
+	pub fn from_sized_bp<B>(blueprint: Blueprint<B,BCan>) -> Self
+		where
+			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+
+		let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
 
 		BlueprintUnsized {
 			builder: bin_dyn,
@@ -518,6 +540,15 @@ impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for BlueprintUnsized<B, BCan> {
 impl<B: ?Sized, BCan: Can<B>> fmt::Debug for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "BlueprintUnsized {{builder: {:?}, id: {:p}}}", self.builder, self.id())
+	}
+}
+
+impl<B, BCan: CanSized<B>> From<Blueprint<B, BCan>> for BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+	fn from(sized_bp: Blueprint<B, BCan>) -> Self {
+		Self {
+			builder: sized_bp.builder.clone(),
+			builder_canned: BCan::from_bin(sized_bp.builder),
+		}
 	}
 }
 
