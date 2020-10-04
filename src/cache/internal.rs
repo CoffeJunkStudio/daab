@@ -124,6 +124,14 @@ pub(crate) struct RawCache<
 	/// This is the reverse of `dependents`. Both must be kept in sync.
 	///
 	dependencies: HashMap<BuilderId, HashSet<BuilderId>>,
+	
+	/// Tracks all builder id of builders which (yet) have no dependents.
+	/// 
+	/// This list is an heuristic optimization structure for the garbage collection.
+	/// It is the list of builders to be checked by the garbage collection, reducing the amount
+	/// of checks required.
+	/// 
+	known_leaf_builder: HashSet<BuilderId>,
 
 	/// Keeps a weak reference to all known builders that are those which are
 	/// used as builder id in any other mapping.
@@ -167,6 +175,7 @@ cfg_if! {
 					dependents: HashMap::new(),
 					dependencies: HashMap::new(),
 					known_builders: HashMap::new(),
+					known_leaf_builder: HashSet::new(),
 
 					doctor,
 				}
@@ -197,6 +206,7 @@ cfg_if! {
 					dependents: HashMap::new(),
 					dependencies: HashMap::new(),
 					known_builders: HashMap::new(),
+					known_leaf_builder: HashSet::new(),
 				}
 			}
 		}
@@ -233,6 +243,9 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.dependents.entry(promise.id())
 			.or_insert_with(HashSet::new)
 			.insert(user.id());
+		
+		// Unmark the promise as leaf, since it has now at least one depenency
+		self.known_leaf_builder.remove(&promise.id());
 
 		// Revers mapping (`user` depends on `promise`)
 		self.dependencies.entry(user.id())
@@ -726,6 +739,10 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.artifacts.clear();
 		self.dependents.clear();
 		self.dependencies.clear();
+		
+		// Now, all know builders are leafs!
+		self.known_leaf_builder.extend(self.known_builders.keys());
+		
 	}
 
 	/// Clears the entire cache including all kept promise, artifacts and
@@ -737,6 +754,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.dependents.clear();
 		self.dependencies.clear();
 		self.known_builders.clear();
+		self.known_leaf_builder.clear();
 
 		#[cfg(feature = "diagnostics")]
 		self.doctor.clear();
@@ -774,17 +792,28 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 					// For each dependency ensure that either it had been
 					// processed before, or it has a counterpart mapping.
 					// In the latter case, remove the dependent relation.
-					let found = processed.contains(&dep)
-						|| self.dependents.get_mut(&dep)
-							.expect("Mapped dependency has no dependents counterpart map.")
-							.remove(&bid);
+					if !processed.contains(&dep) {
+						let found = self.dependents.get_mut(&dep)
+								.expect("Mapped dependency has no dependents counterpart map.")
+								.remove(&bid);
 
-					// Notice the above code has important side-effects, thus
-					// only the return value is tested in the assert macro.
-					debug_assert!(found);
+						// Notice the above code has important side-effects, thus
+						// only the return value is tested in the assert macro.
+						debug_assert!(found);
+						
+						// Check whether this depenencies has other dependents left, or whether it
+						// became a leaf now.
+						let is_leaf = self.dependents[&dep].is_empty();
+						if is_leaf {
+							self.known_leaf_builder.insert(dep);
+						}
+					}
 				}
 			}
 
+			// bid it self has been invalidated, means it has no more dependents, and thus it is a
+			// leaf now!
+			self.known_leaf_builder.insert(bid);
 
 			self.artifacts.remove(&bid);
 
@@ -801,6 +830,9 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				self.invalidate_by_id(&dep);
 			}
 		}
+		
+		// Now, `builder` has no more depenencies, i.e. it is a leaf
+		self.known_leaf_builder.insert(*builder);
 	}
 
 	/// Removes the given promise with its cached artifact from the cache and
@@ -826,18 +858,31 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// any more, because there are no more references to them.
 	///
 	pub(crate) fn garbage_collection(&mut self) {
+		
+		// Just checking there is programming flaw here, it's really not relevant for run time.
+		debug_assert!(
+			// Check invarinant. All known builders are either leaf builders or have at least one
+			// dependent.
+			self.known_builders.keys()
+				// Fine if registered as leaf_builder
+				.filter(|bid| !self.known_leaf_builder.contains(bid))
+				// Enuse the others have a depenent
+				.all(|bid| !self.dependents[bid].is_empty())
+		);
 
-		let unreachable_builder_ids: Vec<_> = self.known_builders.iter()
+		// Only check the leaf builders
+		let unreachable_builder_ids: Vec<_> = self.known_leaf_builder.iter()
 			// Only retain those which can't be upgraded (i.e. no strong
 			// references exist any more).
-			.filter(|(_bid, weak)| BCan::upgrade_from_weak(&weak).is_none())
-			.map(|(bid, _weak)| *bid)
+			.filter(|bid| BCan::upgrade_from_weak(&self.known_builders[bid]).is_none())
+			.copied()
 			.collect();
 
 		for bid in unreachable_builder_ids {
 			self.invalidate_by_id(&bid);
 			self.dyn_states.remove(&bid);
 			self.known_builders.remove(&bid);
+			self.known_leaf_builder.remove(&bid);
 		}
 	}
 
@@ -851,9 +896,18 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				AP: Promise<B, BCan>  {
 
 		let bid = promise.id();
+		
+		let leafs = &mut self.known_leaf_builder;
 
 		self.known_builders.entry(bid).or_insert_with(
-			|| promise.canned().can.downgrade()
+			|| {
+				// Here, the builder was not known befor!
+				// Thus it must be a leaf
+				leafs.insert(bid);
+				
+				// Return downgraded can
+				promise.canned().can.downgrade()
+			}
 		);
 	}
 
