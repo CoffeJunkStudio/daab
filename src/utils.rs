@@ -34,6 +34,12 @@ use std::marker::PhantomData;
 /// with builders, which actually do not have any dependencies (so they might
 /// only been manually invalidate) or having artifacts which are still usable
 /// after any (or all) dependency has been invalidated.
+/// 
+/// Notice, that once the inner builder faild, and the `RedeemingBuilder` 'built' the _old artifact_
+/// then this will not establish a dependency on the inner builder. So to make the
+/// `RedeemingBuilder` return a 'fresh' artifact from the inner builder, the `RedeemingBuilder`
+/// itself needs to be invalidated. This should otherwise not be an issue, because if the inner
+/// builder still fails, the `RedeemingBuilder` will again retun the _old artifact_.
 ///
 /// # Panics
 ///
@@ -61,11 +67,10 @@ impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
 		default_value: Option<ArtBin>
 	) -> Self
 		where
-			B: Builder<ArtCan, BCan, Artifact=Option<T>>,
+			B: Builder<ArtCan, BCan, Artifact=T>,
 			AP: Promise<B, BCan>,
 			T: Debug + 'static,
 			ArtCan: Clone + CanSized<T,Bin=ArtBin>,
-			ArtBin: Clone,
 			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
 	{

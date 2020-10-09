@@ -558,4 +558,28 @@ impl<B, BCan: CanSized<B>> From<B> for BlueprintUnsized<B, BCan> where BCan::Bin
 	}
 }
 
+impl<B, ArtCan, BCan, Artifact, DynState, Err> From<Blueprint<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+	where
+		BCan: CanSized<B>,
+		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
+	
+	fn from(builder: Blueprint<B, BCan>) -> Self {
+		BlueprintUnsized::from_sized_bp(builder)
+	}
+}
+
+impl<B, ArtCan, BCan, Artifact, DynState, Err> From<BlueprintUnsized<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+	where
+		BCan: CanSized<B>,
+		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
+	
+	fn from(builder: BlueprintUnsized<B, BCan>) -> Self {
+		BlueprintUnsized::from_sized(builder)
+	}
+}
+
+
+
 
