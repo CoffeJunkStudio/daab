@@ -386,6 +386,38 @@ fn test_boxed_mut() {
 	assert_ne!(as_ptr_mut(cache.get_mut(&leaf1)), as_ptr_mut(cache.get_mut(&leaf2)));
 }
 
+// Tests whether it is valid to get a Cache by &mut
+fn ref_function<Art, B, P>(cache: &mut crate::Cache<Art, B>, l: Art::Bin, ap: &P)
+	where
+		Art: CanSized<Leaf> + Clone,
+		B: CanSized<BuilderLeaf> + CanStrong,
+		P: Promise<BuilderLeaf, B>,
+		Art::Bin: PartialEq, {
+
+	assert_eq!(cache.get(ap).unwrap(), l);
+}
+
+
+#[test]
+fn test_ref_function() {
+	let mut cache = crate::rc::Cache::new();
+
+	let leaf1 = Blueprint::new(BuilderLeaf::new());
+	let leaf2 = Blueprint::new(BuilderLeaf::new());
+
+	// Ensure same builder results in same artifact
+	assert_eq!(cache.get(&leaf1), cache.get(&leaf1));
+
+	// Ensure different builder result in different artifacts
+	assert_ne!(cache.get(&leaf1), cache.get(&leaf2));
+
+	// Ensure sub routies get the same instances
+	let parent = cache.get(&leaf1);
+
+	ref_function(&mut cache, parent.unpack(), &leaf1);
+}
+
+
 #[test]
 fn test_leaf_broken() {
 	use std::rc::Rc;
