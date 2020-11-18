@@ -370,6 +370,7 @@ fn test_boxed_ref() {
 }
 
 #[test]
+#[cfg(feature = "mut_box")]
 fn test_boxed_mut() {
 	let mut cache = crate::boxed::Cache::new();
 

@@ -21,6 +21,7 @@ all-features = true
 [features]
 default = []
 diagnostics = []
+mut_box = [] # Considered Unstable! (subject to changes)
 unsized = [] # Requires Nightly!
 doc_cfg = [] # Requires Nightly!
 

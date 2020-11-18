@@ -397,54 +397,59 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.lookup_ref(promise)
 	}
 
-	/// Gets the stored Artifact by mutable reference, if it exists.
-	///
-	/// Returns the Artifact as mutable reference into this `Cache`.
-	/// The mutable reference might be useful to access the Artifact in place
-	/// to mutate it.
-	///
-	/// Note: If mutation is not required [`lookup_ref`] should be
-	/// preferred. Also if mutation is conditional, first a shared reference
-	/// should be acquired via [`lookup_ref`] to test the condition and only
-	/// when necessary a mutable reference should be acquired.
-	///
-	/// **Currently, when using this method, all artifacts which depended on
-	/// accessed one will be invalidate!**
-	///
-	/// This method will not attempt to build the Artifact if it does not exist
-	/// already, instead `None` will be returned then.
-	///
-	/// For an overview of different accessor methods see [Artifact Accessors]
-	/// section of `Cache`.
-	///
-	///
-	///
-	/// # Deprecated
-	///
-	/// This function is not actually deprecated, but should be only used with
-	/// care, because currently, this function will invalidate all depending
-	/// artifacts, **but this is subject to change**.
-	///
-	/// Therefore, **this method must be considered unstable!** The semantic of
-	/// this function might change in a breaking way within a non-breaking
-	/// version update!
-	///
-	///
-	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
-	/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
-	///
-	#[deprecated = "Unstable, might be subject to breaking changes in a non-breaking version update, use with care"]
-	pub fn lookup_mut<AP, B: ?Sized>(
-			&mut self,
-			promise: &AP
-		) -> Option<&mut B::Artifact>
-			where
-				ArtCan: CanRefMut<B::Artifact>,
-				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
 
-		self.inner.lookup_mut(promise)
+cfg_if! {
+	if #[cfg(feature = "mut_box")] {
+		/// Gets the stored Artifact by mutable reference, if it exists.
+		///
+		/// Returns the Artifact as mutable reference into this `Cache`.
+		/// The mutable reference might be useful to access the Artifact in place
+		/// to mutate it.
+		///
+		/// Note: If mutation is not required [`lookup_ref`] should be
+		/// preferred. Also if mutation is conditional, first a shared reference
+		/// should be acquired via [`lookup_ref`] to test the condition and only
+		/// when necessary a mutable reference should be acquired.
+		///
+		/// **Currently, when using this method, all artifacts which depended on
+		/// accessed one will be invalidate!**
+		///
+		/// This method will not attempt to build the Artifact if it does not exist
+		/// already, instead `None` will be returned then.
+		///
+		/// For an overview of different accessor methods see [Artifact Accessors]
+		/// section of `Cache`.
+		///
+		///
+		///
+		/// # Unstable
+		///
+		/// This function should be only used with care, because currently, this
+		/// function will invalidate all depending artifacts, **but this is subject
+		/// to change**.
+		///
+		/// Therefore, **this method must be considered unstable!** The semantic of
+		/// this function might change in a breaking way within a non-breaking
+		/// version update!
+		///
+		///
+		/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+		/// [`lookup_ref`]: struct.Cache.html#method.lookup_ref
+		///
+		#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "mut_box")))]
+		pub fn lookup_mut<AP, B: ?Sized>(
+				&mut self,
+				promise: &AP
+			) -> Option<&mut B::Artifact>
+				where
+					ArtCan: CanRefMut<B::Artifact>,
+					B: Builder<ArtCan, BCan>,
+					AP: Promise<B, BCan>  {
+
+			self.inner.lookup_mut(promise)
+		}
 	}
+}
 
 	/// Gets a clone of the stored Artifact, if it exists.
 	///
@@ -546,56 +551,61 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 		self.inner.get_ref(promise)
 	}
 
-	/// Gets the Artifact by mutable reference.
-	///
-	/// Returns the Artifact as mutable reference into this `Cache`.
-	/// The mutable reference might be useful to access the Artifact in place
-	/// to mutate it.
-	///
-	/// Note: If mutation is not required [`get_ref`] should be
-	/// preferred. Also if mutation is conditional, first a shared reference
-	/// should be acquired via [`get_ref`] to test the condition and only
-	/// when necessary a mutable reference should be acquired.
-	///
-	/// **Currently, when using this method, all artifacts which depended on
-	/// accessed one will be invalidate!**
-	///
-	/// This method will try to build the Artifact if it is not stored in the
-	/// `Cache`. The building using the Builder's `build` method could fail,
-	///  thus a `Result` is returned. An `Err` will be returned only, if the
-	/// Artifact was not cached and the Builder returned an `Err`.
-	///
-	/// For an overview of different accessor methods see [Artifact Accessors]
-	/// section of `Cache`.
-	///
-	///
-	///
-	/// # Deprecated
-	///
-	/// This function is not actually deprecated, but should be only used with
-	/// care, because currently, this function will invalidate all depending
-	/// artifacts, **but this is subject to change**.
-	///
-	/// Therefore, **this method must be considered unstable!** The semantic of
-	/// this function might change in a breaking way within a non-breaking
-	/// version update!
-	///
-	///
-	/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
-	/// [`get_ref`]: struct.Cache.html#method.get_ref
-	///
-	#[deprecated = "Unstable, might be subject to breaking changes in a non-breaking version update, use with care"]
-	pub fn get_mut<AP, B: ?Sized>(
-			&mut self,
-			promise: &AP
-		) -> Result<&mut B::Artifact, B::Err>
-			where
-				ArtCan: CanRefMut<B::Artifact>,
-				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
 
-		self.inner.get_mut(promise)
+cfg_if! {
+	if #[cfg(feature = "mut_box")] {
+		/// Gets the Artifact by mutable reference.
+		///
+		/// Returns the Artifact as mutable reference into this `Cache`.
+		/// The mutable reference might be useful to access the Artifact in place
+		/// to mutate it.
+		///
+		/// Note: If mutation is not required [`get_ref`] should be
+		/// preferred. Also if mutation is conditional, first a shared reference
+		/// should be acquired via [`get_ref`] to test the condition and only
+		/// when necessary a mutable reference should be acquired.
+		///
+		/// **Currently, when using this method, all artifacts which depended on
+		/// accessed one will be invalidate!**
+		///
+		/// This method will try to build the Artifact if it is not stored in the
+		/// `Cache`. The building using the Builder's `build` method could fail,
+		///  thus a `Result` is returned. An `Err` will be returned only, if the
+		/// Artifact was not cached and the Builder returned an `Err`.
+		///
+		/// For an overview of different accessor methods see [Artifact Accessors]
+		/// section of `Cache`.
+		///
+		///
+		///
+		/// # Unstable
+		///
+		/// This function should be only used with care, because currently, this
+		/// function will invalidate all depending artifacts, **but this is subject
+		/// to change**.
+		///
+		/// Therefore, **this method must be considered unstable!** The semantic of
+		/// this function might change in a breaking way within a non-breaking
+		/// version update!
+		///
+		///
+		/// [Artifact Accessors]: struct.Cache.html#artifact-accessors
+		/// [`get_ref`]: struct.Cache.html#method.get_ref
+		///
+		#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "mut_box")))]
+		pub fn get_mut<AP, B: ?Sized>(
+				&mut self,
+				promise: &AP
+			) -> Result<&mut B::Artifact, B::Err>
+				where
+					ArtCan: CanRefMut<B::Artifact>,
+					B: Builder<ArtCan, BCan>,
+					AP: Promise<B, BCan>  {
+
+			self.inner.get_mut(promise)
+		}
 	}
+}
 
 	/// Get a clone of the Artifact.
 	///
@@ -968,29 +978,6 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 		// The unwrap is safe here, because Cache ensures that a DynState exists
 		// before we comme here.
 		self.cache.dyn_state_cast_mut(self.user.id()).unwrap()
-	}
-
-	/// Get the dynamic state of given Builder.
-	///
-	/// See `my_state` to return the dynamic state of the owning builder.
-	///
-	/// # Deprecated
-	///
-	/// This method is deprecated because it might mislead using the dynamic
-	/// state to pass data between Builders, for which the Artifact should be
-	/// used. Thus this method will be removed.
-	///
-	#[deprecated = "will be remove, use the artifact to pass data between builders"]
-	pub fn get_dyn_state<AP, B: ?Sized>(
-		&mut self,
-		promise: &AP
-	) -> &B::DynState
-			where
-				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>, {
-
-		self.track_dependency(promise);
-		self.cache.dyn_state(promise)
 	}
 }
 

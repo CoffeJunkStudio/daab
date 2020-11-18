@@ -385,41 +385,6 @@ impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 	pub(crate) fn builder_ptr(&self) -> *const () {
 		BCan::can_as_ptr(&self.builder_canned) as *const ()
 	}
-
-	/// Constructs a truly unsized instance from two clones of the same builder.
-	///
-	/// # Panic
-	///
-	/// Panics if the two arguments are not the same `Rc`.
-	///
-	/// # Deprecated
-	///
-	/// This function can not absorb the builder itself so there might remain
-	/// e.g. `Rc`-clones keeping the inner builder accessible form the outside.
-	/// This avoids the effects of this type which is opaque encapsulation.
-	/// Therefore this function will be removed in the future.
-	///
-	/// Use [`new_unsized`] or [`into_unsized`] instead.
-	///
-	/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
-	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
-	///
-	// TODO: It breaks encapsulation, as the inner Builder might be still
-	// accessible from the outside. Therefore, it should be removed as soon as
-	// `unsize` becomes stable.
-	#[deprecated = "will be removed, use new_unsized or into_unsized instead"]
-	pub fn from_clones(builder_bin: BCan::Bin, builder_can: BCan) -> Option<Self> {
-		if BCan::bin_as_ptr(&builder_bin) == BCan::can_as_ptr(&builder_can) as *const () {
-			Some(
-				BlueprintUnsized {
-					builder: builder_bin,
-					builder_canned: builder_can,
-				}
-			)
-		} else {
-			None
-		}
-	}
 }
 
 impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan> where
