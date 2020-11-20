@@ -5,12 +5,14 @@
 
 use std::fmt::Debug;
 use std::any::Any;
+use cfg_if::cfg_if;
 
 #[cfg(feature = "diagnostics")]
 use crate::Doctor;
 
-use crate::canning::BuilderArtifact;
+use crate::BlueprintDyn;
 use crate::Never;
+
 
 
 /// Type for wrapping a `T` as part of `CanType` as `Can`.
@@ -39,14 +41,18 @@ pub type BuilderCan = CanType;
 ///
 pub type Blueprint<B> = crate::Blueprint<B, CanType>;
 
-/// The unsized variant of `Blueprint`.
-///
-pub type BlueprintUnsized<B> = crate::BlueprintUnsized<B, CanType>;
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		/// The unsized variant of `Blueprint`.
+		///
+		pub type BlueprintUnsized<B> = crate::blueprint::BlueprintUnsized<B, CanType>;
+	}
+}
 
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 ///
 pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
-	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err>>;
+	BlueprintDyn<CanType, BuilderCan, Artifact, Err, DynState>;
 
 pub type ConstBuilder<T> = crate::utils::ConstBuilder<CanType, BuilderCan, BinType<T>, T>;
 pub type ConfigurableBuilder<T> = crate::utils::ConfigurableBuilder<CanType, BuilderCan, T>;
@@ -60,6 +66,7 @@ pub type ConfigurableBuilder<T> = crate::utils::ConfigurableBuilder<CanType, Bui
 pub type Resolver<'a, T = ()> = crate::Resolver<'a, CanType, CanType, T>;
 
 
+/*
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder. Usable
 /// within a super-builders `build` function.
 ///
@@ -67,6 +74,8 @@ pub type Resolver<'a, T = ()> = crate::Resolver<'a, CanType, CanType, T>;
 /// storing artifacts, i.e. the artifacts are builders them self.
 ///
 pub type SuperResolver<'a, T = ()> = crate::Resolver<'a, BuilderArtifact<CanType>, CanType, T>;
+*/
+
 
 
 cfg_if::cfg_if!{
@@ -93,6 +102,7 @@ pub type CacheOwned = crate::CacheOwned<CanType, CanType>;
 
 
 
+/*
 /// Allows to resolve any `ArtifactPromis` into its artifact-builder.
 ///
 /// This cache uses `Rc` for storing builders and `Blueprint` for
@@ -108,6 +118,7 @@ pub type SuperCache = crate::Cache<BuilderArtifact<CanType>, CanType>;
 ///
 #[cfg(feature = "diagnostics")]
 pub type SuperCache<T = dyn Doctor<BuilderArtifact<CanType>, CanType>> = crate::Cache<BuilderArtifact<CanType>, CanType, T>;
+*/
 
 
 /// Functional builder wrapper.
@@ -249,6 +260,11 @@ mod test {
 #[cfg(test)]
 mod test_cloned {
 	include!("test_impl_cloned.rs");
+}
+
+#[cfg(test)]
+mod test_dyn {
+	include!("test_impl_dyn.rs");
 }
 
 

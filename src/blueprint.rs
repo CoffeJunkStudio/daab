@@ -61,6 +61,7 @@ use crate::BuilderId;
 use crate::Can;
 use crate::CanBuilder;
 use crate::CanSized;
+use crate::Never;
 
 
 
@@ -274,68 +275,70 @@ impl<B, BCan: CanSized<B>> From<B> for Blueprint<B, BCan> where BCan::Bin: fmt::
 }
 
 
-/// Wraps a Builder as a blueprint for its artifact from the `Cache` allowing
-/// unsized Builders.
-///
-/// This is a wrapper around the Bin of the Builder-Can and additionally the
-/// Can itself containing the actual Builder _(i.e. it contains
-/// `<BCan as Can<B>>::Bin` & `BCan`, e.g. a `Rc<B>` & `Rc<dyn Any>` when using
-/// the `rc` module)_. While it provides access to the inner Builder for the
-/// [`Cache`], it is not accessible for others. Thus enforcing that the Builder
-/// itself can not be accessed.
-///
-/// The `BlueprintUnsized` can be used as [`Promise`] to access the inner
-/// Builder's Artifact and dynamic state through the [`Cache`].
-///
-/// The `BlueprintUnsized` allows to use unsized Builders such as trait objects.
-///
-/// [`Cache`]: ../cache/struct.Cache.html
-/// [`Promise`]: trait.Promise.html
-///
-pub struct BlueprintUnsized<B: ?Sized, BCan: Can<B>> {
-	builder: BCan::Bin,
-	builder_canned: BCan,
-}
-
-impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
-	/// Crates a new `BlueprintUnsized` for the given sized builder.
-	///
-	/// Notice since here the Builder is given by value, it may not be unsized!
-	///
-	/// Instead, either use [`new_unsized`] to create directly a blueprint with
-	/// a trait object Builder. Or use this `new` and then use [`into_unsized`]
-	/// to turn it into a blueprint with an unsized Builder. The latter method
-	/// it more general but requires the `unsized` features which in turn
-	/// requires a Nightly Rust Compiler.
-	///
-	/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
-	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
-	///
-	pub fn new(builder: B) -> Self
-			where
-				BCan: CanSized<B>, {
-
-		let bin = BCan::into_bin(builder);
-
-		Self::new_binned(bin)
-	}
-}
-
-impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
-	/// Create a new promise for the given binned builder.
-	///
-	/// Internal function only, it breaks encapsulation!
-	///
-	pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
-		BlueprintUnsized {
-			builder: builder_bin.clone(),
-			builder_canned: BCan::from_bin(builder_bin),
-		}
-	}
-}
-
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
+		/// Wraps a Builder as a blueprint for its artifact from the `Cache` allowing
+		/// unsized Builders.
+		///
+		/// This is a wrapper around the Bin of the Builder-Can and additionally the
+		/// Can itself containing the actual Builder _(i.e. it contains
+		/// `<BCan as Can<B>>::Bin` & `BCan`, e.g. a `Rc<B>` & `Rc<dyn Any>` when using
+		/// the `rc` module)_. While it provides access to the inner Builder for the
+		/// [`Cache`], it is not accessible for others. Thus enforcing that the Builder
+		/// itself can not be accessed.
+		///
+		/// The `BlueprintUnsized` can be used as [`Promise`] to access the inner
+		/// Builder's Artifact and dynamic state through the [`Cache`].
+		///
+		/// The `BlueprintUnsized` allows to use unsized Builders such as trait objects.
+		///
+		/// [`Cache`]: ../cache/struct.Cache.html
+		/// [`Promise`]: trait.Promise.html
+		///
+		#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
+		pub struct BlueprintUnsized<B: ?Sized, BCan: Can<B>> {
+			builder: BCan::Bin,
+			builder_canned: BCan,
+		}
+
+		#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
+		impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+			/// Crates a new `BlueprintUnsized` for the given sized builder.
+			///
+			/// Notice since here the Builder is given by value, it may not be unsized!
+			///
+			/// Instead, either use [`new_unsized`] to create directly a blueprint with
+			/// a trait object Builder. Or use this `new` and then use [`into_unsized`]
+			/// to turn it into a blueprint with an unsized Builder. The latter method
+			/// it more general but requires the `unsized` features which in turn
+			/// requires a Nightly Rust Compiler.
+			///
+			/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
+			/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
+			///
+			pub fn new(builder: B) -> Self
+					where
+						BCan: CanSized<B>, {
+
+				let bin = BCan::into_bin(builder);
+
+				Self::new_binned(bin)
+			}
+		}
+
+		impl<B, BCan: CanSized<B>> BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+			/// Create a new promise for the given binned builder.
+			///
+			/// Internal function only, it breaks encapsulation!
+			///
+			pub(crate) fn new_binned(builder_bin: BCan::Bin) -> Self {
+				BlueprintUnsized {
+					builder: builder_bin.clone(),
+					builder_canned: BCan::from_bin(builder_bin),
+				}
+			}
+		}
+
 		impl<B: ?Sized, BCan> BlueprintUnsized<B, BCan> where
 				BCan: Can<B>, {
 
@@ -362,10 +365,288 @@ cfg_if! {
 				}
 			}
 		}
+
+		impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
+			/// Returns the id of the inner Builder.
+			///
+			/// All clones of the same `Blueprint` have the same id, thus
+			/// containing/sharing the same Builder and consequently will deliver the
+			/// same Artifact form a `Cache`.
+			///
+			pub fn id(&self) -> BuilderId {
+				BuilderId::new(BCan::can_as_ptr(&self.builder_canned))
+			}
+
+			/// Returns the pointer to the inner Builder.
+			///
+			/// The returned pointer has a unspecific validity, thus it may only be used
+			/// for comparing with other pointers but dereferencing it can never be
+			/// considered safe.
+			///
+			pub(crate) fn builder_ptr(&self) -> *const () {
+				BCan::can_as_ptr(&self.builder_canned) as *const ()
+			}
+		}
+
+		impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan> where
+			BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
+
+			/// Creates an `BlueprintUnsized` with a trait object Builder with the given
+			/// Builder.
+			///
+			/// An more general approach is to use [`new`] and then [`into_unsized`],
+			/// but the latter requires the `unsized` features which in turn
+			/// requires a Nightly Rust Compiler. Thus this `new_unsized` function
+			/// is provided as means to generate a trait object Builder using only
+			/// Stable Rust.
+			///
+			/// [`new`]: struct.BlueprintUnsized.html#method.new
+			/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
+			///
+			pub fn new_unsized<B>(builder: B) -> Self
+				where
+					BCan: CanSized<B>,
+					BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+
+				let (bin_dyn, can) = BCan::can_unsized(BCan::into_bin(builder));
+
+				BlueprintUnsized {
+					builder: bin_dyn,
+					builder_canned: can,
+				}
+			}
+
+			/// Creates an `BlueprintUnsized` with a trait object Builder from the given
+			/// 'sized' `BlueprintUnsized`.
+			///
+			pub fn from_sized<B>(blueprint: BlueprintUnsized<B,BCan>) -> Self
+				where
+					BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+
+				let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
+
+				BlueprintUnsized {
+					builder: bin_dyn,
+					builder_canned: can,
+				}
+			}
+
+			/// Creates an `BlueprintUnsized` with a trait object Builder with the given
+			/// 'sized' `Blueprint`.
+			///
+			pub fn from_sized_bp<B>(blueprint: Blueprint<B,BCan>) -> Self
+				where
+					BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+
+				let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
+
+				BlueprintUnsized {
+					builder: bin_dyn,
+					builder_canned: can,
+				}
+			}
+		}
+
+
+		impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
+				where
+					B: 'static,
+					BCan::Bin: AsRef<B>,
+					BCan: Clone, {
+
+			fn id(&self) -> BuilderId {
+				self.id()
+			}
+
+			fn builder(&self) -> BuilderAccessor<B> {
+				BuilderAccessor {
+					builder: self.builder.as_ref(),
+				}
+			}
+
+			fn canned(&self) -> CannedAccessor<BCan> {
+				CannedAccessor {
+					can: self.builder_canned.clone(),
+				}
+			}
+		}
+
+		impl<B: ?Sized, BCan: Can<B>> Clone for BlueprintUnsized<B, BCan> where BCan::Bin: Clone, BCan: Clone {
+			fn clone(&self) -> Self {
+				BlueprintUnsized {
+					builder: self.builder.clone(),
+					builder_canned: self.builder_canned.clone(),
+				}
+			}
+		}
+
+
+
+		impl<B: ?Sized, BCan: Can<B>> Hash for BlueprintUnsized<B, BCan> {
+			fn hash<H: Hasher>(&self, state: &mut H) {
+				self.id().hash(state);
+			}
+		}
+
+		impl<B: ?Sized, BCan: Can<B>> PartialEq for BlueprintUnsized<B, BCan> {
+			fn eq(&self, other: &Self) -> bool {
+				self.id().eq(&other.id())
+			}
+		}
+
+		impl<B: ?Sized, BCan: Can<B>> Eq for BlueprintUnsized<B, BCan> {
+		}
+
+		impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for BlueprintUnsized<B, BCan> {
+			fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+				writeln!(f, "{:p}", BCan::can_as_ptr(&self.builder_canned))
+			}
+		}
+
+		impl<B: ?Sized, BCan: Can<B>> fmt::Debug for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug {
+			fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+				write!(fmt, "BlueprintUnsized {{builder: {:?}, id: {:p}}}", self.builder, self.id())
+			}
+		}
+
+		impl<B, BCan: CanSized<B>> From<Blueprint<B, BCan>> for BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+			fn from(sized_bp: Blueprint<B, BCan>) -> Self {
+				Self {
+					builder: sized_bp.builder.clone(),
+					builder_canned: BCan::from_bin(sized_bp.builder),
+				}
+			}
+		}
+
+		impl<B, BCan: CanSized<B>> From<B> for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug + Clone {
+			fn from(builder: B) -> Self {
+				BlueprintUnsized::new(builder)
+			}
+		}
+
+		impl<B, ArtCan, BCan, Artifact, DynState, Err> From<Blueprint<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+			where
+				BCan: CanSized<B>,
+				BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
+				BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
+
+			fn from(builder: Blueprint<B, BCan>) -> Self {
+				BlueprintUnsized::from_sized_bp(builder)
+			}
+		}
+
+		impl<B, ArtCan, BCan, Artifact, DynState, Err> From<BlueprintUnsized<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+			where
+				BCan: CanSized<B>,
+				BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
+				BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
+
+			fn from(builder: BlueprintUnsized<B, BCan>) -> Self {
+				BlueprintUnsized::from_sized(builder)
+			}
+		}
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
+
+
+
+type BuilderDyn<ArtCan, BCan, Artifact, Err, DynState> = dyn Builder<ArtCan, BCan, Artifact=Artifact, Err=Err, DynState=DynState>;
+
+/// Wraps a Builder as a blueprint for its artifact from the `Cache` allowing
+/// unsized Builders.
+///
+/// This is a wrapper around the Bin of the Builder-Can and additionally the
+/// Can itself containing the actual Builder _(i.e. it contains
+/// `<BCan as Can<B>>::Bin` & `BCan`, e.g. a `Rc<B>` & `Rc<dyn Any>` when using
+/// the `rc` module)_. While it provides access to the inner Builder for the
+/// [`Cache`], it is not accessible for others. Thus enforcing that the Builder
+/// itself can not be accessed.
+///
+/// The `BlueprintUnsized` can be used as [`Promise`] to access the inner
+/// Builder's Artifact and dynamic state through the [`Cache`].
+///
+/// The `BlueprintUnsized` allows to use unsized Builders such as trait objects.
+///
+/// [`Cache`]: ../cache/struct.Cache.html
+/// [`Promise`]: trait.Promise.html
+///
+pub struct BlueprintDyn<ArtCan, BCan, Art, Err=Never, DynSt=()>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>> {
+
+	builder: BCan::Bin,
+	builder_canned: BCan,
+}
+
+impl<ArtCan, BCan, Art, Err, DynSt> BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
+	/// Crates a new `BlueprintUnsized` for the given sized builder.
+	///
+	/// Notice since here the Builder is given by value, it may not be unsized!
+	///
+	/// Instead, either use [`new_unsized`] to create directly a blueprint with
+	/// a trait object Builder. Or use this `new` and then use [`into_unsized`]
+	/// to turn it into a blueprint with an unsized Builder. The latter method
+	/// it more general but requires the `unsized` features which in turn
+	/// requires a Nightly Rust Compiler.
+	///
+	/// [`new_unsized`]: struct.BlueprintUnsized.html#method.new_unsized
+	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
+	///
+	pub fn new<B>(builder: B) -> Self
+			where
+				Art: Debug + 'static,
+				Err: Debug + 'static,
+				DynSt: Debug + 'static,
+				B: Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>,
+				BCan: CanSized<B>,
+				BCan: CanBuilder<ArtCan, Art, DynSt, Err, B>, {
+
+		let (bin_dyn, can) = BCan::can_unsized(BCan::into_bin(builder));
+
+		BlueprintDyn {
+			builder: bin_dyn,
+			builder_canned: can,
+		}
+	}
+}
+
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		impl<ArtCan, BCan, Art, Err, DynSt> BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+			where
+				BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
+			/// Converts the generic parameter of this `BlueprintUnsized` from
+			/// type `B` to `UB` via unsizing.
+			///
+			/// **Notice: This function is only available if the `unsized`
+			/// feature has been activated**.
+			///
+			/// An unsized Builder might represent for instance
+			/// a trait object Builder. This allows in some cases to support
+			/// multiple different Builders without adding additional type
+			/// parameters.
+			///
+			#[cfg_attr(feature = "doc_cfg", doc(cfg(feature = "unsized")))]
+			pub fn into_unsized(self) -> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>, BCan> {
+
+				BlueprintUnsized {
+					builder: self.builder,
+					builder_canned: self.builder_canned,
+				}
+			}
+		}
+	}
+}
+
+impl<ArtCan, BCan, Art, Err, DynSt> BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
 	/// Returns the id of the inner Builder.
 	///
 	/// All clones of the same `Blueprint` have the same id, thus
@@ -387,59 +668,20 @@ impl<B: ?Sized, BCan: Can<B>> BlueprintUnsized<B, BCan> {
 	}
 }
 
-impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan> where
-	BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
-
-	/// Creates an `BlueprintUnsized` with a trait object Builder with the given
-	/// Builder.
-	///
-	/// An more general approach is to use [`new`] and then [`into_unsized`],
-	/// but the latter requires the `unsized` features which in turn
-	/// requires a Nightly Rust Compiler. Thus this `new_unsized` function
-	/// is provided as means to generate a trait object Builder using only
-	/// Stable Rust.
-	///
-	/// [`new`]: struct.BlueprintUnsized.html#method.new
-	/// [`into_unsized`]: struct.BlueprintUnsized.html#method.into_unsized
-	///
-	pub fn new_unsized<B>(builder: B) -> Self
-		where
-			BCan: CanSized<B>,
-			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
-
-		let (bin_dyn, can) = BCan::can_unsized(BCan::into_bin(builder));
-
-		BlueprintUnsized {
-			builder: bin_dyn,
-			builder_canned: can,
-		}
-	}
-
-	/// Creates an `BlueprintUnsized` with a trait object Builder from the given
-	/// 'sized' `BlueprintUnsized`.
-	///
-	pub fn from_sized<B>(blueprint: BlueprintUnsized<B,BCan>) -> Self
-		where
-			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
-
-		let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
-
-		BlueprintUnsized {
-			builder: bin_dyn,
-			builder_canned: can,
-		}
-	}
+impl<ArtCan, BCan, Art, Err, DynSt> BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
 
 	/// Creates an `BlueprintUnsized` with a trait object Builder with the given
 	/// 'sized' `Blueprint`.
 	///
-	pub fn from_sized_bp<B>(blueprint: Blueprint<B,BCan>) -> Self
+	pub fn from_bp<B>(blueprint: Blueprint<B,BCan>) -> Self
 		where
-			BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>, {
+			BCan: CanBuilder<ArtCan, Art, DynSt, Err, B>, {
 
 		let (bin_dyn, can) = BCan::can_unsized(blueprint.builder);
 
-		BlueprintUnsized {
+		BlueprintDyn {
 			builder: bin_dyn,
 			builder_canned: can,
 		}
@@ -447,17 +689,21 @@ impl<ArtCan, BCan, Artifact, DynState, Err> BlueprintUnsized<dyn Builder<ArtCan,
 }
 
 
-impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
-		where
-			B: 'static,
-			BCan::Bin: AsRef<B>,
-			BCan: Clone, {
+impl<ArtCan, BCan, Art, Err, DynSt> Promise<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>, BCan> for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		ArtCan: 'static,
+		Art: 'static,
+		Err: 'static,
+		DynSt: 'static,
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		BCan::Bin: AsRef<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		BCan: Clone, {
 
 	fn id(&self) -> BuilderId {
 		self.id()
 	}
 
-	fn builder(&self) -> BuilderAccessor<B> {
+	fn builder(&self) -> BuilderAccessor<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>> {
 		BuilderAccessor {
 			builder: self.builder.as_ref(),
 		}
@@ -470,9 +716,14 @@ impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> Clone for BlueprintUnsized<B, BCan> where BCan::Bin: Clone, BCan: Clone {
+impl<ArtCan, BCan, Art, Err, DynSt> Clone for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		BCan::Bin: Clone,
+		BCan: Clone {
+
 	fn clone(&self) -> Self {
-		BlueprintUnsized {
+		BlueprintDyn {
 			builder: self.builder.clone(),
 			builder_canned: self.builder_canned.clone(),
 		}
@@ -481,70 +732,87 @@ impl<B: ?Sized, BCan: Can<B>> Clone for BlueprintUnsized<B, BCan> where BCan::Bi
 
 
 
-impl<B: ?Sized, BCan: Can<B>> Hash for BlueprintUnsized<B, BCan> {
+impl<ArtCan, BCan, Art, Err, DynSt> Hash for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.id().hash(state);
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> PartialEq for BlueprintUnsized<B, BCan> {
+impl<ArtCan, BCan, Art, Err, DynSt> PartialEq for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
 	fn eq(&self, other: &Self) -> bool {
 		self.id().eq(&other.id())
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> Eq for BlueprintUnsized<B, BCan> {
+impl<ArtCan, BCan, Art, Err, DynSt> Eq for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
 }
 
-impl<B: ?Sized, BCan: Can<B>> fmt::Pointer for BlueprintUnsized<B, BCan> {
+impl<ArtCan, BCan, Art, Err, DynSt> fmt::Pointer for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>, {
+
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		writeln!(f, "{:p}", BCan::can_as_ptr(&self.builder_canned))
 	}
 }
 
-impl<B: ?Sized, BCan: Can<B>> fmt::Debug for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug {
+impl<ArtCan, BCan, Art, Err, DynSt> fmt::Debug for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		BCan::Bin: fmt::Debug {
+
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(fmt, "BlueprintUnsized {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
 }
 
-impl<B, BCan: CanSized<B>> From<Blueprint<B, BCan>> for BlueprintUnsized<B, BCan> where BCan::Bin: Clone {
+impl<ArtCan, BCan, Art, Err, DynSt, B> From<Blueprint<B, BCan>> for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+	where
+		//BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		//BCan: CanSized<B>,
+		BCan: CanBuilder<ArtCan, Art, DynSt, Err, B>, {
+
 	fn from(sized_bp: Blueprint<B, BCan>) -> Self {
-		Self {
-			builder: sized_bp.builder.clone(),
-			builder_canned: BCan::from_bin(sized_bp.builder),
-		}
+		Self::from_bp(sized_bp)
 	}
 }
+/*
+impl<B, BCan: CanSized<B>> From<B> for BlueprintDyn<B, BCan>
+	where
+		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
+		BCan::Bin: fmt::Debug + Clone {
 
-impl<B, BCan: CanSized<B>> From<B> for BlueprintUnsized<B, BCan> where BCan::Bin: fmt::Debug + Clone {
 	fn from(builder: B) -> Self {
 		BlueprintUnsized::new(builder)
 	}
 }
 
-impl<B, ArtCan, BCan, Artifact, DynState, Err> From<Blueprint<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+impl<B, ArtCan, BCan, Artifact, DynState, Err> From<Blueprint<B, BCan>> for BlueprintDyn<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
 	where
 		BCan: CanSized<B>,
 		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
 		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
-	
+
 	fn from(builder: Blueprint<B, BCan>) -> Self {
 		BlueprintUnsized::from_sized_bp(builder)
 	}
 }
 
-impl<B, ArtCan, BCan, Artifact, DynState, Err> From<BlueprintUnsized<B, BCan>> for BlueprintUnsized<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
+impl<B, ArtCan, BCan, Artifact, DynState, Err> From<BlueprintUnsized<B, BCan>> for BlueprintDyn<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
 	where
 		BCan: CanSized<B>,
 		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
 		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
-	
+
 	fn from(builder: BlueprintUnsized<B, BCan>) -> Self {
 		BlueprintUnsized::from_sized(builder)
 	}
-}
-
-
-
-
+}*/

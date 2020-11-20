@@ -636,98 +636,104 @@ impl<ArtCan: 'static, Artifact: 'static, DynState, Err, B> CanBuilderSync<ArtCan
 */
 
 
-//
-// Blueprint impls
-//
-
-use crate::Blueprint as Bp;
-use crate::BlueprintUnsized as Bpu;
-use crate::Promise;
-
-/// A Can-type that allows Builders produced as Artifacts.
-///
-/// This is a special container type that allows to can `Blueprints`.
-/// That enables them to be used as Artifact type of Builders.
-/// These Builders of Builders are also referred to as _Super Builders_.
-///
-#[derive(Debug, Clone)]
-pub struct BuilderArtifact<BCan>(BCan);
-
-impl<BCan: CanBase + 'static> CanBase for BuilderArtifact<BCan> {
-	fn can_as_ptr(&self) -> *const dyn Any {
-		self.0.can_as_ptr()
-	}
-}
-
-impl<BCan: 'static, B: 'static> Can<Bp<B,BCan>> for BuilderArtifact<BCan>
-		where BCan: Can<B> {
-
-	type Bin = Bp<B, BCan>;
-
-	fn bin_as_ptr(b: &Self::Bin) -> *const () {
-		b.builder_ptr()
-	}
-}
-
-impl<BCan: 'static, B: 'static> CanSized<Bp<B,BCan>> for BuilderArtifact<BCan>
-		where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
-
-	fn into_bin(ap: Bp<B,BCan>) -> Self::Bin {
-		ap
-	}
-	fn downcast_can(self) -> Option<Self::Bin> {
-		self.0.downcast_can().map( |bin| {
-			Bp::new_binned(bin)
-		})
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		BuilderArtifact(b.canned().can)
-	}
-}
-
-
-
-
-impl<BCan: 'static, B: ?Sized + 'static> Can<Bpu<B,BCan>> for BuilderArtifact<BCan>
-		where BCan: Can<B> {
-
-	type Bin = Bpu<B, BCan>;
-
-	fn bin_as_ptr(b: &Self::Bin) -> *const () {
-		b.deref().builder_ptr()
-	}
-}
 
 cfg_if! {
 	if #[cfg(feature = "unsized")] {
-		impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<Bpu<B,BCan>, Bpu<UB,BCan>> for BuilderArtifact<BCan>
-				where
-					BCan: CanUnsized<B, UB>,
-					BCan: 'static,
-					B: 'static,
-					UB: 'static,
-					B: Unsize<UB> {
 
-			fn into_unsized(bin: <Self as Can<Bpu<B,BCan>>>::Bin) -> <Self as Can<Bpu<UB,BCan>>>::Bin {
-				bin.into_unsized()
+		//
+		// Blueprint impls
+		//
+
+		use crate::Blueprint as Bp;
+		use crate::blueprint::BlueprintUnsized as Bpu;
+		use crate::Promise;
+
+		/// A Can-type that allows Builders produced as Artifacts.
+		///
+		/// This is a special container type that allows to can `Blueprints`.
+		/// That enables them to be used as Artifact type of Builders.
+		/// These Builders of Builders are also referred to as _Super Builders_.
+		///
+		#[derive(Debug, Clone)]
+		pub struct BuilderArtifact<BCan>(BCan);
+
+		impl<BCan: CanBase + 'static> CanBase for BuilderArtifact<BCan> {
+			fn can_as_ptr(&self) -> *const dyn Any {
+				self.0.can_as_ptr()
 			}
 		}
-	}
-}
 
-impl<BCan: 'static, B: 'static> CanSized<Bpu<B,BCan>> for BuilderArtifact<BCan>
-		where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
+		impl<BCan: 'static, B: 'static> Can<Bp<B,BCan>> for BuilderArtifact<BCan>
+				where BCan: Can<B> {
 
-	fn into_bin(ap: Bpu<B,BCan>) -> Self::Bin {
-		ap
-	}
-	fn downcast_can(self) -> Option<Self::Bin> {
-		self.0.downcast_can().map( |bin| {
-			Bpu::new_binned(bin)
-		})
-	}
-	fn from_bin(b: Self::Bin) -> Self {
-		BuilderArtifact(b.canned().can)
+			type Bin = Bp<B, BCan>;
+
+			fn bin_as_ptr(b: &Self::Bin) -> *const () {
+				b.builder_ptr()
+			}
+		}
+
+		impl<BCan: 'static, B: 'static> CanSized<Bp<B,BCan>> for BuilderArtifact<BCan>
+				where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
+
+			fn into_bin(ap: Bp<B,BCan>) -> Self::Bin {
+				ap
+			}
+			fn downcast_can(self) -> Option<Self::Bin> {
+				self.0.downcast_can().map( |bin| {
+					Bp::new_binned(bin)
+				})
+			}
+			fn from_bin(b: Self::Bin) -> Self {
+				BuilderArtifact(b.canned().can)
+			}
+		}
+
+
+
+
+		impl<BCan: 'static, B: ?Sized + 'static> Can<Bpu<B,BCan>> for BuilderArtifact<BCan>
+				where BCan: Can<B> {
+
+			type Bin = Bpu<B, BCan>;
+
+			fn bin_as_ptr(b: &Self::Bin) -> *const () {
+				b.deref().builder_ptr()
+			}
+		}
+
+		cfg_if! {
+			if #[cfg(feature = "unsized")] {
+				impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<Bpu<B,BCan>, Bpu<UB,BCan>> for BuilderArtifact<BCan>
+						where
+							BCan: CanUnsized<B, UB>,
+							BCan: 'static,
+							B: 'static,
+							UB: 'static,
+							B: Unsize<UB> {
+
+					fn into_unsized(bin: <Self as Can<Bpu<B,BCan>>>::Bin) -> <Self as Can<Bpu<UB,BCan>>>::Bin {
+						bin.into_unsized()
+					}
+				}
+			}
+		}
+
+		impl<BCan: 'static, B: 'static> CanSized<Bpu<B,BCan>> for BuilderArtifact<BCan>
+				where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
+
+			fn into_bin(ap: Bpu<B,BCan>) -> Self::Bin {
+				ap
+			}
+			fn downcast_can(self) -> Option<Self::Bin> {
+				self.0.downcast_can().map( |bin| {
+					Bpu::new_binned(bin)
+				})
+			}
+			fn from_bin(b: Self::Bin) -> Self {
+				BuilderArtifact(b.canned().can)
+			}
+		}
 	}
 }
 

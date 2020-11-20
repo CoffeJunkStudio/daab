@@ -296,7 +296,7 @@ use canning::CanRefMut;
 
 use blueprint::Promise;
 use blueprint::Blueprint;
-use blueprint::BlueprintUnsized;
+use blueprint::BlueprintDyn;
 use cache::Cache;
 use cache::CacheOwned;
 use cache::Resolver;

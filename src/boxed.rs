@@ -8,9 +8,12 @@
 use std::fmt::Debug;
 use std::any::Any;
 
+use cfg_if::cfg_if;
+
 #[cfg(feature = "diagnostics")]
 use crate::Doctor;
 
+use crate::BlueprintDyn;
 use crate::Never;
 
 
@@ -40,14 +43,18 @@ pub type BuilderCan = crate::rc::CanType;
 ///
 pub type Blueprint<B> = crate::rc::Blueprint<B>;
 
-/// The unsized variant of `Blueprint`.
-///
-pub type BlueprintUnsized<B> = crate::rc::BlueprintUnsized<B>;
+cfg_if! {
+	if #[cfg(feature = "unsized")] {
+		/// The unsized variant of `Blueprint`.
+		///
+		pub type BlueprintUnsized<B> = crate::rc::BlueprintUnsized<B>;
+	}
+}
 
 /// An `Blueprint` with a `dyn Builder<Artifact=Artifact>`.
 ///
 pub type DynamicBlueprint<Artifact, Err=Never, DynState=()> =
-	BlueprintUnsized<dyn crate::Builder<CanType, BuilderCan, Artifact=Artifact, DynState=DynState, Err=Err>>;
+	BlueprintDyn<CanType, BuilderCan, Artifact, Err, DynState>;
 
 pub type ConstBuilder<T> = crate::utils::ConstBuilder<CanType, BuilderCan, BinType<T>, T>;
 pub type ConfigurableBuilder<T> = crate::utils::ConfigurableBuilder<CanType, BuilderCan, T>;
