@@ -663,7 +663,7 @@ cfg_if! {
 			}
 		}
 
-		impl<BCan: 'static, B: 'static> Can<Bp<B,BCan>> for BuilderArtifact<BCan>
+		impl<BCan: 'static, B: 'static + Debug> Can<Bp<B,BCan>> for BuilderArtifact<BCan>
 				where BCan: Can<B> {
 
 			type Bin = Bp<B, BCan>;
@@ -673,7 +673,7 @@ cfg_if! {
 			}
 		}
 
-		impl<BCan: 'static, B: 'static> CanSized<Bp<B,BCan>> for BuilderArtifact<BCan>
+		impl<BCan: 'static, B: 'static + Debug> CanSized<Bp<B,BCan>> for BuilderArtifact<BCan>
 				where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
 
 			fn into_bin(ap: Bp<B,BCan>) -> Self::Bin {
@@ -702,24 +702,7 @@ cfg_if! {
 			}
 		}
 
-		cfg_if! {
-			if #[cfg(feature = "unsized")] {
-				impl<BCan, B: ?Sized, UB: ?Sized> CanUnsized<Bpu<B,BCan>, Bpu<UB,BCan>> for BuilderArtifact<BCan>
-						where
-							BCan: CanUnsized<B, UB>,
-							BCan: 'static,
-							B: 'static,
-							UB: 'static,
-							B: Unsize<UB> {
-
-					fn into_unsized(bin: <Self as Can<Bpu<B,BCan>>>::Bin) -> <Self as Can<Bpu<UB,BCan>>>::Bin {
-						bin.into_unsized()
-					}
-				}
-			}
-		}
-
-		impl<BCan: 'static, B: 'static> CanSized<Bpu<B,BCan>> for BuilderArtifact<BCan>
+		impl<BCan: 'static, B: 'static + Debug> CanSized<Bpu<B,BCan>> for BuilderArtifact<BCan>
 				where BCan: CanSized<B> + Clone, BCan::Bin: AsRef<B> + Clone {
 
 			fn into_bin(ap: Bpu<B,BCan>) -> Self::Bin {

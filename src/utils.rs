@@ -34,7 +34,7 @@ use std::marker::PhantomData;
 /// with builders, which actually do not have any dependencies (so they might
 /// only been manually invalidate) or having artifacts which are still usable
 /// after any (or all) dependency has been invalidated.
-/// 
+///
 /// Notice, that once the inner builder faild, and the `RedeemingBuilder` 'built' the _old artifact_
 /// then this will not establish a dependency on the inner builder. So to make the
 /// `RedeemingBuilder` return a 'fresh' artifact from the inner builder, the `RedeemingBuilder`
@@ -47,30 +47,28 @@ use std::marker::PhantomData;
 /// builder failed and the `default_value` has been set to `None`.
 ///
 #[derive(Debug, Clone)]
-pub struct RedeemingBuilder<AP, B: ?Sized, ArtBin> {
+pub struct RedeemingBuilder<AP, ArtBin> {
 	inner: AP,
 	default_value: Option<ArtBin>,
-	_b: PhantomData<B>,
 }
 
-impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
-	where
-		B: Debug + 'static,
-		ArtBin: Debug + 'static, {
+impl<AP, ArtBin> RedeemingBuilder<AP, ArtBin> {
 
 	/// Wrap given Builder and fill missing recreations with a previous value.
 	///
 	/// **Use with care**
 	///
-	pub fn new<ArtCan, BCan, T>(
+	pub fn new<ArtCan, BCan, B: ?Sized, T>(
 		inner: AP,
 		default_value: Option<ArtBin>
 	) -> Self
 		where
 			B: Builder<ArtCan, BCan, Artifact=T>,
-			AP: Promise<B, BCan>,
+			BCan: Can<AP::Builder>,
+			AP: Promise<Builder = B, BCan = BCan>,
 			T: Debug + 'static,
 			ArtCan: Clone + CanSized<T,Bin=ArtBin>,
+			ArtBin: Clone + Debug + 'static,
 			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
 	{
@@ -78,15 +76,15 @@ impl<AP, B: ?Sized, ArtBin> RedeemingBuilder<AP, B, ArtBin>
 		RedeemingBuilder {
 			inner,
 			default_value,
-			_b: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan, ArtBin, T> Builder<ArtCan, BCan> for RedeemingBuilder<AP, B, ArtBin>
+impl<ArtCan, AP, B: ?Sized, BCan, ArtBin, T> Builder<ArtCan, BCan> for RedeemingBuilder<AP, ArtBin>
 	where
 		B: Builder<ArtCan, BCan, Artifact=T>,
-		AP: Promise<B, BCan>,
+		BCan: Can<B>,
+		AP: Promise<Builder = B, BCan = BCan>,
 		T: Debug + 'static,
 		ArtCan: Clone + CanSized<T,Bin=ArtBin>,
 		ArtBin: Clone + Debug + 'static,
@@ -363,7 +361,7 @@ impl<ArtCan, BCan, ArtBin, T> ConstBuilder<ArtCan, BCan, ArtBin, T>
 	/// Wraps the given closure as Builder.
 	///
 	pub fn new(artifact_bin: ArtBin) -> Self {
-		
+
 		ConstBuilder {
 			inner: artifact_bin,
 			_art_can: PhantomData,
@@ -525,24 +523,22 @@ impl<ArtCan, BCan, T> Builder<ArtCan, BCan> for ConfigurableBuilder<ArtCan, BCan
 /// Also see the `ForwardingBuilder` for an alternative.
 ///
 #[derive(Debug, Clone)]
-pub struct ClonedBuilder<AP, B: ?Sized> {
+pub struct ClonedBuilder<AP> {
 	inner: AP,
-	_b: PhantomData<B>,
 }
 
-impl<AP, B: ?Sized> ClonedBuilder<AP, B>
-	where
-		B: Debug + 'static, {
+impl<AP> ClonedBuilder<AP> {
 
 	/// Wrap given Builder cloning its artifact.
 	///
-	pub fn new<ArtCan, BCan>(
+	pub fn new<ArtCan, BCan, B: ?Sized>(
 		inner: AP,
 	) -> Self
 		where
 			B: Builder<ArtCan, BCan>,
 			B::Artifact: Clone,
-			AP: Promise<B, BCan>,
+			BCan: Can<AP::Builder>,
+			AP: Promise<Builder = B, BCan = BCan>,
 			ArtCan: CanRef<B::Artifact>,
 			BCan: Clone + CanStrong,
 			BCan: CanSized<Self>,
@@ -550,16 +546,16 @@ impl<AP, B: ?Sized> ClonedBuilder<AP, B>
 
 		ClonedBuilder {
 			inner,
-			_b: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
+impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP>
 	where
 		B: Builder<ArtCan, BCan>,
 		B::Artifact: Clone,
-		AP: Promise<B, BCan>,
+		BCan: Can<B>,
+		AP: Promise<Builder = B, BCan = BCan>,
 		ArtCan: CanRef<B::Artifact>,
 		BCan: CanStrong,
 	{
@@ -596,23 +592,21 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ClonedBuilder<AP, B>
 /// Also see the `ClonedBuilder` for an alternative.
 ///
 #[derive(Debug, Clone)]
-pub struct ForwardingBuilder<AP, B: ?Sized> {
+pub struct ForwardingBuilder<AP> {
 	inner: AP,
-	_b: PhantomData<B>,
 }
 
-impl<AP, B: ?Sized> ForwardingBuilder<AP, B>
-	where
-		B: Debug + 'static, {
+impl<AP> ForwardingBuilder<AP> {
 
 	/// Wrap given Builder forwarding its artifact.
 	///
-	pub fn new<ArtCan, BCan>(
+	pub fn new<ArtCan, BCan, B: ?Sized>(
 		inner: AP,
 	) -> Self
 		where
 			B: Builder<ArtCan, BCan>,
-			AP: Promise<B, BCan>,
+			BCan: Can<AP::Builder>,
+			AP: Promise<Builder = B, BCan = BCan>,
 			ArtCan: CanSized<B::Artifact>,
 			ArtCan: Clone,
 			BCan: CanStrong,
@@ -621,15 +615,15 @@ impl<AP, B: ?Sized> ForwardingBuilder<AP, B>
 
 		ForwardingBuilder {
 			inner,
-			_b: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP, B>
+impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP>
 	where
 		B: Builder<ArtCan, BCan>,
-		AP: Promise<B, BCan>,
+		BCan: Can<B>,
+		AP: Promise<Builder = B, BCan = BCan>,
 		ArtCan: CanSized<B::Artifact>,
 		ArtCan: Clone,
 		BCan: CanStrong,
@@ -655,24 +649,22 @@ impl<ArtCan, AP, B: ?Sized, BCan> Builder<ArtCan, BCan> for ForwardingBuilder<AP
 /// A intermediate Builder which wraps a builder with `Err=Never` with a arbitrary error type.
 ///
 #[derive(Debug, Clone)]
-pub struct FeigningBuilder<AP, B: ?Sized, Err> {
+pub struct FeigningBuilder<AP, Err> {
 	inner: AP,
-	_b: PhantomData<B>,
 	_err: PhantomData<Err>,
 }
 
-impl<AP, B: ?Sized, Err> FeigningBuilder<AP, B, Err>
-	where
-		B: Debug + 'static, {
+impl<AP, Err> FeigningBuilder<AP, Err> {
 
 	/// Wrap given Builder forwarding its artifact.
 	///
-	pub fn new<ArtCan, BCan>(
+	pub fn new<ArtCan, BCan, B>(
 		inner: AP,
 	) -> Self
 		where
 			B: Builder<ArtCan, BCan, Err=Never>,
-			AP: Promise<B, BCan>,
+			BCan: Can<AP::Builder>,
+			AP: Promise<Builder = B, BCan = BCan>,
 			Err: Debug + 'static,
 			ArtCan: CanSized<B::Artifact>,
 			ArtCan: Clone,
@@ -682,16 +674,16 @@ impl<AP, B: ?Sized, Err> FeigningBuilder<AP, B, Err>
 
 		FeigningBuilder {
 			inner,
-			_b: PhantomData,
 			_err: PhantomData,
 		}
 	}
 }
 
-impl<ArtCan, AP, B: ?Sized, BCan, Err> Builder<ArtCan, BCan> for FeigningBuilder<AP, B, Err>
+impl<ArtCan, AP, B: ?Sized, BCan, Err> Builder<ArtCan, BCan> for FeigningBuilder<AP, Err>
 	where
 		B: Builder<ArtCan, BCan, Err=Never>,
-		AP: Promise<B, BCan>,
+		BCan: Can<B>,
+		AP: Promise<Builder = B, BCan = BCan>,
 		Err: Debug + 'static,
 		ArtCan: CanSized<B::Artifact>,
 		ArtCan: Clone,

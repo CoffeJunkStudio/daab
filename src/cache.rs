@@ -29,10 +29,13 @@ use std::marker::PhantomData;
 
 use cfg_if::cfg_if;
 
+#[cfg(feature = "mut_box")]
+use crate::canning::CanRefMut;
+
 use crate::CanStrong;
 use crate::CanSized;
 use crate::CanRef;
-use crate::CanRefMut;
+use crate::Can;
 
 use crate::Promise;
 
@@ -319,12 +322,13 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 	///
 	/// [`number_of_known_builders`]: struct.Cache.html#method.number_of_known_builders
 	///
-	pub fn is_builder_known<AP: ?Sized, B: ?Sized>(
+	pub fn is_builder_known<AP: ?Sized>(
 			&self,
 			promise: &AP
 		) -> bool
 			where
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan> {
 
 		self.inner.is_builder_known(promise)
 	}
@@ -353,7 +357,8 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.lookup(promise)
 	}
@@ -392,7 +397,8 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.lookup_ref(promise)
 	}
@@ -400,6 +406,7 @@ impl<ArtCan: Debug, BCan: CanStrong + Debug> Cache<ArtCan, BCan> {
 
 cfg_if! {
 	if #[cfg(feature = "mut_box")] {
+
 		/// Gets the stored Artifact by mutable reference, if it exists.
 		///
 		/// Returns the Artifact as mutable reference into this `Cache`.
@@ -444,7 +451,8 @@ cfg_if! {
 				where
 					ArtCan: CanRefMut<B::Artifact>,
 					B: Builder<ArtCan, BCan>,
-					AP: Promise<B, BCan>  {
+					BCan: Can<AP::Builder>,
+					AP: Promise<Builder = B, BCan = BCan>  {
 
 			self.inner.lookup_mut(promise)
 		}
@@ -474,7 +482,8 @@ cfg_if! {
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.lookup_cloned(promise)
 	}
@@ -505,7 +514,8 @@ cfg_if! {
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.get(promise)
 	}
@@ -546,7 +556,8 @@ cfg_if! {
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.get_ref(promise)
 	}
@@ -600,7 +611,8 @@ cfg_if! {
 				where
 					ArtCan: CanRefMut<B::Artifact>,
 					B: Builder<ArtCan, BCan>,
-					AP: Promise<B, BCan>  {
+					BCan: Can<AP::Builder>,
+					AP: Promise<Builder = B, BCan = BCan>  {
 
 			self.inner.get_mut(promise)
 		}
@@ -632,7 +644,8 @@ cfg_if! {
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.get_cloned(promise)
 	}
@@ -649,7 +662,8 @@ cfg_if! {
 		) -> Option<&B::DynState>
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.get_dyn_state(promise)
 	}
@@ -671,7 +685,8 @@ cfg_if! {
 		) -> &B::DynState
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.dyn_state(promise)
 	}
@@ -691,7 +706,8 @@ cfg_if! {
 		) -> &mut B::DynState
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.dyn_state_mut(promise)
 	}
@@ -728,7 +744,8 @@ cfg_if! {
 		)
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.purge(promise)
 	}
@@ -753,7 +770,8 @@ cfg_if! {
 		)
 			where
 				B: Debug + 'static,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.inner.invalidate(promise)
 	}
@@ -849,13 +867,13 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 
 	/// Record a dependency upon the given promise.
 	///
-	fn track_dependency<AP, B: ?Sized>(
+	fn track_dependency<AP>(
 			&mut self,
 			promise: &AP
 		)
 			where
-				B: Debug + 'static,
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan> {
 
 		cfg_if! {
 			if #[cfg(feature = "diagnostics")] {
@@ -894,7 +912,8 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan> {
 
 		self.track_dependency(promise);
 		self.cache.get(promise)
@@ -929,7 +948,8 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 			where
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.track_dependency(promise);
 		self.cache.get_ref(promise)
@@ -959,7 +979,8 @@ impl<'a, ArtCan, BCan, DynState> Resolver<'a, ArtCan, BCan, DynState>
 				ArtCan: CanRef<B::Artifact>,
 				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.track_dependency(promise);
 		self.cache.get_cloned(promise)

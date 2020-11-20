@@ -107,7 +107,7 @@ impl<AP> BuilderSimpleNode<AP> {
 
 	pub(crate) fn new<BCan: Debug>(leaf: AP) -> Self
 		where
-			AP: Promise<BuilderLeaf, BCan>,
+			AP: Promise<Builder = BuilderLeaf, BCan = BCan>,
 			BCan: Can<BuilderLeaf>, {
 
 		Self {
@@ -118,7 +118,8 @@ impl<AP> BuilderSimpleNode<AP> {
 
 impl<AP, ArtCan: Debug, BCan> Builder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
-		AP: Promise<BuilderLeaf, BCan> + Debug,
+		BCan: Can<BuilderLeaf>,
+		AP: Promise<Builder = BuilderLeaf, BCan = BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
 		ArtCan: CanSized<SimpleNode<<ArtCan as Can<Leaf>>::Bin>>,
@@ -158,7 +159,8 @@ impl<B, AP> BuilderVariableNode<B, AP> {
 		where
 			B: Builder<ArtCan, BCan>,
 			B::Err: Into<()>,
-			AP: Promise<B, BCan> + Clone,
+			BCan: Can<AP::Builder>,
+			AP: Promise<Builder = B, BCan = BCan> + Clone,
 			ArtCan: Clone,
 			ArtCan: CanSized<B::Artifact>,
 			BCan: CanStrong, {
@@ -174,7 +176,8 @@ impl<B, AP, ArtCan, BCan> Builder<ArtCan, BCan> for BuilderVariableNode<B, AP>
 	where
 		B: Builder<ArtCan, BCan>,
 		(): From<B::Err>, //aka, B::Err: Into<()>,
-		AP: Promise<B, BCan> + Clone,
+		BCan: Can<B>,
+		AP: Promise<Builder = B, BCan = BCan> + Clone,
 		ArtCan: Clone,
 		ArtCan: CanSized<B::Artifact>,
 		ArtCan: CanSized<SimpleNode<<ArtCan as Can<B::Artifact>>::Bin>>,
@@ -251,8 +254,10 @@ impl<ApL, ApR, ArtCan: Debug, BCan: Debug, LB, RB> Builder<ArtCan, BCan> for Bui
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
 		RB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
-		ApL: Promise<LB, BCan>,
-		ApR: Promise<RB, BCan>,
+		BCan: Can<LB>,
+		ApL: Promise<Builder = LB, BCan = BCan>,
+		BCan: Can<RB>,
+		ApR: Promise<Builder = RB, BCan = BCan>,
 		ArtCan: Clone,
 		ArtCan: CanSized<LB::Artifact>,
 		ArtCan: CanSized<RB::Artifact>,
@@ -288,7 +293,8 @@ pub(crate) trait LeafOrNodeBuilder<ArtCan, BCan>: Builder<ArtCan, BCan, Err=Neve
 
 impl<AP, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for BuilderSimpleNode<AP>
 	where
-		AP: Promise<BuilderLeaf, BCan> + Debug,
+		BCan: Can<AP::Builder>,
+		AP: Promise<Builder = BuilderLeaf, BCan = BCan> + Debug,
 		ArtCan: Clone,
 		ArtCan: CanSized<Leaf>,
 		ArtCan: CanSized<SimpleNode<<ArtCan as Can<Leaf>>::Bin>>,
@@ -301,8 +307,10 @@ impl<ApL, ApR, LB, RB, ArtCan, BCan> LeafOrNodeBuilder<ArtCan, BCan> for Builder
 	where
 		LB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
 		RB: LeafOrNodeBuilder<ArtCan, BCan> + 'static,
-		ApL: Promise<LB, BCan>,
-		ApR: Promise<RB, BCan>,
+		BCan: Can<ApL::Builder>,
+		ApL: Promise<Builder = LB, BCan = BCan>,
+		BCan: Can<ApR::Builder>,
+		ApR: Promise<Builder = RB, BCan = BCan>,
 		ArtCan: Clone,
 		ArtCan: CanSized<LB::Artifact>,
 		ArtCan: CanSized<RB::Artifact>,
@@ -392,7 +400,7 @@ fn ref_function<Art, B, P>(cache: &mut crate::Cache<Art, B>, l: Art::Bin, ap: &P
 	where
 		Art: CanSized<Leaf> + Clone,
 		B: CanSized<BuilderLeaf> + CanStrong,
-		P: Promise<BuilderLeaf, B>,
+		P: Promise<Builder = BuilderLeaf, BCan = B>,
 		Art::Bin: PartialEq, {
 
 	assert_eq!(cache.get(ap).unwrap(), l);

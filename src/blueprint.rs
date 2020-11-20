@@ -76,8 +76,10 @@ use crate::Never;
 /// [`Blueprint`]: struct.Blueprint.html
 /// [`BlueprintUnsized`]: struct.BlueprintUnsized.html
 ///
-// typical bound: `where BCan: Can<B>`
-pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
+pub trait Promise: Debug + 'static {
+	type Builder: ?Sized + 'static + Debug;
+	type BCan: Can<Self::Builder>;
+
 	/// Get the unique id of the inner builder.
 	///
 	/// All clones of the same `Promise` have the same id, thus
@@ -92,7 +94,7 @@ pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
 	/// methods, as a Promise is supposed to be opaque, but this
 	/// accessor is required for this library to work.
 	///
-	fn builder(&self) -> BuilderAccessor<B>;
+	fn builder(&self) -> BuilderAccessor<Self::Builder>;
 
 	/// Get the inner builder in a opaque can.
 	///
@@ -100,7 +102,7 @@ pub trait Promise<B: ?Sized, BCan>: Debug + 'static {
 	/// methods, as a Promise is supposed to be opaque, but this
 	/// accessor is required for this library to work.
 	///
-	fn canned(&self) -> CannedAccessor<BCan>;
+	fn canned(&self) -> CannedAccessor<Self::BCan>;
 }
 
 /// Opaque builder accessor, used internally.
@@ -180,10 +182,13 @@ impl<B, BCan: Can<B>> Blueprint<B, BCan> {
 	}
 }
 
-impl<B, BCan: CanSized<B>> Promise<B, BCan> for Blueprint<B, BCan>
+impl<B, BCan: CanSized<B>> Promise for Blueprint<B, BCan>
 		where
-			B: 'static,
+			B: 'static + Debug,
 			BCan::Bin: AsRef<B> + Clone, {
+
+	type Builder = B;
+	type BCan = BCan;
 
 	fn id(&self) -> BuilderId {
 		self.id()
@@ -264,7 +269,7 @@ impl<B, BCan: Can<B>> fmt::Pointer for Blueprint<B, BCan> {
 
 impl<B, BCan: Can<B>> fmt::Debug for Blueprint<B, BCan> where BCan::Bin: fmt::Debug {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		write!(fmt, "ArtifactPromise {{builder: {:?}, id: {:p}}}", self.builder, self.id())
+		write!(fmt, "Blueprint {{builder: {:?}, id: {:p}}}", self.builder, self.id())
 	}
 }
 
@@ -448,11 +453,14 @@ cfg_if! {
 		}
 
 
-		impl<B: ?Sized, BCan: Can<B>> Promise<B, BCan> for BlueprintUnsized<B, BCan>
+		impl<B: ?Sized, BCan: Can<B>> Promise for BlueprintUnsized<B, BCan>
 				where
-					B: 'static,
+					B: Debug + 'static,
 					BCan::Bin: AsRef<B>,
 					BCan: Clone, {
+
+			type Builder = B;
+			type BCan = BCan;
 
 			fn id(&self) -> BuilderId {
 				self.id()
@@ -689,7 +697,7 @@ impl<ArtCan, BCan, Art, Err, DynSt> BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
 }
 
 
-impl<ArtCan, BCan, Art, Err, DynSt> Promise<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>, BCan> for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
+impl<ArtCan, BCan, Art, Err, DynSt> Promise for BlueprintDyn<ArtCan, BCan, Art, Err, DynSt>
 	where
 		ArtCan: 'static,
 		Art: 'static,
@@ -698,6 +706,9 @@ impl<ArtCan, BCan, Art, Err, DynSt> Promise<dyn Builder<ArtCan, BCan, Artifact=A
 		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
 		BCan::Bin: AsRef<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
 		BCan: Clone, {
+
+	type Builder = dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>;
+	type BCan = BCan;
 
 	fn id(&self) -> BuilderId {
 		self.id()
@@ -784,35 +795,4 @@ impl<ArtCan, BCan, Art, Err, DynSt, B> From<Blueprint<B, BCan>> for BlueprintDyn
 		Self::from_bp(sized_bp)
 	}
 }
-/*
-impl<B, BCan: CanSized<B>> From<B> for BlueprintDyn<B, BCan>
-	where
-		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Art, Err=Err, DynState=DynSt>>,
-		BCan::Bin: fmt::Debug + Clone {
 
-	fn from(builder: B) -> Self {
-		BlueprintUnsized::new(builder)
-	}
-}
-
-impl<B, ArtCan, BCan, Artifact, DynState, Err> From<Blueprint<B, BCan>> for BlueprintDyn<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
-	where
-		BCan: CanSized<B>,
-		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
-		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
-
-	fn from(builder: Blueprint<B, BCan>) -> Self {
-		BlueprintUnsized::from_sized_bp(builder)
-	}
-}
-
-impl<B, ArtCan, BCan, Artifact, DynState, Err> From<BlueprintUnsized<B, BCan>> for BlueprintDyn<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>, BCan>
-	where
-		BCan: CanSized<B>,
-		BCan: CanBuilder<ArtCan, Artifact, DynState, Err, B>,
-		BCan: Can<dyn Builder<ArtCan, BCan, Artifact=Artifact, DynState=DynState, Err=Err>> {
-
-	fn from(builder: BlueprintUnsized<B, BCan>) -> Self {
-		BlueprintUnsized::from_sized(builder)
-	}
-}*/

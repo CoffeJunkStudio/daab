@@ -202,9 +202,9 @@ pub struct BuilderHandle<BCan> {
 impl<BCan> BuilderHandle<BCan> {
 	/// Constructs a new builder handle with the given value.
 	///
-	pub fn new<AP, B: ?Sized + Debug + 'static>(value: &AP) -> Self
+	pub fn new<AP>(value: &AP) -> Self
 			where
-				AP: Promise<B, BCan> {
+				AP: Promise<BCan = BCan> {
 
 		let dbg_text = format!("{:#?}", &value.builder().builder);
 		let id = value.id();
@@ -212,7 +212,7 @@ impl<BCan> BuilderHandle<BCan> {
 		BuilderHandle {
 			value: value.canned().can,
 			id,
-			type_name: std::any::type_name::<B>(),
+			type_name: std::any::type_name::<AP::Builder>(),
 			dbg_text,
 		}
 	}

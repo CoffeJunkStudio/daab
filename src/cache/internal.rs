@@ -15,6 +15,7 @@ use cfg_if::cfg_if;
 use crate::CanStrong;
 use crate::CanSized;
 use crate::CanRef;
+use crate::Can;
 use crate::CanRefMut;
 
 use crate::Promise;
@@ -27,7 +28,7 @@ use super::Resolver;
 
 
 /// Auxiliary struct fro the `Cache` containing an untyped (aka
-/// `dyn Any`) ArtifactPromise.
+/// `dyn Any`) Promise.
 ///
 #[derive(Clone, Debug)]
 pub(crate) struct BuilderEntry<BCan> {
@@ -37,8 +38,10 @@ pub(crate) struct BuilderEntry<BCan> {
 impl<BCan: CanStrong> BuilderEntry<BCan> {
 	/// Constructs a new entry from given Promise.
 	///
-	pub(crate) fn new<AP, B: ?Sized + 'static>(ap: &AP) -> Self
-			where AP: Promise<B, BCan> {
+	pub(crate) fn new<AP>(ap: &AP) -> Self
+		where
+			BCan: Can<AP::Builder>,
+			AP: Promise<BCan=BCan> {
 
 		BuilderEntry {
 			builder: ap.canned().can,
@@ -124,13 +127,13 @@ pub(crate) struct RawCache<
 	/// This is the reverse of `dependents`. Both must be kept in sync.
 	///
 	dependencies: HashMap<BuilderId, HashSet<BuilderId>>,
-	
+
 	/// Tracks all builder id of builders which (yet) have no dependents.
-	/// 
+	///
 	/// This list is an heuristic optimization structure for the garbage collection.
 	/// It is the list of builders to be checked by the garbage collection, reducing the amount
 	/// of checks required.
-	/// 
+	///
 	known_leaf_builder: HashSet<BuilderId>,
 
 	/// Keeps a weak reference to all known builders that are those which are
@@ -222,7 +225,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	///
 	/// The `user` must be already listed in `known_builders`.
 	///
-	pub(super) fn track_dependency<AP, B: ?Sized>(
+	pub(super) fn track_dependency<AP>(
 			&mut self,
 			user: &BuilderEntry<BCan>,
 			#[cfg(feature = "diagnostics")]
@@ -230,8 +233,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			promise: &AP
 		)
 			where
-				B: Debug + 'static,
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan> {
 
 		// Ensure that the given promise is known.
 		// User must exist already by contract.
@@ -243,7 +246,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.dependents.entry(promise.id())
 			.or_insert_with(HashSet::new)
 			.insert(user.id());
-		
+
 		// Unmark the promise as leaf, since it has now at least one depenency
 		self.known_leaf_builder.remove(&promise.id());
 
@@ -266,12 +269,13 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// `lookup*` functions, but this one does no cast and has fewer
 	/// generic requirements.
 	///
-	pub(crate) fn contains_artifact<AP: ?Sized, B: ?Sized>(
+	pub(crate) fn contains_artifact<AP: ?Sized>(
 			&self,
 			promise: &AP
 		) -> bool
 			where
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan> {
 
 		self.artifacts.contains_key(&promise.id())
 	}
@@ -279,12 +283,13 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// Tests whether the artifact or dyn state of the given builder is
 	/// recorded in this cache.
 	///
-	pub(crate) fn is_builder_known<AP: ?Sized, B: ?Sized>(
+	pub(crate) fn is_builder_known<AP: ?Sized>(
 			&self,
 			promise: &AP
 		) -> bool
 			where
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan> {
 
 		self.is_builder_known_by_id(promise.id())
 	}
@@ -310,7 +315,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -336,7 +342,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRef<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -355,6 +362,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Get the stored artifact by mutable reference if it exists.
 	///
+	/// Unstable!
+	///
 	pub(crate) fn lookup_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
@@ -362,7 +371,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		let id = promise.id();
 
@@ -398,7 +408,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
 				ArtCan: CanRef<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		// Get the artifact from the hash map ensuring integrity
@@ -419,7 +430,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		// Ensure that there yet is no artifact for that builder in cache
 		debug_assert!(!self.contains_artifact(promise));
@@ -495,7 +507,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanSized<B::Artifact>,
 				ArtCan: Clone,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		if let Some(art) = self.lookup(promise) {
@@ -518,7 +531,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRef<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		if self.lookup_ref(promise).is_some() {
@@ -536,6 +550,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Gets a mutable reference to the artifact of the given builder.
 	///
+	/// Unstable!
+	///
 	pub(crate) fn get_mut<AP, B: ?Sized>(
 			&mut self,
 			promise: &AP
@@ -543,7 +559,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 			where
 				B: Builder<ArtCan, BCan>,
 				ArtCan: CanRefMut<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		if self.lookup_mut(promise).is_some() {
@@ -569,7 +586,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				B: Builder<ArtCan, BCan>,
 				B::Artifact: Clone,
 				ArtCan: CanRef<B::Artifact>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.get_ref(promise).map(|art| {
 			art.clone()
@@ -584,7 +602,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		) -> &mut B::DynState
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan> {
 
 		self.make_builder_known(promise);
 
@@ -666,7 +685,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		) -> &mut B::DynState
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan> {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan> {
 
 		// Since the user choses `mut` he intends to modify the dyn state this
 		// requires the rebuild the artifact.
@@ -685,7 +705,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		) -> &B::DynState
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		// Here, no invalidation, because we do not allow the user to modify the
 		// dyn state.
@@ -701,7 +722,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		) -> Option<&B::DynState>
 			where
 				B: Builder<ArtCan, BCan>,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		self.dyn_state_cast_ref(promise.id())
 	}
@@ -714,7 +736,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		)
 			where
 				B: Debug + 'static,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 		let bid = promise.id();
 
@@ -739,10 +762,10 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		self.artifacts.clear();
 		self.dependents.clear();
 		self.dependencies.clear();
-		
+
 		// Now, all know builders are leafs!
 		self.known_leaf_builder.extend(self.known_builders.keys());
-		
+
 	}
 
 	/// Clears the entire cache including all kept promise, artifacts and
@@ -800,7 +823,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 						// Notice the above code has important side-effects, thus
 						// only the return value is tested in the assert macro.
 						debug_assert!(found);
-						
+
 						// Check whether this depenencies has other dependents left, or whether it
 						// became a leaf now.
 						let is_leaf = self.dependents[&dep].is_empty();
@@ -830,7 +853,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				self.invalidate_by_id(&dep);
 			}
 		}
-		
+
 		// Now, `builder` has no more depenencies, i.e. it is a leaf
 		self.known_leaf_builder.insert(*builder);
 	}
@@ -844,7 +867,8 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 		)
 			where
 				B: Debug + 'static,
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<Builder = B, BCan = BCan>  {
 
 
 		self.invalidate_by_id(&promise.id());
@@ -858,7 +882,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 	/// any more, because there are no more references to them.
 	///
 	pub(crate) fn garbage_collection(&mut self) {
-		
+
 		// Just checking there is programming flaw here, it's really not relevant for run time.
 		debug_assert!(
 			// Check invarinant. All known builders are either leaf builders or have at least one
@@ -888,15 +912,16 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 
 	/// Enlist given builder as known builder, that is to keep its weak
 	/// reference while it is used in `cache` or `dyn_state`.
-	fn make_builder_known<AP, B: ?Sized>(
+	fn make_builder_known<AP>(
 			&mut self,
 			promise: &AP
 		)
 			where
-				AP: Promise<B, BCan>  {
+				BCan: Can<AP::Builder>,
+				AP: Promise<BCan = BCan>  {
 
 		let bid = promise.id();
-		
+
 		let leafs = &mut self.known_leaf_builder;
 
 		self.known_builders.entry(bid).or_insert_with(
@@ -904,7 +929,7 @@ impl<ArtCan, BCan> RawCache<ArtCan, BCan>
 				// Here, the builder was not known befor!
 				// Thus it must be a leaf
 				leafs.insert(bid);
-				
+
 				// Return downgraded can
 				promise.canned().can.downgrade()
 			}
