@@ -31,6 +31,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::fmt::Debug;
 
+use crate::canning::Can;
 use crate::canning::CanBase;
 use crate::canning::CanSized;
 use crate::Promise;
@@ -204,6 +205,7 @@ impl<BCan> BuilderHandle<BCan> {
 	///
 	pub fn new<AP>(value: &AP) -> Self
 			where
+				BCan: Can<AP::Builder>,
 				AP: Promise<BCan = BCan> {
 
 		let dbg_text = format!("{:#?}", &value.builder().builder);
