@@ -20,15 +20,15 @@ Minimal Rust version: **1.40**
 ### Basic Concept
 
 The basic concept of daab revolves around _Builders_, which are user provided
-structs that implement the [`Builder`] trait. That trait essentially has an
-associated type [`Artifact`] and method [`build`] where the latter will
+structs that implement the `Builder` trait. That trait essentially has an
+associated type `Artifact` and method `build` where the latter will
 produce a value of the `Artifact` type, which will be subsequently be
 referred to as _Artifact_. In order to be able to depend on the Artifact of
-other Builders, the `build` method also gets a [`Resolver`] that allows
+other Builders, the `build` method also gets a `Resolver` that allows
 to retrieve the Artifacts of others.
 
 In order to allow Builders and Artifacts to form a directed acyclic graph
-this crate provides at its heart an Artifact [`Cache`] which keeps the
+this crate provides at its heart an Artifact `Cache` which keeps the
 Artifacts of Builders in order to prevent the Builders to produce multiple
 equal Artifacts. Thus different Builders may depend on same Builder and
 getting the same Artifact from the `Cache`.
@@ -37,10 +37,10 @@ To be able to share Builders and Artifacts this crate also provides a
 concept of _Cans_ and _Bins_, which in the most basic case are simply an opaque
 `Rc<dyn Any>` and a transparent `Rc<T>`, respectively. These are referred to
 by the generic arguments of e.g. the `Cache`. For more details consult the
-[`canning`] module.
+`canning` module.
 
 Additional to the canning, the `Cache` expects Builders to wrapped in a
-opaque [`Blueprint`] enforcing encapsulation, i.e. it prevents users from
+opaque `Blueprint` enforcing encapsulation, i.e. it prevents users from
 accessing the inner struct (the one which implements the `Builder` trait),
 while only allowing the `Cache` itself to call its `build` method.
 
@@ -50,31 +50,10 @@ while only allowing the `Cache` itself to call its `build` method.
 
 For the basic concept (explained above) there exists simplified traits
 which skip over the more
-advanced features. One such simplified trait is the [`SimpleBuilder`] of the
-[`rc`] module, which uses `Rc`s for canning and has simplified aliases
+advanced features. One such simplified trait is the `SimpleBuilder` of the
+`rc` module, which uses `Rc`s for canning and has simplified aliases
 (minimal generic arguments) for all the above types. For getting started
 that `rc` module is probably the best place to start.
-
-
-
-### Detailed Concept
-
-See the [Advanced Feature section of `Builder`].
-
-Also see [`Cache`], [`Builder`], [`blueprint`], [`canning`]
-
-
-[`Builder`]: trait.Builder.html
-[`Artifact`]: trait.Builder.html#associatedtype.Artifact
-[`build`]: trait.Builder.html#tymethod.build
-[`SimpleBuilder`]: rc/trait.SimpleBuilder.html
-[`rc`]: rc/index.html
-[`canning`]: canning/index.html
-[`blueprint`]: blueprint/index.html
-[`Blueprint`]: blueprint/struct.Blueprint.html
-[`Resolver`]: cache/struct.Resolver.html
-[`Cache`]: cache/struct.Cache.html
-[Advanced Feature section of `Builder`]: trait.Builder.html#advanced-features
 
 
 ### Example
@@ -204,7 +183,7 @@ are capsuled behind the **`diagnostics`** feature.
 Of course, the debugging feature is for the user of this crate to
 debug their graphs. Therefore, it is rather modelled as a
 diagnostics feature (hence the name). The diagnosis
-is carried out by a [`Doctor`], which is a trait receiving various
+is carried out by a `Doctor`, which is a trait receiving various
 internal events in order to record them, print them, or otherwise help
 treating the bug.
 
@@ -223,8 +202,6 @@ To ease conversion between them, all creatable `Cache`s
 `&mut Cache<dyn Doctor>` which has all the important methods
 implemented.
 
-[`Doctor`]: diagnostics/trait.Doctor.html
-
 
 
 ### Features
@@ -242,11 +219,10 @@ This crate offers the following features:
   feature.
 
 - **`unsized`** enables better conversion between unsized Builders with
-  [`BlueprintUnsized::into_unsized`]. **This feature requires Nightly
+  `BlueprintUnsized::into_unsized`. **This feature requires Nightly
   Rust**.
 
 [`tynm`]: https://crates.io/crates/tynm
-[`BlueprintUnsized::into_unsized`]: blueprint/struct.BlueprintUnsized.html#method.into_unsized
 
 
 ## License
