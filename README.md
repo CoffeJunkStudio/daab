@@ -4,52 +4,77 @@
 DAG Aware Artifact Builder
 ==========================
 
-Rust crate for managing the building of artifacts by builders which are
-connected in a directed acyclic graph (DAG) like manner.
+Rust crate for managing the building and caching of artifacts which are
+connected in a directed acyclic graph (DAG) like manner, i.e. artifacts may
+depend on others.
 
-This crate provides essentially a cache which keeps artifacts of builders in
-order to prevent the same builder to produce multiple equal artifacts.
-This could be useful if the builders use consumable resources to create their
-artifacts, the building is a heavyweight procedure, or a given DAG dependency
-structure among the builders shall be properly preserved among their
-artifacts.
-
-The basic principal on which this crate is build, suggests two levels of
-abstraction, the builder level and the artifact level. Each builder type has
-one specific artifact type. The builders are represented by any struct,
-which implements the `Builder` trait, which in turn has an associate type
-that specifies the artifact type.
-
-`Builder`s are supposed to be wrapped in `ArtifactPromise`s, which prevents
-to call its `Builder::build()` method directly. In other respects, the
-`ArtifactPromise` acts a lot like an `Rc` and thus allows to share one
-instance among several dependants.
-This `Rc`-like structure creates naturally a DAG.
-
-For building a `Builder`s artifact, its `Builder::build()` method is
-provided with a `ArtifactResolver` that allows to resolve depending
-`ArtifactPromise`s into their respective artifacts, which is,
-in order to form a DAG, wrapped behind a `Rc`.
-
-As entry point serves the `ArtifactCache`, which allows outside of a
-`Builder` to resolve any `ArtifactPromise` to its artifact. The
-`ArtifactCache` is essentially a cache for artifacts. It can be used to
-translate any number of `ArtifactPromise`s to their respective artifact,
-while sharing their common dependencies.
-Consequently, resolving the same `ArtifactPromise` using the same
-`ArtifactCache` results in the same `Rc`ed artifact.
-However, using different `ArtifactCache`s results in different artifacts.
-
-The `ArtifactCache` has a `clear()` method to reset the cache.
-This could be useful to free the resources kept by all artifacts and
-builders, which are cached in it, or when artifacts shall be explicitly
-recreated, e.g. to form a second independent artifact DAG.
-Additionally, `ArtifactCache` has an `invalidate()` method to remove a single
-builder and artifact including its dependants (i.e. those artifacts which had
-used the invalidated one).
+The caching provided by this crate could be especially useful if the
+artifact builders use consumable resources, the building process is a
+heavyweight procedure, or a given DAG dependency structure among the
+builders shall be properly preserved among their artifacts.
 
 Minimal Rust version: **1.40**
 
+
+
+### Basic Concept
+
+The basic concept of daab revolves around _Builders_, which are user provided
+structs that implement the [`Builder`] trait. That trait essentially has an
+associated type [`Artifact`] and method [`build`] where the latter will
+produce a value of the `Artifact` type, which will be subsequently be
+referred to as _Artifact_. In order to be able to depend on the Artifact of
+other Builders, the `build` method also gets a [`Resolver`] that allows
+to retrieve the Artifacts of others.
+
+In order to allow Builders and Artifacts to form a directed acyclic graph
+this crate provides at its heart an Artifact [`Cache`] which keeps the
+Artifacts of Builders in order to prevent the Builders to produce multiple
+equal Artifacts. Thus different Builders may depend on same Builder and
+getting the same Artifact from the `Cache`.
+
+To be able to share Builders and Artifacts this crate also provides a
+concept of _Cans_ and _Bins_, which in the most basic case are simply an opaque
+`Rc<dyn Any>` and a transparent `Rc<T>`, respectively. These are referred to
+by the generic arguments of e.g. the `Cache`. For more details consult the
+[`canning`] module.
+
+Additional to the canning, the `Cache` expects Builders to wrapped in a
+opaque [`Blueprint`] enforcing encapsulation, i.e. it prevents users from
+accessing the inner struct (the one which implements the `Builder` trait),
+while only allowing the `Cache` itself to call its `build` method.
+
+
+
+#### Getting started
+
+For the basic concept (explained above) there exists simplified traits
+which skip over the more
+advanced features. One such simplified trait is the [`SimpleBuilder`] of the
+[`rc`] module, which uses `Rc`s for canning and has simplified aliases
+(minimal generic arguments) for all the above types. For getting started
+that `rc` module is probably the best place to start.
+
+
+
+### Detailed Concept
+
+See the [Advanced Feature section of `Builder`].
+
+Also see [`Cache`], [`Builder`], [`blueprint`], [`canning`]
+
+
+[`Builder`]: trait.Builder.html
+[`Artifact`]: trait.Builder.html#associatedtype.Artifact
+[`build`]: trait.Builder.html#tymethod.build
+[`SimpleBuilder`]: rc/trait.SimpleBuilder.html
+[`rc`]: rc/index.html
+[`canning`]: canning/index.html
+[`blueprint`]: blueprint/index.html
+[`Blueprint`]: blueprint/struct.Blueprint.html
+[`Resolver`]: cache/struct.Resolver.html
+[`Cache`]: cache/struct.Cache.html
+[Advanced Feature section of `Builder`]: trait.Builder.html#advanced-features
 
 
 ### Example
@@ -76,10 +101,10 @@ impl BuilderLeaf {
         }
     }
 }
-impl Builder for BuilderLeaf {
+impl rc::SimpleBuilder for BuilderLeaf {
     type Artifact = Leaf;
 
-    fn build(&self, _cache: &mut ArtifactResolver) -> Self::Artifact {
+    fn build(&self, _resolver: &mut rc::Resolver) -> Self::Artifact {
         Leaf{
             // ...
         }
@@ -90,56 +115,82 @@ impl Builder for BuilderLeaf {
 #[derive(Debug)]
 struct Node {
     leaf: Rc<Leaf>, // Dependency artifact
+    value: u8, // Some custom value
     // ...
 }
 
 // Composed builder, depending on BuilderLeaf
 #[derive(Debug)]
 struct BuilderNode {
-    builder_leaf: ArtifactPromise<BuilderLeaf>, // Dependency builder
+    builder_leaf: rc::Blueprint<BuilderLeaf>, // Dependency builder
     // ...
 }
 impl BuilderNode {
-    pub fn new(builder_leaf: ArtifactPromise<BuilderLeaf>) -> Self {
+    pub fn new(builder_leaf: rc::Blueprint<BuilderLeaf>) -> Self {
         Self {
             builder_leaf,
             // ...
         }
     }
 }
-impl Builder for BuilderNode {
+use std::any::Any;
+impl rc::Builder for BuilderNode {
     type Artifact = Node;
+    type DynState = u8;
+    type Err = Never;
 
-    fn build(&self, cache: &mut ArtifactResolver) -> Self::Artifact {
-        // Resolve ArtifactPromise to its artifact
-        let leaf = cache.resolve(&self.builder_leaf);
+    fn build(&self, resolver: &mut rc::Resolver<Self::DynState>) -> Result<Rc<Self::Artifact>, Never> {
+        // Resolve Blueprint to its artifact
+        // Unpacking because the Err type is Never.
+        let leaf = resolver.resolve(&self.builder_leaf).unpack();
 
-        Node {
+        Ok(Node {
             leaf,
+            value: *resolver.my_state(),
             // ...
-        }
+        }.into())
+    }
+    fn init_dyn_state(&self) -> Self::DynState {
+        42
     }
 }
 
 // The cache to storing already created artifacts
-let mut cache = ArtifactCache::new();
+let mut cache = rc::Cache::new();
 
 // Constructing builders
-let leaf_builder = ArtifactPromise::new(BuilderLeaf::new());
+let leaf_builder = rc::Blueprint::new(BuilderLeaf::new());
 
-let node_builder_1 = ArtifactPromise::new(BuilderNode::new(leaf_builder.clone()));
-let node_builder_2: ArtifactPromise<_> = BuilderNode::new(leaf_builder.clone()).into();
+let node_builder_1 = rc::Blueprint::new(BuilderNode::new(leaf_builder.clone()));
+let node_builder_2 = rc::Blueprint::new(BuilderNode::new(leaf_builder.clone()));
 
 // Using the cache to access the artifacts from the builders
 
 // The same builder results in same artifact
-assert!(Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_1)));
+assert!(Rc::ptr_eq(&cache.get(&node_builder_1).unpack(), &cache.get(&node_builder_1).unpack()));
 
 // Different builders result in different artifacts
-assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1), &cache.get(&node_builder_2)));
+assert!( ! Rc::ptr_eq(&cache.get(&node_builder_1).unpack(), &cache.get(&node_builder_2).unpack()));
 
 // Different artifacts may link the same dependent artifact
-assert!(Rc::ptr_eq(&cache.get(&node_builder_1).leaf, &cache.get(&node_builder_2).leaf));
+assert!(Rc::ptr_eq(&cache.get(&node_builder_1).unpack().leaf, &cache.get(&node_builder_2).unpack().leaf));
+
+// Purge builder 2 to ensure the following does not affect it
+cache.purge(&node_builder_2);
+
+// Test dynamic state
+assert_eq!(cache.get(&node_builder_1).unpack().value, 42);
+
+// Change state
+*cache.dyn_state_mut(&node_builder_1) = 127.into();
+// Without invalidation, the cached artefact remains unchanged
+assert_eq!(cache.dyn_state(&node_builder_1), &127);
+// Invalidate node, and ensure it made use of the state
+assert_eq!(cache.get(&node_builder_1).unpack().value, 127);
+
+// State of node 2 remains unchanged
+assert_eq!(cache.get_dyn_state(&node_builder_2), None);
+assert_eq!(cache.get(&node_builder_2).unpack().value, 42);
 ```
 
 
@@ -153,7 +204,7 @@ are capsuled behind the **`diagnostics`** feature.
 Of course, the debugging feature is for the user of this crate to
 debug their graphs. Therefore, it is rather modelled as a
 diagnostics feature (hence the name). The diagnosis
-is carried out by a `Doctor`, which is a trait receiving various
+is carried out by a [`Doctor`], which is a trait receiving various
 internal events in order to record them, print them, or otherwise help
 treating the bug.
 
@@ -161,17 +212,18 @@ Care has been taken to keep the **`diagnostics`** feature broadly applicable
 as well as keeping the non-`diagnostics` API compatible with the
 `diagnostics`-API, meaning that a project not using the
 `diagnostics` feature can be easily converted to using
-`diagnostics`, usually by just replacing `ArtifactCache::new()`
-with `ArtifactCache::new_with_doctor()`.
-In order to store the `Doctor` the `ArtifactCache` is generic to a doctor,
+`diagnostics`, usually by just replacing `Cache::new()`
+with `Cache::new_with_doctor()`.
+In order to store the `Doctor` the `Cache` is generic to a doctor,
 which is important on its creation and for storing it by value.
-The rest of the time the `ArtifactCache` uses `dyn Doctor` as its default
+The rest of the time the `Cache` uses `dyn Doctor` as its default
 generic argument.
-To ease conversion between them, all creatable `ArtifactCache`s
-(i.e. not `ArtifactCache<dyn Doctor>`) implement `DerefMut` to
-`&mut ArtifactCache<dyn Doctor>` which has all the important methods
+To ease conversion between them, all creatable `Cache`s
+(i.e. not `Cache<dyn Doctor>`) implement `DerefMut` to
+`&mut Cache<dyn Doctor>` which has all the important methods
 implemented.
 
+[`Doctor`]: diagnostics/trait.Doctor.html
 
 
 
@@ -180,7 +232,7 @@ implemented.
 This crate offers the following features:
 
 - **`diagnostics`** enables elaborate graph and cache interaction debugging.
-  It adds the `new_with_doctor()` function to the `ArtifactCache` and adds
+  It adds the `new_with_doctor()` function to the `Cache` and adds
   the `diagnostics` module with the `Doctor` trait definition and some
   default `Doctor`s.
 
@@ -189,7 +241,12 @@ This crate offers the following features:
   `Doctor`s, hence it is only useful in connection with the `diagnostics`
   feature.
 
+- **`unsized`** enables better conversion between unsized Builders with
+  [`BlueprintUnsized::into_unsized`]. **This feature requires Nightly
+  Rust**.
+
 [`tynm`]: https://crates.io/crates/tynm
+[`BlueprintUnsized::into_unsized`]: blueprint/struct.BlueprintUnsized.html#method.into_unsized
 
 
 ## License
